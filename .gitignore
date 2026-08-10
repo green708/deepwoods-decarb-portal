@@ -1,0 +1,42 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-ssr
+dist-static/
+.output
+.vinxi
+.tanstack/**
+.nitro
+*.local
+
+# Secrets — real DB password, Drive tokens, API keys.
+# Never commit these. The .example files are the safe templates.
+backend/config.php
+backend/*.json
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+Thumbs.db
+
+# Local AI tooling
+.claude/

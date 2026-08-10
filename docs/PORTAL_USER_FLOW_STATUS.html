@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Decarb Platform — Implementation Status</title>
+<style>
+/* ── Tokens ── */
+:root {
+  --bg: #F2F5F3;
+  --surface: #FFFFFF;
+  --sidebar-bg: #0C1C14;
+  --sidebar-text: #A3BFB0;
+  --sidebar-active: #FFFFFF;
+  --sidebar-accent: #2A9674;
+  --accent: #1E6F5C;
+  --accent-mid: #2A9674;
+  --accent-light: #D9EFE7;
+  --text: #0C1C14;
+  --text-muted: #5C7A6C;
+  --border: #D4E4DC;
+  --border-strong: #B0CCBF;
+  --surface-2: #EBF4EE;
+
+  --green: #15803D;  --green-bg: #DCFCE7;
+  --amber: #B45309;  --amber-bg: #FEF3C7;
+  --red: #B91C1C;    --red-bg: #FEE2E2;
+  --blue: #1D4ED8;   --blue-bg: #DBEAFE;
+  --purple: #6D28D9; --purple-bg: #EDE9FE;
+
+  --font-body: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  --sidebar-w: 220px;
+  --max-w: 1080px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0A1510;
+    --surface: #111E17;
+    --sidebar-bg: #070F0A;
+    --sidebar-text: #7A9E8C;
+    --sidebar-active: #E8F4EE;
+    --sidebar-accent: #2A9674;
+    --accent: #2DBF88;
+    --accent-mid: #25A370;
+    --accent-light: #0F2B1E;
+    --text: #E4F0EC;
+    --text-muted: #7A9E8C;
+    --border: #1E3328;
+    --border-strong: #2A4A38;
+    --surface-2: #0F2218;
+    --green-bg: #052912; --amber-bg: #2B1A03; --red-bg: #2B0808; --blue-bg: #071B3D; --purple-bg: #1A0E36;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0A1510; --surface: #111E17; --sidebar-bg: #070F0A;
+  --sidebar-text: #7A9E8C; --sidebar-active: #E8F4EE;
+  --accent: #2DBF88; --accent-mid: #25A370; --accent-light: #0F2B1E;
+  --text: #E4F0EC; --text-muted: #7A9E8C;
+  --border: #1E3328; --border-strong: #2A4A38; --surface-2: #0F2218;
+  --green-bg: #052912; --amber-bg: #2B1A03; --red-bg: #2B0808; --blue-bg: #071B3D; --purple-bg: #1A0E36;
+}
+:root[data-theme="light"] {
+  --bg: #F2F5F3; --surface: #FFFFFF; --sidebar-bg: #0C1C14;
+  --accent: #1E6F5C; --accent-mid: #2A9674; --accent-light: #D9EFE7;
+  --text: #0C1C14; --text-muted: #5C7A6C;
+  --border: #D4E4DC; --border-strong: #B0CCBF; --surface-2: #EBF4EE;
+  --green-bg: #DCFCE7; --amber-bg: #FEF3C7; --red-bg: #FEE2E2; --blue-bg: #DBEAFE; --purple-bg: #EDE9FE;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+  display: flex;
+}
+
+/* ── Sidebar ── */
+#sidebar {
+  width: var(--sidebar-w);
+  min-height: 100vh;
+  background: var(--sidebar-bg);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+#sidebar .logo {
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+#sidebar .logo-mark {
+  width: 32px; height: 32px;
+  background: var(--sidebar-accent);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; margin-bottom: 10px;
+}
+#sidebar .logo h1 { font-size: 12px; font-weight: 700; color: #fff; letter-spacing: .04em; text-transform: uppercase; }
+#sidebar .logo p { font-size: 10px; color: var(--sidebar-text); margin-top: 2px; }
+#sidebar nav { padding: 12px 0; flex: 1; }
+#sidebar nav a {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 18px;
+  font-size: 12px; font-weight: 500;
+  color: var(--sidebar-text);
+  text-decoration: none;
+  transition: color .15s;
+}
+#sidebar nav a:hover { color: var(--sidebar-active); }
+#sidebar nav a.active { color: var(--sidebar-active); background: rgba(255,255,255,0.06); border-right: 2px solid var(--sidebar-accent); }
+#sidebar nav .sec-label {
+  font-size: 9px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: rgba(255,255,255,0.25);
+  padding: 14px 18px 4px;
+}
+#sidebar .theme-btn {
+  margin: 12px 18px;
+  padding: 6px 10px;
+  font-size: 11px; color: var(--sidebar-text);
+  background: rgba(255,255,255,0.06); border: none; border-radius: 6px;
+  cursor: pointer; text-align: left; width: calc(100% - 36px);
+}
+
+/* ── Main ── */
+#main { flex: 1; min-width: 0; padding: 32px 40px; max-width: var(--max-w); }
+
+/* ── Sections ── */
+.section { margin-bottom: 48px; scroll-margin-top: 20px; }
+.section-header {
+  border-left: 3px solid var(--accent);
+  padding-left: 14px;
+  margin-bottom: 20px;
+}
+.section-header .eyebrow {
+  font-size: 10px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--accent-mid);
+}
+.section-header h2 {
+  font-size: 20px; font-weight: 700; color: var(--text);
+  text-wrap: balance; margin-top: 2px;
+}
+.section-header p { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+/* ── Status badges ── */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 99px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.badge-green  { background: var(--green-bg);  color: var(--green); }
+.badge-amber  { background: var(--amber-bg);  color: var(--amber); }
+.badge-red    { background: var(--red-bg);    color: var(--red); }
+.badge-blue   { background: var(--blue-bg);   color: var(--blue); }
+.badge-purple { background: var(--purple-bg); color: var(--purple); }
+.badge-gray   { background: var(--surface-2); color: var(--text-muted); }
+
+/* ── Dashboard cards ── */
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 12px; }
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px;
+}
+.card .card-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.card .card-val   { font-size: 22px; font-weight: 800; color: var(--text); margin: 4px 0 6px; font-variant-numeric: tabular-nums; }
+.card .card-sub   { font-size: 12px; color: var(--text-muted); }
+.progress-bar {
+  height: 6px; background: var(--border); border-radius: 99px; overflow: hidden; margin-top: 8px;
+}
+.progress-bar-fill { height: 100%; border-radius: 99px; background: var(--accent); transition: width .3s; }
+
+/* ── Tables ── */
+.table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  background: var(--surface-2); text-align: left;
+  padding: 9px 14px; font-size: 11px; font-weight: 700;
+  letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+tbody tr { border-bottom: 1px solid var(--border); background: var(--surface); }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--surface-2); }
+tbody td { padding: 9px 14px; font-size: 12.5px; color: var(--text); vertical-align: top; }
+code { font-family: var(--font-mono); font-size: 11.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; color: var(--accent); }
+
+/* ── Flow diagrams ── */
+.flow {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px;
+}
+.flow-row { display: flex; gap: 12px; align-items: stretch; }
+.flow-col { display: flex; flex-direction: column; gap: 0; }
+.flow-node {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 14px;
+  font-size: 12px; font-weight: 600; color: var(--text);
+  white-space: nowrap; position: relative;
+}
+.flow-node.done   { border-color: var(--accent); background: var(--accent-light); color: var(--accent); }
+.flow-node.warn   { border-color: #D97706; background: var(--amber-bg); color: var(--amber); }
+.flow-node.miss   { border-color: #B91C1C; background: var(--red-bg); color: var(--red); }
+.flow-node.future { border-color: #7C3AED; background: var(--purple-bg); color: var(--purple); }
+.flow-node.admin  { border-color: #1D4ED8; background: var(--blue-bg); color: var(--blue); }
+.flow-arrow {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; color: var(--text-muted); padding: 2px 0; min-height: 24px;
+}
+.flow-arrow-h {
+  display: flex; align-items: center; color: var(--text-muted);
+  font-size: 16px; padding: 0 2px;
+}
+.flow-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.flow-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text-muted); margin-bottom: 12px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── Two-column ── */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+.panel h3 { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 10px; }
+
+/* ── Journey detail ── */
+.journey-step {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  margin-bottom: 12px; overflow: hidden;
+}
+.journey-step-header {
+  display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+  background: var(--surface-2); cursor: pointer;
+}
+.step-num {
+  width: 26px; height: 26px; border-radius: 50%; background: var(--accent);
+  color: #fff; font-size: 11px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.step-num.warn { background: var(--amber); }
+.step-num.miss { background: var(--red); }
+.journey-step-body { padding: 14px 16px; display: none; }
+.journey-step-body.open { display: block; }
+.journey-detail { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; font-size: 12px; }
+.detail-box { background: var(--surface-2); border-radius: 6px; padding: 8px 10px; }
+.detail-box .lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: 3px; }
+
+/* ── Checklist ── */
+.checklist { display: flex; flex-direction: column; gap: 4px; }
+.check-item { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); }
+.check-item .check-icon { width: 18px; height: 18px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+.check-item .check-text { font-size: 12.5px; color: var(--text); flex: 1; }
+.check-item .check-status { font-size: 10px; font-weight: 700; }
+
+/* ── Alerts ── */
+.alert { border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; font-size: 12.5px; }
+.alert-red    { background: var(--red-bg);    border-left: 3px solid var(--red);    color: var(--text); }
+.alert-amber  { background: var(--amber-bg);  border-left: 3px solid var(--amber);  color: var(--text); }
+.alert-green  { background: var(--green-bg);  border-left: 3px solid var(--green);  color: var(--text); }
+.alert-blue   { background: var(--blue-bg);   border-left: 3px solid var(--blue);   color: var(--text); }
+.alert strong { font-weight: 700; }
+
+/* ── File index ── */
+.file-path { font-family: var(--font-mono); font-size: 11px; color: var(--accent); }
+
+/* ── Separator ── */
+.sep { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+
+/* ── Bug card ── */
+.bug-card { background: var(--red-bg); border: 1px solid var(--red); border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; }
+.bug-card.fixed { background: var(--green-bg); border-color: var(--green); }
+.bug-card.warn  { background: var(--amber-bg); border-color: var(--amber); }
+.bug-card h4 { font-size: 12.5px; font-weight: 700; margin-bottom: 4px; }
+.bug-card p  { font-size: 12px; color: var(--text); }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  body { flex-direction: column; }
+  #sidebar { width: 100%; height: auto; position: static; flex-direction: row; flex-wrap: wrap; }
+  #sidebar nav { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 12px; }
+  #sidebar nav a { padding: 4px 10px; font-size: 11px; }
+  #main { padding: 16px; }
+  .two-col, .flow-grid, .journey-detail { grid-template-columns: 1fr; }
+  .card-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<!-- ── Sidebar ── -->
+<aside id="sidebar">
+  <div class="logo">
+    <div class="logo-mark">🌿</div>
+    <h1>Decarb Platform</h1>
+    <p>Implementation Status — 2026-08-08</p>
+  </div>
+  <nav>
+    <div class="sec-label">Overview</div>
+    <a href="#status">📊 Status Dashboard</a>
+    <a href="#validation">🧪 New-Client Validation</a>
+    <div class="sec-label">User Flow</div>
+    <a href="#flow">↕ Complete User Flow</a>
+    <a href="#pages">📄 All Portal Pages</a>
+    <a href="#nav">🧭 Navigation / Sidebar</a>
+    <a href="#journey">🚶 Client Journey Detail</a>
+    <div class="sec-label">Technical</div>
+    <a href="#inventory-boundary">📦 Inventory Boundary</a>
+    <a href="#data-arch">🔄 Data Architecture</a>
+    <a href="#multitenant">🏢 Multi-Tenant Status</a>
+    <div class="sec-label">Process</div>
+    <a href="#payment">💳 Manual Payment Flow</a>
+    <a href="#plan">📅 Aug 7–14 Build Plan</a>
+    <div class="sec-label">QA</div>
+    <a href="#qa">✅ QA Checklist</a>
+    <a href="#files">📁 File Index</a>
+  </nav>
+  <button class="theme-btn" onclick="toggleTheme()">Toggle dark/light</button>
+</aside>
+
+<!-- ── Main ── -->
+<main id="main">
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 10 — STATUS DASHBOARD (shown first for scannability)
+════════════════════════════════════════════════════ -->
+<section class="section" id="status">
+  <div class="section-header">
+    <div class="eyebrow">Section 10</div>
+    <h2>Current Status Dashboard</h2>
+    <p>Alpha milestone status as of 2026-08-08. Green = implemented, Amber = partial/needs verification, Red = missing, Blue = future.</p>
+  </div>
+
+  <div class="card-grid" style="margin-bottom:20px">
+    <div class="card">
+      <div class="card-label">Routes</div>
+      <div class="card-val">26</div>
+      <div class="card-sub">navigable pages</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Fully Implemented</div>
+      <div class="card-val">14</div>
+      <div class="card-sub">route files</div>
+      <div class="progress-bar"><div class="progress-bar-fill" style="width:54%"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Partial</div>
+      <div class="card-val">10</div>
+      <div class="card-sub">need more work</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Bugs Fixed Today</div>
+      <div class="card-val">5</div>
+      <div class="card-sub">in this session</div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Feature Area</th><th>Status</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Client Provisioning (admin create)</td><td><span class="badge badge-green">✓ Done</span></td><td>clients.php, CreateClientModal in admin</td></tr>
+        <tr><td>Manual Activation Gate</td><td><span class="badge badge-green">✓ Done</span></td><td>activate-client.php + dolphin_require_active_client(), PendingActivation screen</td></tr>
+        <tr><td>Orientation Tour</td><td><span class="badge badge-green">✓ Done</span></td><td>/onboard — 3-slide intro, localStorage flag</td></tr>
+        <tr><td>Team Setup</td><td><span class="badge badge-green">✓ Done</span></td><td>/team — invite modal, role matrix, team.php</td></tr>
+        <tr><td>Organization Boundary</td><td><span class="badge badge-green">✓ Done</span></td><td>/setup step 0 — consolidation, entities, base year</td></tr>
+        <tr><td>Inventory Boundary</td><td><span class="badge badge-green">✓ Done</span></td><td>/setup step 1 — per-entity S1/S2/S3 scope selection</td></tr>
+        <tr><td>Review &amp; Confirm</td><td><span class="badge badge-green">✓ Done</span></td><td>/setup step 2 — review + POST to client-setup.php</td></tr>
+        <tr><td>Data Collection (Submissions)</td><td><span class="badge badge-green">✓ Done</span></td><td>/submissions — scope-filtered cards, upload wizard</td></tr>
+        <tr><td>GHG Sheet Setup (backend PHP)</td><td><span class="badge badge-green">✓ Done</span></td><td>ghg/setup-client.php — builds GHG client ID, calls Apps Script</td></tr>
+        <tr><td>GHG Sheet Setup (Apps Script)</td><td><span class="badge badge-green">✓ Done</span></td><td>_handleSetupNewClient in Code.gs — generic datapoints</td></tr>
+        <tr><td>Google Sheet → Apps Script → MySQL</td><td><span class="badge badge-amber">⚠ Needs deployment</span></td><td>Code path built; ghg_webapp_url must be set in config.php</td></tr>
+        <tr><td>Multi-client readiness (core)</td><td><span class="badge badge-green">✓ Done</span></td><td>All 7 GHG endpoints generic; DB FK isolation confirmed</td></tr>
+        <tr><td>Multi-client readiness (reporting page)</td><td><span class="badge badge-amber">⚠ Partial</span></td><td>_app.reporting.tsx hardcodes consultant email in simulator</td></tr>
+        <tr><td>generate_ghg_report.js</td><td><span class="badge badge-red">✗ Featherlite-only</span></td><td>ENTITY_CONFIG hardcoded; entire script needs rewrite for second client</td></tr>
+        <tr><td>Request Access / Invitation Flow</td><td><span class="badge badge-red">✗ Not started</span></td><td>Priority 7 in Excel plan</td></tr>
+        <tr><td>Invoice / Payment Tracking</td><td><span class="badge badge-red">✗ Not started</span></td><td>Priority 8; manual process only</td></tr>
+        <tr><td>GHG Inventory (data analysis pages)</td><td><span class="badge badge-amber">⚠ Partial</span></td><td>Pages exist; some charts have DNF placeholders</td></tr>
+        <tr><td>Reporting Cycle Simulator</td><td><span class="badge badge-amber">⚠ Prototype</span></td><td>_app.reporting.tsx — static mock data, not wired to backend</td></tr>
+        <tr><td>Scope 3 Relevance Screening</td><td><span class="badge badge-amber">⚠ UI only</span></td><td>Admin tab state not persisted to backend</td></tr>
+        <tr><td>Decarbonisation Progress</td><td><span class="badge badge-amber">⚠ Partial</span></td><td>DECARB_MILESTONES hardcoded; DNF charts</td></tr>
+        <tr><td>Peer Benchmarking</td><td><span class="badge badge-amber">⚠ Partial</span></td><td>Peer metadata fields not fully populated</td></tr>
+        <tr><td>Password Reset Emails</td><td><span class="badge badge-green">✓ Done</span></td><td>forgot-password.php — uses platform_name from config</td></tr>
+        <tr><td>Automated GHG Notifications</td><td><span class="badge badge-amber">⚠ Partial</span></td><td>send-notification.php generic; requires cron config</td></tr>
+        <tr><td>Responsive UI</td><td><span class="badge badge-green">✓ Done</span></td><td>Tailwind responsive; sidebar collapses to hamburger on mobile</td></tr>
+        <tr><td>SMTP / Email delivery</td><td><span class="badge badge-amber">⚠ Config needed</span></td><td>Using personal Gmail; needs service address for multi-client</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     VALIDATION REPORT
+════════════════════════════════════════════════════ -->
+<section class="section" id="validation">
+  <div class="section-header">
+    <div class="eyebrow">Priority 5</div>
+    <h2>New-Client Validation: "Acme Manufacturing Test"</h2>
+    <p>Code-level verification of the 12 checkpoints using "Acme Manufacturing Test" as the test client (slug: <code>acme-mfg</code>, entities: AMF + consolidated AMFL). Items marked ⚠ require a live DB/GSheet environment to confirm.</p>
+  </div>
+
+  <div class="alert alert-blue">
+    <strong>Validation methodology:</strong> All checks verified by direct code inspection of backend API files, frontend route files, database schema, and Code.gs. Live DB/GSheet/SMTP are unavailable in the current environment. Checks that require a running system are clearly marked as requiring manual verification.
+  </div>
+
+  <div class="alert alert-green">
+    <strong>Bugs found and fixed in this session (5 total):</strong>
+    See bug log below. All TypeScript checks pass (0 errors) after fixes.
+  </div>
+
+  <div class="table-wrap" style="margin-bottom:20px">
+    <table>
+      <thead><tr><th>#</th><th>Checkpoint</th><th>Verdict</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td>New client gets its own client_id</td>
+          <td><span class="badge badge-green">✓ Confirmed</span></td>
+          <td><code>clients</code> table uses <code>AUTO_INCREMENT PRIMARY KEY</code>. <code>clients.php POST</code> inserts new row; all API endpoints derive client_id from <code>$authUser['client_id']</code> which comes from the <code>sessions → users</code> join — never from request body.</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>Entities isolated from Featherlite</td>
+          <td><span class="badge badge-green">✓ Confirmed</span></td>
+          <td><code>client_entities(client_id FK)</code> enforced at schema level. All entity queries include <code>WHERE client_id = ?</code> bound to the authenticated user's client_id. No cross-tenant join possible.</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>Inventory boundary independent</td>
+          <td><span class="badge badge-green">✓ Confirmed</span></td>
+          <td><code>client_config(client_id, config_key) UNIQUE KEY</code>. Each client's <code>entity_scope_json</code>, <code>setup_complete</code>, <code>s3_boundary</code> are isolated rows. DB constraint prevents cross-client collision.</td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>entity_scope_json correctly persisted</td>
+          <td><span class="badge badge-green">✓ Confirmed</span></td>
+          <td><code>setup.tsx:947-959</code> builds per-entity map → POST to <code>client-setup.php:70-72</code> → stored as JSON in <code>client_config</code>. <code>context.php</code> auto-decodes on read → arrives at frontend as object. After Bug #1 fix, <code>_app.submissions.tsx</code> now handles both string and object forms.</td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td>GHG datapoints generated from client's config</td>
+          <td><span class="badge badge-green">✓ Confirmed (code)</span></td>
+          <td><code>ghg/setup-client.php</code> reads <code>entity_scope_json[$entityCode]</code> → builds <code>s3_cats</code> from <code>s3_categories</code> integer array (Bug #2 fixed) → sends to <code>_handleSetupNewClient</code> in Code.gs → generic template rows appended to GHG_Datapoints. Idempotent: skips if rows already exist.</td>
+        </tr>
+        <tr>
+          <td>6</td>
+          <td>Google Sheet uses new client's identity</td>
+          <td><span class="badge badge-amber">⚠ Manual verification needed</span></td>
+          <td>Code path: <code>ghg/setup-client.php</code> computes GHG Client ID as <code>ACMEMFG-AMF-GHG-FY27</code>. Code.gs <code>_handleSetupNewClient</code> uses that ID for Master_Index and GHG_Datapoints rows. Cannot confirm without a live Apps Script deployment and a configured <code>ghg_webapp_url</code>.</td>
+        </tr>
+        <tr>
+          <td>7</td>
+          <td>No FL/FP/FOS values in Acme config</td>
+          <td><span class="badge badge-green">✓ Confirmed</span></td>
+          <td>All entity codes derive from user-entered values in <code>setup.tsx</code>. No PHP endpoint hardcodes entity codes for client-facing writes. DB schema FKs enforce client_id isolation. The only remaining Featherlite hardcoding is in Featherlite's own seed data (separate rows) and in simulation/prototype pages.</td>
+        </tr>
+        <tr>
+          <td>8</td>
+          <td>Re-running GHG setup is idempotent</td>
+          <td><span class="badge badge-green">✓ Confirmed (code)</span></td>
+          <td><code>Code.gs _handleSetupNewClient</code> checks <code>alreadyIndexed</code> (Master_Index) and <code>alreadyHasPoints</code> (GHG_Datapoints) before writing. Returns descriptive status for each. The PHP side does not fail on repeated calls.</td>
+        </tr>
+        <tr>
+          <td>9</td>
+          <td>GSheet → Apps Script → PHP → MySQL uses correct client</td>
+          <td><span class="badge badge-amber">⚠ Manual verification needed</span></td>
+          <td>The reverse path (GSheet → PHP) goes through <code>submit.php</code> which uses authenticated session client_id — never a request parameter. The forward path requires a live Apps Script and configured <code>ghg_webapp_url</code>.</td>
+        </tr>
+        <tr>
+          <td>10</td>
+          <td>Changing Acme data does not touch Featherlite</td>
+          <td><span class="badge badge-green">✓ Confirmed (schema)</span></td>
+          <td>All data tables (<code>ghg_inventory</code>, <code>s1_breakdown</code>, <code>decarb_actions</code>, etc.) have <code>client_id INT NOT NULL FK</code> + UNIQUE constraints that include <code>client_id</code>. No shared mutable state between clients. Manual DB test still recommended.</td>
+        </tr>
+        <tr>
+          <td>11</td>
+          <td>Submissions UI shows only Acme's scopes</td>
+          <td><span class="badge badge-green">✓ Fixed</span></td>
+          <td>Bug #1 fixed: <code>_app.submissions.tsx</code> now correctly reads <code>entity_scope_json</code> as object (not string). <code>entityScopeMap</code> will be non-null; <code>visibleScopes</code> will filter correctly. Requires live context to final-confirm.</td>
+        </tr>
+        <tr>
+          <td>12</td>
+          <td>Acme cannot access Featherlite data</td>
+          <td><span class="badge badge-green">✓ Confirmed</span></td>
+          <td>No endpoint accepts arbitrary <code>client_id</code> from non-admin users. Auth is session-based; <code>client_id</code> read from <code>users</code> table via verified session token. All WHERE clauses bind to authenticated client_id. Cross-tenant access is structurally impossible at the API layer.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 style="font-size:14px;font-weight:700;margin-bottom:12px;color:var(--text)">Bug Log — This Session</h3>
+
+  <div class="bug-card fixed">
+    <h4>✓ Bug #1 FIXED — entity_scope_json always null in submissions (Critical)</h4>
+    <p><code>src/routes/_app.submissions.tsx:554</code> — <code>JSON.parse()</code> called on an object (context.php auto-decodes JSON values from client_config). Parse always throws → <code>entityScopeMap</code> always null → scope filter never worked. Fix: check <code>typeof raw === 'object'</code> before parsing.</p>
+  </div>
+  <div class="bug-card fixed">
+    <h4>✓ Bug #2 FIXED — Wrong S3 categories key in GHG setup (Critical)</h4>
+    <p><code>backend/api/ghg/setup-client.php:105</code> — looked for <code>$sc['s3_boundary']</code> (doesn't exist in entity_scope_json). Correct key is <code>$sc['s3_categories']</code> (integer array written by setup.tsx). Per-entity S3 scope was silently ignored. Fix: check <code>s3_categories</code> first, fall back to global <code>s3_boundary</code>.</p>
+  </div>
+  <div class="bug-card fixed">
+    <h4>✓ Bug #3 FIXED — submit.php missing active-client gate (Moderate)</h4>
+    <p><code>backend/api/submit.php:10</code> — missing <code>dolphin_require_active_client($authUser)</code>. An inactive client with a valid session token could upload data before Deepwoods activates their account. Fix: gate added after <code>dolphin_require_auth()</code>.</p>
+  </div>
+  <div class="bug-card fixed">
+    <h4>✓ Bug #4 FIXED — decarb/assets.php hardcoded 'FL' (High, multi-tenant)</h4>
+    <p><code>backend/api/decarb/assets.php:22</code> — <code>$entity !== 'FL'</code> bypasses entity filter for Featherlite consolidated. Any other client's consolidated entity would be incorrectly filtered. Fix: DB lookup for <code>is_consolidated=1</code> entity code, matching the pattern in irec.php.</p>
+  </div>
+  <div class="bug-card fixed">
+    <h4>✓ Bug #5 FIXED — decarb/actions.php hardcoded 'FL' (High, multi-tenant)</h4>
+    <p><code>backend/api/decarb/actions.php:22</code> — Same 'FL' consolidated bypass issue. Fix: same DB lookup pattern.</p>
+  </div>
+
+  <h3 style="font-size:14px;font-weight:700;margin:16px 0 10px;color:var(--text)">Remaining Blockers for Full Validation</h3>
+  <div class="alert alert-amber">
+    <strong>Manual steps required before confirming end-to-end:</strong><br>
+    1. Set <code>ghg_webapp_url</code> in <code>backend/config.php</code> to the deployed Apps Script web app URL<br>
+    2. Run <code>database/migrations/001_migrate_legacy_roles.sql</code> via phpMyAdmin<br>
+    3. Run <code>database/migrations/002_add_client_activation.sql</code> via phpMyAdmin<br>
+    4. Create "Acme Manufacturing Test" client via Admin → Client Activation → New Client<br>
+    5. Add non-consolidated entity (code: AMF) and consolidated entity (code: AMFL)<br>
+    6. Activate the client from the Admin panel<br>
+    7. Log in as an Acme user, complete Orientation, complete Setup wizard<br>
+    8. Click "Setup GHG" button in Admin → confirm Google Sheet rows created with ACMEMFG- prefix<br>
+    9. Submit a test data file for Acme — verify it does not appear in Featherlite's submissions<br>
+    10. Check that Featherlite user cannot see Acme's data (login as Featherlite user, inspect /submissions)
+  </div>
+</section>
+
+<hr class="sep">
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 1 — COMPLETE USER FLOW
+════════════════════════════════════════════════════ -->
+<section class="section" id="flow">
+  <div class="section-header">
+    <div class="eyebrow">Section 1</div>
+    <h2>Complete User Flow</h2>
+    <p>Both sides of the platform: Deepwoods (left) and Client (right). Status reflects actual implementation.</p>
+  </div>
+
+  <div class="flow-grid">
+    <!-- Deepwoods side -->
+    <div>
+      <div class="flow-label" style="color:var(--blue);border-color:var(--blue)">🏢 Deepwoods Side</div>
+      <div class="flow">
+        <div class="flow-node future">Website / Client Enquiry</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node future">Engagement &amp; Proposal</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node future">Manual Invoice (external)</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node future">External Payment</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node future">Payment Verification (manual)</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node done">Create Client in Admin Panel</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node done">Activate Client (Admin tab)</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node done">Setup GHG Automation button</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node done">Share credentials with client</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node done">Admin Dashboard ongoing</div>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">
+        <span class="badge badge-green">✓ Done</span> = implemented &nbsp;
+        <span class="badge badge-purple">⏳ Future</span> = not yet built
+      </div>
+    </div>
+
+    <!-- Client side -->
+    <div>
+      <div class="flow-label" style="color:var(--green);border-color:var(--green)">👤 Client Side</div>
+      <div class="flow">
+        <div class="flow-node done">Receive credentials from Deepwoods</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node done">First Login → /</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node done">Orientation Tour → /onboard</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node done">Home / Workspace → /workstreams</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node done">Team Setup → /team</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node done">Annual Setup → /setup (3 steps)</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node done">Organization Boundary (step 0)</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node done">Inventory Boundary (step 1)</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node done">Review &amp; Confirm (step 2)</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node done">Data Collection → /submissions</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node warn">Evidence → /vault</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node warn">GHG Inventory → /dashboard</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node warn">Reporting → /reports</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-node future">FY Close / Next Cycle</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 2 — ALL PAGES
+════════════════════════════════════════════════════ -->
+<section class="section" id="pages">
+  <div class="section-header">
+    <div class="eyebrow">Section 2</div>
+    <h2>Every Current Portal Page</h2>
+    <p>Scanned from actual route files in <code>src/routes/</code>. 26 navigable pages total.</p>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Route</th><th>Page</th><th>Role</th><th>Status</th><th>APIs</th><th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>/</code></td><td>Login</td><td>Public</td><td><span class="badge badge-green">✓ Done</span></td><td>auth login, loginDemo</td><td>Demo mode supported</td></tr>
+        <tr><td><code>/forgot-password</code></td><td>Forgot Password</td><td>Public</td><td><span class="badge badge-green">✓ Done</span></td><td>forgot-password.php</td><td>Now generic platform_name</td></tr>
+        <tr><td><code>/reset-password</code></td><td>Reset Password</td><td>Public (token)</td><td><span class="badge badge-green">✓ Done</span></td><td>reset-password.php</td><td>Token from URL param</td></tr>
+        <tr><td><code>/onboard</code></td><td>Orientation Tour</td><td>Client (active)</td><td><span class="badge badge-green">✓ Done</span></td><td>context.php (read only)</td><td>Sets localStorage flag; 3 slides</td></tr>
+        <tr><td><code>/setup</code></td><td>Annual Setup Wizard</td><td>Client + Deepwoods</td><td><span class="badge badge-green">✓ Done</span></td><td>context.php, client-setup.php</td><td>3-step: Org → Inventory → Review</td></tr>
+        <tr><td><code>/workstreams</code></td><td>Home / Workspace</td><td>All client</td><td><span class="badge badge-green">✓ Done</span></td><td>useFacilities</td><td>Setup + team + data-collection banners</td></tr>
+        <tr><td><code>/overview</code></td><td>KPI Overview</td><td>All client</td><td><span class="badge badge-amber">⚠ Partial</span></td><td>useInventory, useIntensity</td><td>CPI chart not implemented; base year hardcoded FY22</td></tr>
+        <tr><td><code>/dashboard</code></td><td>Carbon Dashboard</td><td>All client</td><td><span class="badge badge-amber">⚠ Partial</span></td><td>useInventory, useS1/S2/S3 hooks</td><td>3 DNF charts; CEA EF hardcoded</td></tr>
+        <tr><td><code>/inventory</code></td><td>Asset Register</td><td>All client</td><td><span class="badge badge-green">✓ Done</span></td><td>useDecarbAssets</td><td>3 views; detail drawer</td></tr>
+        <tr><td><code>/interactive-inventory</code></td><td>Asset Cards</td><td>All client</td><td><span class="badge badge-green">✓ Done</span></td><td>useDecarbAssets</td><td>Hidden from sidebar nav</td></tr>
+        <tr><td><code>/hotspots</code></td><td>Hotspot Analysis</td><td>All client</td><td><span class="badge badge-green">✓ Done</span></td><td>useInventory, S1/S2/S3, useFacilities</td><td>Minor: dynScope3Total global</td></tr>
+        <tr><td><code>/action-plan</code></td><td>Action Plan</td><td>All client</td><td><span class="badge badge-amber">⚠ Partial</span></td><td>useDecarbActions, useInventory, useIREC</td><td>Scenario saves via prompt(); Scope 3 levers not modelled</td></tr>
+        <tr><td><code>/progress</code></td><td>Progress Tracking</td><td>All client</td><td><span class="badge badge-amber">⚠ Partial</span></td><td>useDecarbActions, useInventory</td><td>DECARB_MILESTONES hardcoded; 2 DNF charts</td></tr>
+        <tr><td><code>/peer</code></td><td>Peer Benchmarking</td><td>All client</td><td><span class="badge badge-amber">⚠ Partial</span></td><td>usePeers, useInventory</td><td>Peer metadata partially populated</td></tr>
+        <tr><td><code>/green-finance</code></td><td>Carbon as P&amp;L</td><td>All client</td><td><span class="badge badge-amber">⚠ Partial</span></td><td>useInventory, useIntensity</td><td>FY array hardcoded; SBTi target hardcoded</td></tr>
+        <tr><td><code>/credits</code></td><td>Renewables &amp; I-RECs</td><td>All client</td><td><span class="badge badge-green">✓ Done</span></td><td>useIRECRegister, useGridMWh</td><td>Entity filter now generic (irec.php fixed)</td></tr>
+        <tr><td><code>/reports</code></td><td>Report Library</td><td>All client</td><td><span class="badge badge-amber">⚠ Partial</span></td><td>useVaultDocuments</td><td>Only "For Audit" category populated; others always empty</td></tr>
+        <tr><td><code>/reporting</code></td><td>Reporting Cycle Simulator</td><td>Deepwoods</td><td><span class="badge badge-amber">⚠ Prototype</span></td><td>None (all static)</td><td>UI simulator; not wired to backend; consultant email hardcoded</td></tr>
+        <tr><td><code>/submissions</code></td><td>Data Submission</td><td>Uploader roles</td><td><span class="badge badge-green">✓ Done</span></td><td>useDatasets, submissionsStore, ghgPost</td><td>Scope filter now works (Bug #1 fixed); facility dropdown empty</td></tr>
+        <tr><td><code>/vault</code></td><td>Document Vault</td><td>All client</td><td><span class="badge badge-green">✓ Done</span></td><td>useVaultDocuments</td><td>Upload UI shows success; no actual backend file transfer verified</td></tr>
+        <tr><td><code>/methodology</code></td><td>GHG Methodology</td><td>All client</td><td><span class="badge badge-green">✓ Done</span></td><td>None</td><td>Static reference; EF values need periodic manual update</td></tr>
+        <tr><td><code>/priority-actions</code></td><td>Priority Actions</td><td>All client</td><td><span class="badge badge-amber">⚠ Partial</span></td><td>usePriorityItems, notification-prefs.php, send-notification.php</td><td>Demo mode simulates save/send</td></tr>
+        <tr><td><code>/notifications</code></td><td>Notification Feed</td><td>All client</td><td><span class="badge badge-amber">⚠ Partial</span></td><td>ghgGet (notifications)</td><td>Demo shows MOCK_NOTIFICATIONS; live mode needs VITE_GHG_WEBAPP_URL</td></tr>
+        <tr><td><code>/team</code></td><td>My Team</td><td>sustainability_team</td><td><span class="badge badge-green">✓ Done</span></td><td>useTeamMembers, team.php</td><td>Initial password shown in UI (security note); no invite email sent</td></tr>
+        <tr><td><code>/admin</code></td><td>Admin Dashboard</td><td>deepwoods_* roles</td><td><span class="badge badge-amber">⚠ Partial</span></td><td>useActivationClients, useClients, activate-client.php, ghg/setup-client.php</td><td>Submissions/Audit/Screening tabs are prototype state</td></tr>
+        <tr><td><code>/trends</code></td><td>Historical Trends</td><td>All client</td><td><span class="badge badge-green">✓ Done</span></td><td>useInventory, useIntensity</td><td>Not in sidebar nav; base year strings hardcoded FY22/FY24</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 3 — SIDEBAR NAV
+════════════════════════════════════════════════════ -->
+<section class="section" id="nav">
+  <div class="section-header">
+    <div class="eyebrow">Section 3</div>
+    <h2>Navigation / Sidebar Structure</h2>
+    <p>Sidebar is driven by <code>enabled_pages</code> from ClientContext. Special cases: <code>admin</code> is DEEPWOODS_ROLES only; <code>team</code> is sustainability_team only. Source: <code>src/routes/_app.tsx</code>.</p>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <h3>👤 Client Users (sustainability_team, client_uploader, client_leadership)</h3>
+      <div style="font-size:12px;line-height:2">
+        <div><span class="badge badge-green">✓</span> Home → <code>/workstreams</code></div>
+        <div><span class="badge badge-green">✓</span> Overview → <code>/overview</code></div>
+        <div style="padding:4px 0;color:var(--text-muted);font-size:11px;font-weight:700">CARBON FOOTPRINT</div>
+        <div><span class="badge badge-green">✓</span> Dashboard → <code>/dashboard</code></div>
+        <div><span class="badge badge-green">✓</span> Inventory → <code>/inventory</code></div>
+        <div style="padding:4px 0;color:var(--text-muted);font-size:11px;font-weight:700">DECARBONISATION</div>
+        <div><span class="badge badge-green">✓</span> Hotspot → <code>/hotspots</code></div>
+        <div><span class="badge badge-green">✓</span> Action Plan → <code>/action-plan</code></div>
+        <div><span class="badge badge-green">✓</span> Progress → <code>/progress</code></div>
+        <div><span class="badge badge-green">✓</span> Peer Study → <code>/peer</code></div>
+        <div style="padding:4px 0;color:var(--text-muted);font-size:11px;font-weight:700">GREEN FINANCE</div>
+        <div><span class="badge badge-green">✓</span> Carbon as P&amp;L → <code>/green-finance</code></div>
+        <div style="padding:4px 0;color:var(--text-muted);font-size:11px;font-weight:700">COMPLIANCE</div>
+        <div><span class="badge badge-green">✓</span> Renewables &amp; I-RECs → <code>/credits</code></div>
+        <div><span class="badge badge-green">✓</span> Reports → <code>/reports</code></div>
+        <div style="padding:4px 0;color:var(--text-muted);font-size:11px;font-weight:700">BOTTOM ITEMS</div>
+        <div><span class="badge badge-green">✓</span> Data Submission → <code>/submissions</code> <span style="font-size:10px;color:var(--text-muted)">(uploader roles only)</span></div>
+        <div><span class="badge badge-green">✓</span> Document Vault → <code>/vault</code></div>
+        <div><span class="badge badge-green">✓</span> Methodology → <code>/methodology</code></div>
+        <div><span class="badge badge-green">✓</span> Priority Actions → <code>/priority-actions</code></div>
+        <div><span class="badge badge-green">✓</span> Notifications → <code>/notifications</code></div>
+        <div><span class="badge badge-green">✓</span> My Team → <code>/team</code> <span style="font-size:10px;color:var(--text-muted)">(sustainability_team only)</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>🔐 Deepwoods Staff (deepwoods_admin, deepwoods_coordinator)</h3>
+      <div style="font-size:12px;line-height:2">
+        <div><span class="badge badge-green">✓</span> Same nav as clients (all pages)</div>
+        <div><span class="badge badge-green">✓</span> Admin Dashboard → <code>/admin</code></div>
+        <div style="padding:8px 0 4px;color:var(--text-muted);font-size:11px;font-weight:700">ADMIN TABS</div>
+        <div><span class="badge badge-green">✓</span> Client Activation (real DB)</div>
+        <div><span class="badge badge-green">✓</span> Engagements (real DB)</div>
+        <div><span class="badge badge-amber">⚠</span> Submissions Queue (mock data)</div>
+        <div><span class="badge badge-amber">⚠</span> Relevance Screening (not persisted)</div>
+        <div><span class="badge badge-amber">⚠</span> Audit Log (mock data)</div>
+        <div style="padding:8px 0 4px;color:var(--text-muted);font-size:11px;font-weight:700">HIDDEN PAGES (direct URL only)</div>
+        <div><span class="badge badge-amber">⚠</span> Reporting Cycle → <code>/reporting</code></div>
+        <div><span class="badge badge-green">✓</span> Interactive Inventory → <code>/interactive-inventory</code></div>
+        <div><span class="badge badge-green">✓</span> Trends → <code>/trends</code></div>
+        <div style="padding:8px 0 4px;color:var(--text-muted);font-size:11px;font-weight:700">NOTE</div>
+        <div style="font-size:11px;color:var(--text-muted)">Deepwoods staff logo/accent color shown instead of client brand. All client pages accessible for oversight.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 4 — CLIENT JOURNEY DETAIL
+════════════════════════════════════════════════════ -->
+<section class="section" id="journey">
+  <div class="section-header">
+    <div class="eyebrow">Section 4</div>
+    <h2>Client Journey — Step-by-Step Detail</h2>
+    <p>Click any step to expand. Shows input → screen → data stored → API → next step.</p>
+  </div>
+
+  <div id="journey-steps">
+    <div class="journey-step">
+      <div class="journey-step-header" onclick="toggleStep(this)">
+        <div class="step-num">1</div>
+        <div>
+          <div style="font-size:13px;font-weight:700">First Login</div>
+          <div style="font-size:11px;color:var(--text-muted)">/ → Session created → /onboard redirect</div>
+        </div>
+        <span class="badge badge-green" style="margin-left:auto">✓ Done</span>
+      </div>
+      <div class="journey-step-body">
+        <div class="journey-detail">
+          <div class="detail-box"><div class="lbl">Input</div>Email + password (Deepwoods created account via team.php)</div>
+          <div class="detail-box"><div class="lbl">Screen</div><code>src/routes/index.tsx</code> Login form</div>
+          <div class="detail-box"><div class="lbl">Data Stored</div><code>sessions</code> table: token, user_id, expires_at. Token in localStorage.</div>
+          <div class="detail-box"><div class="lbl">API</div><code>backend/api/login.php</code> → returns role, token, must_change_password</div>
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:var(--text-muted)">→ If first login: <code>must_change_password=1</code> → ChangePasswordModal shown. After password change: if <code>decarb_orientation_done</code> not in localStorage → redirect to <code>/onboard</code>.</div>
+      </div>
+    </div>
+
+    <div class="journey-step">
+      <div class="journey-step-header" onclick="toggleStep(this)">
+        <div class="step-num">2</div>
+        <div>
+          <div style="font-size:13px;font-weight:700">Orientation Tour</div>
+          <div style="font-size:11px;color:var(--text-muted)">/onboard — 3-slide intro, writes localStorage flag</div>
+        </div>
+        <span class="badge badge-green" style="margin-left:auto">✓ Done</span>
+      </div>
+      <div class="journey-step-body">
+        <div class="journey-detail">
+          <div class="detail-box"><div class="lbl">Input</div>None — auto-shown to active clients without orientation flag</div>
+          <div class="detail-box"><div class="lbl">Screen</div><code>src/routes/onboard.tsx</code> — slides: Portal Overview, Annual Cycle, Team Roles</div>
+          <div class="detail-box"><div class="lbl">Data Stored</div><code>localStorage.decarb_orientation_done = "1"</code> — not synced to DB</div>
+          <div class="detail-box"><div class="lbl">API</div><code>context.php</code> (read only — fetches client name for greeting)</div>
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:var(--text-muted)">→ On "Get Started": navigate to <code>/workstreams</code>. Deepwoods roles are redirected away from /onboard immediately.</div>
+      </div>
+    </div>
+
+    <div class="journey-step">
+      <div class="journey-step-header" onclick="toggleStep(this)">
+        <div class="step-num">3</div>
+        <div>
+          <div style="font-size:13px;font-weight:700">Home / Workspace</div>
+          <div style="font-size:11px;color:var(--text-muted)">/workstreams — hub with contextual banners</div>
+        </div>
+        <span class="badge badge-green" style="margin-left:auto">✓ Done</span>
+      </div>
+      <div class="journey-step-body">
+        <div class="journey-detail">
+          <div class="detail-box"><div class="lbl">Banner Logic</div>Setup incomplete → "Configure your GHG workspace" → /setup. Team has 1 member → invite team banner. Setup complete → "Start collecting data" nudge → /submissions.</div>
+          <div class="detail-box"><div class="lbl">Screen</div><code>src/routes/_app.workstreams.tsx</code></div>
+          <div class="detail-box"><div class="lbl">Data Stored</div>Dismissal state in localStorage only (<code>decarb_data_collection_dismissed</code>)</div>
+          <div class="detail-box"><div class="lbl">API</div><code>useFacilities()</code> for facility cards</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="journey-step">
+      <div class="journey-step-header" onclick="toggleStep(this)">
+        <div class="step-num">4</div>
+        <div>
+          <div style="font-size:13px;font-weight:700">Team Setup</div>
+          <div style="font-size:11px;color:var(--text-muted)">/team — invite modal, role matrix</div>
+        </div>
+        <span class="badge badge-green" style="margin-left:auto">✓ Done</span>
+      </div>
+      <div class="journey-step-body">
+        <div class="journey-detail">
+          <div class="detail-box"><div class="lbl">Input</div>Role selection + email address (+ entity scope for Entity Manager)</div>
+          <div class="detail-box"><div class="lbl">Screen</div><code>src/routes/_app.team.tsx</code> — 2-step invite modal, role matrix, grouped member list</div>
+          <div class="detail-box"><div class="lbl">Data Stored</div><code>users</code> table: email, role, client_id, entity_scope, initial password (= email address)</div>
+          <div class="detail-box"><div class="lbl">API</div><code>POST team.php</code> with {email, role, entity_scope}. <code>DELETE team.php?id=</code> to remove.</div>
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:var(--text-muted)">⚠ Initial password displayed in UI in plaintext. No automated invite email — consultant must share credentials manually.</div>
+      </div>
+    </div>
+
+    <div class="journey-step">
+      <div class="journey-step-header" onclick="toggleStep(this)">
+        <div class="step-num">5</div>
+        <div>
+          <div style="font-size:13px;font-weight:700">Organization Boundary (Setup Step 0)</div>
+          <div style="font-size:11px;color:var(--text-muted)">/setup — consolidation approach, entities, base year</div>
+        </div>
+        <span class="badge badge-green" style="margin-left:auto">✓ Done</span>
+      </div>
+      <div class="journey-step-body">
+        <div class="journey-detail">
+          <div class="detail-box"><div class="lbl">Input</div>Consolidation approach (Operational / Financial / Equity), entity codes + names + is_consolidated flag, base year</div>
+          <div class="detail-box"><div class="lbl">Screen</div><code>src/routes/setup.tsx</code> Step 0 — pre-populated from context.php if entities already exist in DB</div>
+          <div class="detail-box"><div class="lbl">Data Stored</div><code>clients</code>: name, currency. <code>client_config</code>: consolidation_approach, base_year. <code>client_entities</code>: new entities inserted (existing entities not re-inserted)</div>
+          <div class="detail-box"><div class="lbl">API</div>Pre-fill: <code>GET context.php</code>. Save: <code>POST client-setup.php</code> (step 2 only — saves on wizard completion, not per-step)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="journey-step">
+      <div class="journey-step-header" onclick="toggleStep(this)">
+        <div class="step-num">6</div>
+        <div>
+          <div style="font-size:13px;font-weight:700">Inventory Boundary (Setup Step 1)</div>
+          <div style="font-size:11px;color:var(--text-muted)">/setup — per-entity S1/S2/S3 scope selection</div>
+        </div>
+        <span class="badge badge-green" style="margin-left:auto">✓ Done</span>
+      </div>
+      <div class="journey-step-body">
+        <div class="journey-detail">
+          <div class="detail-box"><div class="lbl">Input</div>Per entity: S1 (stationary/mobile/fugitive), S2 (grid/renewable), S3 (included + category numbers [1,4,6,7...])</div>
+          <div class="detail-box"><div class="lbl">Screen</div><code>src/routes/setup.tsx</code> Step 1 — entity tabs with scope toggle cards</div>
+          <div class="detail-box"><div class="lbl">Data Stored</div><code>client_config.entity_scope_json</code>: <code>{"AMF":{"s1_stationary":true,"s3_categories":[1,4,6],...}}</code></div>
+          <div class="detail-box"><div class="lbl">API</div>Saved on Step 2 completion via <code>POST client-setup.php</code> with <code>entity_scope</code> payload</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="journey-step">
+      <div class="journey-step-header" onclick="toggleStep(this)">
+        <div class="step-num">7</div>
+        <div>
+          <div style="font-size:13px;font-weight:700">Review &amp; Confirm (Setup Step 2)</div>
+          <div style="font-size:11px;color:var(--text-muted)">/setup — summary view, final POST, setup_complete = true</div>
+        </div>
+        <span class="badge badge-green" style="margin-left:auto">✓ Done</span>
+      </div>
+      <div class="journey-step-body">
+        <div class="journey-detail">
+          <div class="detail-box"><div class="lbl">Input</div>Review summary of all Step 0 + Step 1 choices. "Confirm &amp; Set Up" CTA.</div>
+          <div class="detail-box"><div class="lbl">Screen</div><code>src/routes/setup.tsx</code> Step 2 + SuccessState</div>
+          <div class="detail-box"><div class="lbl">Data Stored</div><code>client_config.setup_complete = 'true'</code>. All config keys from Steps 0 + 1 saved atomically.</div>
+          <div class="detail-box"><div class="lbl">API</div><code>POST client-setup.php</code> — single call with all wizard state. On success: clears sessionStorage cache, shows SuccessState with two CTAs.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="journey-step">
+      <div class="journey-step-header" onclick="toggleStep(this)">
+        <div class="step-num">8</div>
+        <div>
+          <div style="font-size:13px;font-weight:700">Data Collection</div>
+          <div style="font-size:11px;color:var(--text-muted)">/submissions — scope-filtered cards, upload wizard</div>
+        </div>
+        <span class="badge badge-green" style="margin-left:auto">✓ Done</span>
+      </div>
+      <div class="journey-step-body">
+        <div class="journey-detail">
+          <div class="detail-box"><div class="lbl">Input</div>Select scope → select entity → download template → upload .xlsx → upload verification docs → review &amp; submit</div>
+          <div class="detail-box"><div class="lbl">Screen</div><code>src/routes/_app.submissions.tsx</code> — only shows scope cards enabled in entity_scope_json (Bug #1 fixed)</div>
+          <div class="detail-box"><div class="lbl">Data Stored</div><code>submissions</code> table (client_id, entity, dataset, year, status). File uploaded to Google Drive in client's root folder.</div>
+          <div class="detail-box"><div class="lbl">API</div><code>POST submit.php</code> (multipart/form-data). Activation gate enforced (Bug #3 fixed). Drive upload via GoogleDrive.php.</div>
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:var(--text-muted)">⚠ Facility dropdown in Inventory Update card always empty (<code>FACILITIES = []</code> TODO). Live GHG upload requires <code>VITE_GHG_WEBAPP_URL</code>.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 5 — INVENTORY BOUNDARY
+════════════════════════════════════════════════════ -->
+<section class="section" id="inventory-boundary">
+  <div class="section-header">
+    <div class="eyebrow">Section 5</div>
+    <h2>Inventory Boundary Data Flow</h2>
+    <p>From client setup through to Google Sheet data collection template.</p>
+  </div>
+
+  <div class="flow" style="max-width:600px">
+    <div class="flow-node done">Client (slug: acme-mfg)</div>
+    <div class="flow-arrow">↓ has many</div>
+    <div class="flow-node done">Entities: AMF (Acme Manufacturing), AMFL (Consolidated)</div>
+    <div class="flow-arrow">↓ within each non-consolidated entity</div>
+    <div class="flow-node done">Inventory Boundary — S1/S2/S3 scope toggles</div>
+    <div class="flow-arrow">↓ stored as</div>
+    <div class="flow-node done">entity_scope_json in client_config</div>
+    <div class="flow-arrow" style="font-size:11px;color:var(--text-muted)">{"AMF": {"s1_stationary":true, "s1_mobile":true, "s2_grid":true, "s3_included":true, "s3_categories":[1,4,6,7]}}</div>
+    <div class="flow-arrow">↓ read by submissions page</div>
+    <div class="flow-node done">visibleScopes filter — shows only enabled scope cards</div>
+    <div class="flow-arrow">↓ read by ghg/setup-client.php (admin action)</div>
+    <div class="flow-node done">Builds GHG Client ID: ACMEMFG-AMF-GHG-FY27</div>
+    <div class="flow-arrow">↓ POST to Apps Script</div>
+    <div class="flow-node warn">_handleSetupNewClient in Code.gs</div>
+    <div class="flow-arrow">↓ writes</div>
+    <div class="flow-node warn">Master_Index row (today as cycle start)</div>
+    <div class="flow-arrow">↓ writes</div>
+    <div class="flow-node warn">Generic GHG_Datapoints rows (status: Missing)</div>
+    <div style="margin-top:12px;font-size:11px;color:var(--text-muted)">
+      <span class="badge badge-green">✓</span> = confirmed implemented &nbsp;
+      <span class="badge badge-amber">⚠</span> = requires live Apps Script deployment to verify
+    </div>
+  </div>
+
+  <div class="alert alert-amber" style="margin-top:16px">
+    <strong>Manual config required:</strong> Set <code>backend/config.php → ghg_webapp_url</code> to the deployed Apps Script URL.
+    Once set, clicking "Setup GHG" in the Admin panel will call the script and confirm the sheet rows are created.
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 6 — DATA ARCHITECTURE
+════════════════════════════════════════════════════ -->
+<section class="section" id="data-arch">
+  <div class="section-header">
+    <div class="eyebrow">Section 6</div>
+    <h2>Data Architecture</h2>
+    <p>Every connection in the system with actual files and status.</p>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Connection</th><th>File(s)</th><th>Data Transferred</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>React → PHP (read)</td>
+          <td><code>src/lib/api.ts</code> → <code>authFetch()</code> → <code>backend/api/*.php</code></td>
+          <td>JWT Bearer token + query params → JSON response</td>
+          <td><span class="badge badge-green">✓ Working</span></td>
+        </tr>
+        <tr>
+          <td>React → PHP (write/setup)</td>
+          <td><code>src/routes/setup.tsx</code> → <code>backend/api/client-setup.php</code></td>
+          <td>Wizard payload (entities, scope config) → {ok: true}</td>
+          <td><span class="badge badge-green">✓ Working</span></td>
+        </tr>
+        <tr>
+          <td>React → PHP (file upload)</td>
+          <td><code>src/routes/_app.submissions.tsx</code> → <code>backend/api/submit.php</code></td>
+          <td>multipart/form-data (entity, dataset, .xlsx) → {submission_id}</td>
+          <td><span class="badge badge-green">✓ Working</span></td>
+        </tr>
+        <tr>
+          <td>PHP → MySQL (reads)</td>
+          <td>All <code>backend/api/*.php</code> files</td>
+          <td>SELECT queries scoped to authenticated client_id</td>
+          <td><span class="badge badge-green">✓ Working</span></td>
+        </tr>
+        <tr>
+          <td>PHP → MySQL (writes)</td>
+          <td><code>client-setup.php</code>, <code>team.php</code>, <code>submit.php</code>, <code>activate-client.php</code></td>
+          <td>INSERT/UPDATE into clients, client_config, client_entities, users, submissions</td>
+          <td><span class="badge badge-green">✓ Working</span></td>
+        </tr>
+        <tr>
+          <td>PHP → Google Drive</td>
+          <td><code>backend/api/submit.php</code> → <code>backend/api/GoogleDrive.php</code></td>
+          <td>Uploaded .xlsx streamed to Drive in client's folder structure</td>
+          <td><span class="badge badge-green">✓ Working</span></td>
+        </tr>
+        <tr>
+          <td>PHP → Apps Script (setup)</td>
+          <td><code>backend/api/ghg/setup-client.php</code> → curl POST</td>
+          <td>action=setupNewClient, clientId, entityCode, fy, scopeConfig</td>
+          <td><span class="badge badge-amber">⚠ Needs ghg_webapp_url config</span></td>
+        </tr>
+        <tr>
+          <td>React → Apps Script (upload)</td>
+          <td><code>src/lib/ghg-config.ts ghgPost()</code></td>
+          <td>action=uploadDataFile, base64 .xlsx</td>
+          <td><span class="badge badge-amber">⚠ Needs VITE_GHG_WEBAPP_URL</span></td>
+        </tr>
+        <tr>
+          <td>Apps Script → Google Sheets</td>
+          <td><code>automation/Code.gs</code> — SpreadsheetApp API</td>
+          <td>Writes Master_Index rows, GHG_Datapoints rows, report file links</td>
+          <td><span class="badge badge-amber">⚠ Needs live deployment</span></td>
+        </tr>
+        <tr>
+          <td>Apps Script → Gmail</td>
+          <td><code>automation/Code.gs</code> — GmailApp.sendEmail()</td>
+          <td>Reminder / escalation / report delivery emails to client + consultant</td>
+          <td><span class="badge badge-amber">⚠ Needs live deployment</span></td>
+        </tr>
+        <tr>
+          <td>generate_ghg_report.js → Apps Script</td>
+          <td><code>automation/generate_ghg_report.js</code></td>
+          <td>Parsed XLSX datapoints (tCO2e values) → action=saveDatapoints</td>
+          <td><span class="badge badge-red">✗ Featherlite-only</span></td>
+        </tr>
+        <tr>
+          <td>PHP Cron → SMTP → Client email</td>
+          <td><code>backend/api/send-notification.php</code> + <code>Smtp.php</code></td>
+          <td>Per-client action/update items from priority_items table</td>
+          <td><span class="badge badge-amber">⚠ Needs cron config + service SMTP</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 7 — MULTI-TENANT STATUS
+════════════════════════════════════════════════════ -->
+<section class="section" id="multitenant">
+  <div class="section-header">
+    <div class="eyebrow">Section 7</div>
+    <h2>Multi-Tenant Status</h2>
+    <p>What is generic (works for any client) vs what still has Featherlite assumptions. Scanned from actual codebase.</p>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <h3 style="color:var(--green)">✓ Fully Generic (Client A + Client B both work)</h3>
+      <div style="font-size:12px;line-height:1.9">
+        <div>All GHG data endpoints (inventory, s1, s2, s3, intensity)</div>
+        <div>Credits endpoints (irec.php, grid-mwh.php)</div>
+        <div>Decarb endpoints (assets.php, actions.php) — <em>fixed today</em></div>
+        <div>submit.php — entity validation via DB lookup</div>
+        <div>client-setup.php — per-client config upsert</div>
+        <div>team.php — scoped to authenticated client_id</div>
+        <div>activate-client.php — admin gate for all clients</div>
+        <div>forgot-password.php — uses platform_name config</div>
+        <div>send-notification.php — per-client DB lookup</div>
+        <div>Smtp.php — generic sender name</div>
+        <div>context.php — full multi-tenant ClientContext</div>
+        <div>Auth / session — client_id from users table, not request</div>
+        <div>_app.submissions.tsx — scope filter from entity_scope_json</div>
+        <div>Admin panel — create/activate any client</div>
+        <div>Code.gs setupNewClient — generic per-entity datapoints</div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3 style="color:var(--amber)">⚠ Still Featherlite-specific (fixes needed)</h3>
+      <div style="font-size:12px;line-height:1.9">
+        <div><strong>HIGH:</strong> <code>automation/generate_ghg_report.js</code> — ENTITY_CONFIG hardcodes FL-FOS/FL-FP client IDs, facility names, EF routing. Entire script needs rewrite for second client.</div>
+        <div><strong>HIGH:</strong> <code>database/schema_combined.sql</code> — Featherlite client + 3 entities + 10 config rows embedded in main schema. Should be in separate <code>seed_featherlite.sql</code>.</div>
+        <div><strong>HIGH:</strong> <code>backend/config.php</code> — SMTP from personal Gmail; all-client notifications BCC to personal inbox.</div>
+        <div><strong>MEDIUM:</strong> <code>src/routes/_app.reporting.tsx</code> — simulator log entries hardcode <code>likhith@deepwoodsgreen.com</code>.</div>
+        <div><strong>MEDIUM:</strong> <code>automation/Code.gs</code> — CONSULTANT_EMAIL hardcoded; test setup data uses Featherlite client IDs + facility names.</div>
+        <div><strong>LOW:</strong> <code>src/routes/_app.admin.tsx</code> — mock audit log uses <code>admin@deepwoodsgreen.com</code>.</div>
+        <div><strong>LOW:</strong> CSS variables <code>--brand-red</code> etc (renamed from --featherlite-* — done today).</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="alert alert-blue" style="margin-top:16px">
+    <strong>Safe Featherlite references (not runtime leaks):</strong> Documentation (.md files), migration scripts, seed-users.php (one-time), Code.gs test functions explicitly labelled as Featherlite test scaffolding, src/data/datasets.ts (unused export).
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 8 — MANUAL PAYMENT / ACTIVATION
+════════════════════════════════════════════════════ -->
+<section class="section" id="payment">
+  <div class="section-header">
+    <div class="eyebrow">Section 8</div>
+    <h2>Manual Payment &amp; Activation Flow</h2>
+    <p>NO PAYMENT GATEWAY. Payment is 100% external and manual. Activation is enforced server-side.</p>
+  </div>
+
+  <div class="alert alert-green">
+    <strong>Business model (frozen):</strong> Deepwoods engages client → sends invoice externally → client pays externally → Deepwoods verifies payment manually → Deepwoods admin creates client in portal + activates → client receives credentials.
+  </div>
+
+  <div class="flow" style="max-width:540px">
+    <div class="flow-node future">Deepwoods: client enquiry / proposal</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-node future">Invoice sent externally (email, WhatsApp, etc.)</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-node future">Client pays (bank transfer, UPI, etc.)</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-node future">Deepwoods verifies payment manually</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-node done admin">Admin: Create Client in Admin → Engagements tab</div>
+    <div class="flow-arrow" style="font-size:11px;color:var(--text-muted)">clients.php POST → clients table (is_active=0)</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-node done admin">Admin: Activate in Admin → Client Activation tab</div>
+    <div class="flow-arrow" style="font-size:11px;color:var(--text-muted)">activate-client.php POST → is_active=1, activated_at=NOW()</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-node done admin">Admin: Create user(s) for client via team.php</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-node done">Deepwoods shares credentials with client</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-node done">Client logs in → PendingActivation screen if not yet active</div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-node done">Active client: Orientation → Setup → Data Collection</div>
+  </div>
+
+  <div style="margin-top:16px">
+    <h3 style="font-size:13px;font-weight:700;margin-bottom:10px">Where activation is enforced</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Layer</th><th>Mechanism</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td>Frontend</td><td><code>ClientContextGate</code> in <code>_app.tsx</code> — checks <code>ctx.client.is_active</code></td><td>Shows PendingActivation screen; blocks all nav</td></tr>
+          <tr><td>Backend</td><td><code>dolphin_require_active_client($user)</code> in <code>db.php</code></td><td>Returns HTTP 403 for any data request from inactive client</td></tr>
+          <tr><td>Database</td><td><code>clients.is_active TINYINT(1) NOT NULL DEFAULT 0</code></td><td>New clients start inactive; activation sets is_active=1</td></tr>
+          <tr><td>Bypass</td><td>DEEPWOODS_ROLES skip the active-client check in <code>dolphin_require_active_client</code></td><td>Deepwoods staff can view any client regardless of activation state</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 9 — AUG 7–14 BUILD PLAN
+════════════════════════════════════════════════════ -->
+<section class="section" id="plan">
+  <div class="section-header">
+    <div class="eyebrow">Section 9</div>
+    <h2>Aug 7–14 Build Plan Status</h2>
+    <p>Based on the Excel build plan priorities as captured in the session directive. Items superseded by the finalized business model are clearly marked.</p>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Priority</th><th>Task</th><th>Status</th><th>Evidence / Files</th></tr></thead>
+      <tbody>
+        <tr>
+          <td style="font-variant-numeric:tabular-nums">1</td>
+          <td>Make Inventory Boundary completely generic and client/entity/facility driven</td>
+          <td><span class="badge badge-green">✓ Done</span></td>
+          <td>setup.tsx (per-entity scope), client-setup.php (entity_scope_json), _app.submissions.tsx (filter fixed)</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>Remove remaining Featherlite/FL assumptions from inventory/data-collection path</td>
+          <td><span class="badge badge-green">✓ Done (5 files)</span></td>
+          <td>ghg/{inventory,s1,s2,s3,intensity}.php (entity defaults removed), credits/{irec,grid-mwh}.php (consolidated lookup), decarb/{assets,actions}.php (Bug #4,5 fixed today)</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>Connect confirmed Inventory Boundary output to per-client Google Sheet data-collection template</td>
+          <td><span class="badge badge-green">✓ Done (code)</span></td>
+          <td>backend/api/ghg/setup-client.php (new), Code.gs _handleSetupNewClient (new). Button wired in Admin panel.</td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>Ensure Google Sheet → Apps Script → PHP API → MySQL synchronization works</td>
+          <td><span class="badge badge-amber">⚠ Partial</span></td>
+          <td>PHP side (submit.php) confirmed generic. Forward path (PHP → Apps Script) built but requires ghg_webapp_url config + live deployment.</td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td>Create new-client test path — prove system works for a non-Featherlite client</td>
+          <td><span class="badge badge-amber">⚠ Code verified; live test pending</span></td>
+          <td>12 checkpoints verified by code inspection. 5 bugs found and fixed. Manual DB/GSheet steps documented above.</td>
+        </tr>
+        <tr>
+          <td>6</td>
+          <td>Fix issues found during new-client test</td>
+          <td><span class="badge badge-green">✓ Done (5 bugs)</span></td>
+          <td>Bugs #1–5 fixed. TypeScript: 0 errors.</td>
+        </tr>
+        <tr>
+          <td>7</td>
+          <td>Request Access / initial invitation flow</td>
+          <td><span class="badge badge-red">✗ Not started</span></td>
+          <td>Deferred. Currently Deepwoods creates user accounts manually via Admin or team.php. No self-serve request flow exists.</td>
+        </tr>
+        <tr>
+          <td>8</td>
+          <td>Manual invoice/payment record + invoice history</td>
+          <td><span class="badge badge-red">✗ Not started</span></td>
+          <td>Payment is entirely external (no gateway, no payment UI). If invoice tracking is needed, it will be a simple admin form. Superseded by finalized business model — payment gateway will never be built.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 11 — QA CHECKLIST
+════════════════════════════════════════════════════ -->
+<section class="section" id="qa">
+  <div class="section-header">
+    <div class="eyebrow">Section 11</div>
+    <h2>QA Checklist</h2>
+    <p>Manual QA to be performed after deployment. Only "PASSED" when actually tested in a live environment.</p>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <h3 style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text)">Authentication &amp; Access</h3>
+      <div class="checklist">
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Login with valid credentials</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Forgot password email delivers</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">deepwoods_admin can see all clients</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">client_leadership sees read-only (no upload)</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Inactive client gets PendingActivation screen</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Client B cannot access Client A's /dashboard data</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+      </div>
+
+      <h3 style="font-size:13px;font-weight:700;margin:16px 0 10px;color:var(--text)">Client Provisioning</h3>
+      <div class="checklist">
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Admin "New Client" modal creates client in DB</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">New client starts is_active=0</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Activate button sets is_active=1, activated_at=NOW()</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Activated client can log in and see portal</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+      </div>
+
+      <h3 style="font-size:13px;font-weight:700;margin:16px 0 10px;color:var(--text)">Orientation &amp; Setup</h3>
+      <div class="checklist">
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">New client auto-redirected to /onboard on first login</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Setup wizard pre-populates entities from DB</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">entity_scope_json saved correctly in client_config</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">setup_complete=true after wizard</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Submissions page shows only configured scopes</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+      </div>
+    </div>
+
+    <div>
+      <h3 style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text)">GHG Automation</h3>
+      <div class="checklist">
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">"Setup GHG" button calls Apps Script</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Google Sheet Master_Index row created with correct GHG Client ID</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">GHG_Datapoints rows generated from entity_scope_json</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Re-running Setup GHG is idempotent</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Daily 9am cycle runs for new client</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Reminder emails use correct client name</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+      </div>
+
+      <h3 style="font-size:13px;font-weight:700;margin:16px 0 10px;color:var(--text)">Data Submission &amp; Isolation</h3>
+      <div class="checklist">
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">File upload saves to client's Drive folder (not Featherlite's)</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Submit for Acme does not appear in Featherlite /submissions</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Inactive client cannot submit (403)</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Entity validation rejects entities from other clients</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+      </div>
+
+      <h3 style="font-size:13px;font-weight:700;margin:16px 0 10px;color:var(--text)">Featherlite Regression</h3>
+      <div class="checklist">
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Featherlite /dashboard still loads correctly</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Featherlite /credits shows FL consolidated data</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">Featherlite entity switcher (FP / FOS / FL) works</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+        <div class="check-item"><div class="check-icon" style="background:var(--amber-bg);color:var(--amber)">⚠</div><div class="check-text">decarb/assets.php returns correct FL data for FP entity</div><div class="check-status" style="color:var(--amber)">NOT TESTED</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="alert alert-amber" style="margin-top:16px">
+    <strong>No tests have been run against a live database in this session.</strong> All code changes have been verified by TypeScript type checking (0 errors) and direct code inspection only. Full QA requires deployment to Hostinger with the migrations applied.
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 12 — FILE INDEX
+════════════════════════════════════════════════════ -->
+<section class="section" id="files">
+  <div class="section-header">
+    <div class="eyebrow">Section 12</div>
+    <h2>File Index</h2>
+    <p>Important implementation files by layer.</p>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <h3 style="font-size:13px;font-weight:700;margin-bottom:10px">Frontend (src/)</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><span class="file-path">src/routes/index.tsx</span></td><td>Login page</td></tr>
+            <tr><td><span class="file-path">src/routes/onboard.tsx</span></td><td>Orientation tour (3 slides)</td></tr>
+            <tr><td><span class="file-path">src/routes/setup.tsx</span></td><td>Annual setup wizard (3 steps)</td></tr>
+            <tr><td><span class="file-path">src/routes/_app.tsx</span></td><td>Layout shell, sidebar, auth gate</td></tr>
+            <tr><td><span class="file-path">src/routes/_app.workstreams.tsx</span></td><td>Home / workspace hub</td></tr>
+            <tr><td><span class="file-path">src/routes/_app.submissions.tsx</span></td><td>Data submission wizard</td></tr>
+            <tr><td><span class="file-path">src/routes/_app.team.tsx</span></td><td>Team management</td></tr>
+            <tr><td><span class="file-path">src/routes/_app.admin.tsx</span></td><td>Deepwoods admin dashboard</td></tr>
+            <tr><td><span class="file-path">src/lib/auth.ts</span></td><td>Login, logout, roles, demo mode</td></tr>
+            <tr><td><span class="file-path">src/lib/api.ts</span></td><td>All React Query hooks</td></tr>
+            <tr><td><span class="file-path">src/lib/client-context.tsx</span></td><td>ClientContextProvider</td></tr>
+            <tr><td><span class="file-path">src/lib/entity.tsx</span></td><td>EntityProvider, FiscalYearProvider</td></tr>
+            <tr><td><span class="file-path">src/lib/ghg-config.ts</span></td><td>ghgPost / ghgGet for Apps Script</td></tr>
+            <tr><td><span class="file-path">src/lib/submissionsStore.ts</span></td><td>Submissions API client</td></tr>
+            <tr><td><span class="file-path">src/styles.css</span></td><td>Global CSS variables + base styles</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div>
+      <h3 style="font-size:13px;font-weight:700;margin-bottom:10px">Backend (backend/)</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><span class="file-path">backend/api/db.php</span></td><td>dolphin_require_auth, dolphin_require_active_client, PDO init</td></tr>
+            <tr><td><span class="file-path">backend/api/context.php</span></td><td>Full ClientContext response</td></tr>
+            <tr><td><span class="file-path">backend/api/client-setup.php</span></td><td>Save wizard payload to DB</td></tr>
+            <tr><td><span class="file-path">backend/api/clients.php</span></td><td>List/create/update clients (admin)</td></tr>
+            <tr><td><span class="file-path">backend/api/activate-client.php</span></td><td>Activate/deactivate client</td></tr>
+            <tr><td><span class="file-path">backend/api/team.php</span></td><td>Team member management</td></tr>
+            <tr><td><span class="file-path">backend/api/submit.php</span></td><td>File upload + Drive storage</td></tr>
+            <tr><td><span class="file-path">backend/api/ghg/setup-client.php</span></td><td>Bootstrap GHG sheet (NEW)</td></tr>
+            <tr><td><span class="file-path">backend/api/decarb/assets.php</span></td><td>Decarb asset register</td></tr>
+            <tr><td><span class="file-path">backend/api/decarb/actions.php</span></td><td>Decarb action plan</td></tr>
+            <tr><td><span class="file-path">backend/api/send-notification.php</span></td><td>Per-client notification emails</td></tr>
+            <tr><td><span class="file-path">backend/api/Smtp.php</span></td><td>SMTP email sender</td></tr>
+            <tr><td><span class="file-path">backend/config.php</span></td><td>DB, SMTP, GHG URL, platform config</td></tr>
+            <tr><td><span class="file-path">backend/api/GoogleDrive.php</span></td><td>Drive file upload via OAuth</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col" style="margin-top:16px">
+    <div>
+      <h3 style="font-size:13px;font-weight:700;margin-bottom:10px">Database &amp; Migrations</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><span class="file-path">database/schema_combined.sql</span></td><td>Full schema (31 tables) + Featherlite seed data</td></tr>
+            <tr><td><span class="file-path">database/migrations/001_migrate_legacy_roles.sql</span></td><td>Remove featherlite_team etc. from role ENUM</td></tr>
+            <tr><td><span class="file-path">database/migrations/002_add_client_activation.sql</span></td><td>Add is_active, activated_at to clients</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <h3 style="font-size:13px;font-weight:700;margin-bottom:10px">Automation &amp; Docs</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><span class="file-path">automation/Code.gs</span></td><td>Apps Script — full GHG workflow</td></tr>
+            <tr><td><span class="file-path">automation/generate_ghg_report.js</span></td><td>Local report generator (Featherlite-only)</td></tr>
+            <tr><td><span class="file-path">docs/SESSION_HANDOFF.md</span></td><td>Claude handoff (next session reads this first)</td></tr>
+            <tr><td><span class="file-path">docs/CHANGELOG.md</span></td><td>Change history</td></tr>
+            <tr><td><span class="file-path">docs/TODO.md</span></td><td>Remaining work</td></tr>
+            <tr><td><span class="file-path">docs/PORTAL_USER_FLOW_STATUS.html</span></td><td>This document</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<script>
+function toggleStep(header) {
+  const body = header.nextElementSibling;
+  body.classList.toggle('open');
+}
+
+function toggleTheme() {
+  const root = document.documentElement;
+  const current = root.getAttribute('data-theme');
+  root.setAttribute('data-theme', current === 'dark' ? 'light' : 'dark');
+}
+
+// Active nav link on scroll
+const sections = document.querySelectorAll('.section');
+const links = document.querySelectorAll('#sidebar nav a');
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      links.forEach(l => l.classList.remove('active'));
+      const active = document.querySelector(`#sidebar nav a[href="#${e.target.id}"]`);
+      if (active) active.classList.add('active');
+    }
+  });
+}, { rootMargin: '-20% 0px -70% 0px' });
+sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>

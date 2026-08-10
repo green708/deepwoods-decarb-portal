@@ -1,0 +1,112 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { PageBody, PageHeader } from "@/components/portal";
+import { BookOpen, CalendarDays, Zap, ShieldCheck, Building2 } from "lucide-react";
+
+export const Route = createFileRoute("/_app/methodology")({ component: Methodology });
+
+const SECTIONS = [
+  {
+    icon: BookOpen,
+    title: "Standards",
+    color: "var(--navy)",
+    rows: [
+      ["Framework",              "GHG Protocol Corporate Accounting & Reporting Standard (revised)"],
+      ["Verification standard",  "ISO 14064-1:2018 — Specification with guidance for quantification and reporting of GHG emissions"],
+      ["Consolidation approach", "Operational control — the client exercises full operational control over all reporting entities and their facilities."],
+      ["Reporting boundary",     "Defined per reporting entity and fiscal year. Use the entity selector to view each unit's in-boundary facilities. See the Facilities section in Workstreams for details."],
+      ["Gases covered",          "CO₂, CH₄, N₂O (all scopes) · CO₂ fugitive (fire extinguishers, welding cylinders) · Reported as CO₂-equivalent"],
+      ["Reporting period",       "Indian fiscal year April – March (FY22 = Apr 2021–Mar 2022 through FY26 = Apr 2025–Mar 2026)"],
+      ["Scope 3 coverage",       "Up to 10 of 15 GHG Protocol categories: 1, 2, 3, 4, 5, 6, 7, 9, 11, 12. Cats 8, 10, 13, 14, 15 assessed as not relevant (per entity relevancy screen)."],
+    ],
+  },
+  {
+    icon: Building2,
+    title: "Entities & Consolidation",
+    color: "var(--navy-2)",
+    rows: [
+      ["Sub-entities",           "Each sub-entity is a data-entry unit with its own operational boundary, facilities, and activity data."],
+      ["Consolidated entity",    "The consolidated entity is a calculated reporting view only — it aggregates all sub-entity data for every scope, category, facility and year. No raw data may be submitted against the consolidated entity."],
+      ["Submissions",            "Every data submission must be explicitly tagged to a sub-entity. The portal enforces this at upload time."],
+      ["Consolidated reports",   "GHG Emissions Reports present all entities in a single inventory, with sub-entity splits available in the Scope 3 detail."],
+    ],
+  },
+  {
+    icon: CalendarDays,
+    title: "Base Years",
+    color: "var(--navy-2)",
+    rows: [
+      ["Scope 1 & 2 base year",  "FY2021-22 (April 2021 – March 2022) — first complete year with facility-level Scope 1 & 2 data for both entities"],
+      ["Scope 3 base year",      "FY2023-24 (April 2023 – March 2024) — first complete 15-category relevancy screen and calculation for all entities"],
+      ["Restatement threshold",  "5% — any structural change (acquisition, divestiture, outsourcing, methodology update) triggering >5% change triggers restatement"],
+      ["Recalculation policy",   "Historical years restated if methodology update materially changes comparability"],
+      ["Intensity metrics",      "tCO₂e per ₹ lakh revenue and tCO₂e per product unit — normalises for year-on-year growth (revenue roughly 2.5× since FY22)"],
+    ],
+  },
+  {
+    icon: Zap,
+    title: "Emission Factors & GWP Values",
+    color: "var(--warning)",
+    rows: [
+      ["Grid electricity (India)", "CEA CO₂ Baseline Database — 0.727 kgCO₂/kWh (location-based Scope 2)"],
+      ["Fuels — Scope 1",         "DEFRA UK Greenhouse Gas Conversion Factors 2025 (diesel WTW 2.66155 kgCO₂e/litre, LPG — kgCO₂e/kg)"],
+      ["Freight & travel",        "DEFRA 2025 passenger & freight EFs; distance-based methods for Cat 4/6/9"],
+      ["Waste",                   "DEFRA 2025 waste disposal emission factors by waste stream and treatment type"],
+      ["Scope 3 — spend-based",   "USEEIO v2 (US EPA) — kgCO₂e per USD spend, applied to Cat 1 (goods & services) and Cat 2 (capital goods)"],
+      ["WTT / upstream energy",   "DEFRA 2025 Well-to-Tank factors + CEA T&D losses applied to Scope 1 fuels and Scope 2 electricity (Cat 3)"],
+      ["GWP — CH₄",               "IPCC AR5 100-year GWP = 28"],
+      ["GWP — N₂O",               "IPCC AR5 100-year GWP = 265"],
+      ["GWP — CO₂ fugitive",      "GWP = 1 (fire-extinguisher and welding-cylinder CO₂ discharges)"],
+      ["Market-based Scope 2",    "Entities with third-party wind PPA or I-REC retirement apply zero EF for covered consumption. Entities without instruments use the CEA location-based grid EF."],
+    ],
+  },
+  {
+    icon: ShieldCheck,
+    title: "Verification",
+    color: "var(--success)",
+    rows: [
+      ["Internal audit trail",    "Full data chain retained per entity per year: raw activity data → calculation workbook → output inventory. Held in the Document Vault and calculation audit workbooks."],
+      ["FY22–FY25 status",        "Internally prepared and quality-reviewed by Deepwoods Green. No third-party verification statement issued."],
+      ["FY26 status",             "Inventory in progress — some entities complete, others under data collection. Third-party assurance not yet commissioned."],
+      ["Assurance standard",      "ISAE 3410 — Assurance Engagements on Greenhouse Gas Statements (target standard for future engagement)"],
+      ["Restatement trigger",     "Any change in operational boundary, methodology or EF source that changes prior-year figures by >5% will trigger a restatement note"],
+    ],
+  },
+];
+
+function Methodology() {
+  return (
+    <>
+      <PageHeader eyebrow="Reference" title="Methodology & Standards"
+        description="How the GHG inventory is compiled — standards, entity boundaries, base years, emission factors, GWP values, and verification approach behind every number." />
+      <PageBody>
+        <div className="space-y-5">
+          {SECTIONS.map((s) => {
+            const Icon = s.icon;
+            return (
+              <div key={s.title} className="overflow-hidden rounded-xl border bg-white">
+                <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white" style={{ background: s.color }}>
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <h3 className="font-bold tabular-nums text-lg" style={{ color: "var(--navy)" }}>{s.title}</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {s.rows.map(([label, value], i) => (
+                        <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-[var(--muted)]"}>
+                          <td className="w-56 px-5 py-3 font-semibold text-muted-foreground whitespace-nowrap align-top" style={{ minWidth: 180 }}>{label}</td>
+                          <td className="px-5 py-3 leading-relaxed" style={{ color: "#4A4A4A" }}>{value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </PageBody>
+    </>
+  );
+}

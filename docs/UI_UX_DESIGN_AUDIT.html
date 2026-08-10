@@ -1,0 +1,2113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UI/UX Design Audit — Decarb Platform</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --green: #1E6F5C;
+    --green-light: #E8F5F0;
+    --green-mid: #2E8B6E;
+    --navy: #1F2937;
+    --navy-mid: #374151;
+    --muted: #6B7280;
+    --border: #E5E7EB;
+    --bg-section: #F9FAFB;
+    --bg-alt: #F3F4F6;
+    --white: #FFFFFF;
+    --red: #DC2626;
+    --red-light: #FEF2F2;
+    --amber: #D97706;
+    --amber-light: #FFFBEB;
+    --blue: #2563EB;
+    --blue-light: #EFF6FF;
+    --sidebar-width: 260px;
+    --font: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--navy);
+    background: var(--white);
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* ─── Sidebar TOC ─── */
+  #toc {
+    width: var(--sidebar-width);
+    min-width: var(--sidebar-width);
+    background: var(--bg-section);
+    border-right: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 28px 0 40px;
+    flex-shrink: 0;
+  }
+
+  #toc-header {
+    padding: 0 20px 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+
+  #toc-header .label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  #toc-header .title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--green);
+    line-height: 1.3;
+  }
+
+  #toc ul {
+    list-style: none;
+    padding: 0 12px;
+  }
+
+  #toc ul li a {
+    display: block;
+    padding: 5px 10px;
+    font-size: 12.5px;
+    color: var(--navy-mid);
+    text-decoration: none;
+    border-radius: 5px;
+    transition: background 0.15s, color 0.15s;
+    line-height: 1.4;
+  }
+
+  #toc ul li a:hover {
+    background: var(--green-light);
+    color: var(--green);
+  }
+
+  #toc ul li a .toc-num {
+    display: inline-block;
+    width: 18px;
+    font-weight: 700;
+    font-size: 11px;
+    color: var(--green);
+    flex-shrink: 0;
+  }
+
+  #toc ul li.toc-section-sep {
+    margin-top: 10px;
+    padding: 4px 10px 2px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ─── Main Content ─── */
+  #main {
+    flex: 1;
+    min-width: 0;
+    padding: 0 0 80px;
+  }
+
+  /* ─── Document Header ─── */
+  #doc-header {
+    background: linear-gradient(135deg, #0F3D30 0%, #1E6F5C 60%, #2E8B6E 100%);
+    color: white;
+    padding: 48px 56px 44px;
+  }
+
+  #doc-header .meta {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    opacity: 0.7;
+    margin-bottom: 14px;
+  }
+
+  #doc-header h1 {
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    margin-bottom: 10px;
+  }
+
+  #doc-header .subtitle {
+    font-size: 15px;
+    opacity: 0.8;
+    margin-bottom: 28px;
+  }
+
+  .score-row {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+
+  .score-chip {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 10px;
+    padding: 10px 18px;
+  }
+
+  .score-chip .sc-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.7;
+    margin-bottom: 3px;
+  }
+
+  .score-chip .sc-value {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+
+  .score-chip .sc-sub {
+    font-size: 11px;
+    opacity: 0.65;
+  }
+
+  /* ─── Sections ─── */
+  .section {
+    padding: 40px 56px 36px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section:nth-child(even) {
+    background: var(--bg-section);
+  }
+
+  .section-anchor {
+    display: block;
+    height: 0;
+    margin-top: -20px;
+    padding-top: 20px;
+  }
+
+  .section h2 {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--navy);
+    letter-spacing: -0.02em;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .section-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    background: var(--green);
+    color: white;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+
+  .section-desc {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 24px;
+    margin-top: 2px;
+  }
+
+  .section h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--navy-mid);
+    letter-spacing: -0.01em;
+    margin: 22px 0 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 11px;
+  }
+
+  /* ─── Pills ─── */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  .pill-pass { background: var(--green-light); color: var(--green); }
+  .pill-improve { background: var(--amber-light); color: var(--amber); }
+  .pill-redesign { background: var(--red-light); color: var(--red); }
+  .pill-fixed { background: var(--blue-light); color: var(--blue); }
+  .pill-p0 { background: var(--red-light); color: var(--red); border: 1px solid #FECACA; }
+  .pill-p1 { background: var(--amber-light); color: var(--amber); border: 1px solid #FDE68A; }
+  .pill-p2 { background: var(--bg-alt); color: var(--muted); border: 1px solid var(--border); }
+  .pill-pending { background: #FEF2F2; color: #B91C1C; }
+  .pill-done { background: var(--blue-light); color: var(--blue); }
+
+  /* ─── Lists ─── */
+  .finding-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .finding-list li {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  .finding-list li::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-top: 7px;
+    flex-shrink: 0;
+  }
+
+  .finding-list.muted li::before { background: var(--muted); }
+
+  /* ─── Issue Cards ─── */
+  .issue-card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+    background: var(--white);
+  }
+
+  .issue-card.p0 { border-left: 4px solid var(--red); }
+  .issue-card.p1 { border-left: 4px solid var(--amber); }
+  .issue-card.p2 { border-left: 4px solid #D1D5DB; }
+
+  .issue-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+
+  .issue-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--navy);
+    flex: 1;
+  }
+
+  .issue-file {
+    font-size: 11.5px;
+    color: var(--muted);
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    background: var(--bg-alt);
+    padding: 2px 7px;
+    border-radius: 4px;
+  }
+
+  .issue-body {
+    font-size: 13.5px;
+    color: var(--navy-mid);
+    line-height: 1.55;
+  }
+
+  .issue-fix {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: var(--bg-section);
+    border-radius: 6px;
+    font-size: 12.5px;
+    color: var(--navy-mid);
+    border-left: 3px solid var(--green);
+  }
+
+  .issue-fix strong { color: var(--green); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 2px; }
+
+  /* ─── Tables ─── */
+  .audit-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-top: 8px;
+  }
+
+  .audit-table th {
+    background: var(--bg-alt);
+    color: var(--navy-mid);
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 2px solid var(--border);
+  }
+
+  .audit-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    color: var(--navy-mid);
+    line-height: 1.5;
+  }
+
+  .audit-table tr:last-child td { border-bottom: none; }
+  .audit-table tr:hover td { background: var(--bg-section); }
+
+  .audit-table .file-cell {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+
+  /* ─── Score Bar ─── */
+  .score-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+
+  .score-bar-label {
+    width: 180px;
+    flex-shrink: 0;
+    color: var(--navy-mid);
+    font-weight: 500;
+  }
+
+  .score-bar-track {
+    flex: 1;
+    height: 8px;
+    background: var(--bg-alt);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+
+  .score-bar-fill {
+    height: 100%;
+    border-radius: 99px;
+    background: var(--green);
+    transition: width 0.3s;
+  }
+
+  .score-bar-fill.amber { background: var(--amber); }
+  .score-bar-fill.red { background: var(--red); }
+
+  .score-bar-num {
+    width: 36px;
+    text-align: right;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--navy);
+  }
+
+  /* ─── Page Assess Grid ─── */
+  .page-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 8px;
+  }
+
+  .page-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: var(--white);
+  }
+
+  .page-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 5px;
+  }
+
+  .page-card-name {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--navy);
+  }
+
+  .page-card-route {
+    font-size: 11px;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    color: var(--muted);
+  }
+
+  .page-card-notes {
+    font-size: 12.5px;
+    color: var(--navy-mid);
+    line-height: 1.5;
+  }
+
+  /* ─── Nav Assessment ─── */
+  .nav-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 11px 14px;
+    border-radius: 8px;
+    margin-bottom: 7px;
+    border: 1px solid var(--border);
+    background: var(--white);
+    font-size: 13.5px;
+  }
+
+  .nav-check-label {
+    font-weight: 700;
+    color: var(--navy);
+    min-width: 160px;
+    flex-shrink: 0;
+  }
+
+  .nav-check-notes {
+    color: var(--navy-mid);
+    flex: 1;
+    line-height: 1.5;
+  }
+
+  /* ─── A11y Table ─── */
+  .a11y-row { }
+
+  /* ─── Callout ─── */
+  .callout {
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 16px 0;
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+
+  .callout-warn {
+    background: var(--amber-light);
+    border: 1px solid #FDE68A;
+    color: #78350F;
+  }
+
+  .callout-info {
+    background: var(--blue-light);
+    border: 1px solid #BFDBFE;
+    color: #1E3A5F;
+  }
+
+  .callout-success {
+    background: var(--green-light);
+    border: 1px solid #A7F3D0;
+    color: #064E3B;
+  }
+
+  .callout-error {
+    background: var(--red-light);
+    border: 1px solid #FECACA;
+    color: #7F1D1D;
+  }
+
+  .callout strong { font-weight: 800; }
+
+  /* ─── Debt List ─── */
+  .debt-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--white);
+    margin-bottom: 8px;
+  }
+
+  .debt-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+    background: var(--bg-alt);
+  }
+
+  .debt-content { flex: 1; }
+  .debt-title { font-size: 13.5px; font-weight: 700; color: var(--navy); margin-bottom: 2px; }
+  .debt-desc { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+
+  /* ─── Changed Screen ─── */
+  .changed-screen {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--white);
+    margin-bottom: 10px;
+  }
+
+  .cs-file {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 12px;
+    color: var(--green);
+    font-weight: 700;
+    min-width: 200px;
+  }
+
+  .cs-changes { flex: 1; }
+  .cs-change-item {
+    font-size: 13px;
+    color: var(--navy-mid);
+    line-height: 1.5;
+    margin-bottom: 2px;
+  }
+
+  .cs-change-item::before { content: '→ '; color: var(--green); font-weight: 700; }
+
+  /* ─── Footer ─── */
+  #doc-footer {
+    padding: 32px 56px;
+    background: var(--bg-section);
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .inline-code {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 12px;
+    background: var(--bg-alt);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--green);
+  }
+
+  hr.section-rule {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 24px 0;
+  }
+
+  @media (max-width: 900px) {
+    #toc { display: none; }
+    .section { padding: 28px 24px; }
+    #doc-header { padding: 32px 24px; }
+    .page-grid { grid-template-columns: 1fr; }
+    #doc-footer { padding: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     SIDEBAR TABLE OF CONTENTS
+═══════════════════════════════════════════ -->
+<nav id="toc" aria-label="Table of contents">
+  <div id="toc-header">
+    <div class="label">Design Audit</div>
+    <div class="title">Decarb Platform<br>UI/UX Assessment</div>
+  </div>
+  <ul>
+    <li class="toc-section-sep">Overview</li>
+    <li><a href="#s1"><span class="toc-num">1</span> Overall Assessment</a></li>
+    <li><a href="#s2"><span class="toc-num">2</span> Design Strengths</a></li>
+    <li><a href="#s3"><span class="toc-num">3</span> Critical UX Problems</a></li>
+    <li class="toc-section-sep">Pages & Navigation</li>
+    <li><a href="#s4"><span class="toc-num">4</span> Page-by-Page Assessment</a></li>
+    <li><a href="#s5"><span class="toc-num">5</span> Navigation Assessment</a></li>
+    <li class="toc-section-sep">System Consistency</li>
+    <li><a href="#s6"><span class="toc-num">6</span> Design System Inconsistencies</a></li>
+    <li><a href="#s7"><span class="toc-num">7</span> Component Inconsistencies</a></li>
+    <li><a href="#s8"><span class="toc-num">8</span> Empty State Assessment</a></li>
+    <li class="toc-section-sep">Specialized</li>
+    <li><a href="#s9"><span class="toc-num">9</span> MSME Usability</a></li>
+    <li><a href="#s10"><span class="toc-num">10</span> Accessibility Findings</a></li>
+    <li class="toc-section-sep">Action Items</li>
+    <li><a href="#s11"><span class="toc-num">11</span> Issue Registry</a></li>
+    <li><a href="#s12"><span class="toc-num">12</span> Screens Redesigned</a></li>
+    <li><a href="#s13"><span class="toc-num">13</span> Intentionally Unchanged</a></li>
+    <li><a href="#s14"><span class="toc-num">14</span> Remaining Design Debt</a></li>
+  </ul>
+</nav>
+
+<!-- ═══════════════════════════════════════════
+     MAIN CONTENT
+═══════════════════════════════════════════ -->
+<div id="main">
+
+  <!-- Document Header -->
+  <div id="doc-header">
+    <div class="meta">Deepwoods Green Advisory — Internal Document</div>
+    <h1>UI/UX Design Audit<br>Decarb Platform</h1>
+    <div class="subtitle">Comprehensive review of visual design, component consistency, accessibility, and UX quality across all screens.</div>
+    <div class="score-row">
+      <div class="score-chip">
+        <div class="sc-label">Overall Score</div>
+        <div class="sc-value">74 / 100</div>
+        <div class="sc-sub">Good foundation, critical gaps</div>
+      </div>
+      <div class="score-chip">
+        <div class="sc-label">Audit Date</div>
+        <div class="sc-value">Aug 2026</div>
+        <div class="sc-sub">Session-based review</div>
+      </div>
+      <div class="score-chip">
+        <div class="sc-label">P0 Issues</div>
+        <div class="sc-value">7</div>
+        <div class="sc-sub">Blocking quality</div>
+      </div>
+      <div class="score-chip">
+        <div class="sc-label">P1 Issues</div>
+        <div class="sc-value">7</div>
+        <div class="sc-sub">Major UX gaps</div>
+      </div>
+      <div class="score-chip">
+        <div class="sc-label">P2 Issues</div>
+        <div class="sc-value">6</div>
+        <div class="sc-sub">Polish</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────
+       SECTION 1 — Overall Assessment
+  ───────────────────────────────────────── -->
+  <div class="section">
+    <a class="section-anchor" id="s1"></a>
+    <h2><span class="section-num">1</span> Overall Assessment</h2>
+    <div class="section-desc">High-level quality summary for the platform as a whole.</div>
+
+    <div class="callout callout-success">
+      <strong>Verdict:</strong> Premium sustainability SaaS with a genuinely solid foundation. The design token system, component architecture, and core layout patterns are all production-quality. The score is held back by a cluster of P0 visual inconsistencies — most of which are a few lines of CSS away from being fixed — and a lack of shared components for modals, empty states, and form inputs.
+    </div>
+
+    <h3>Dimension Scores</h3>
+
+    <div style="margin-top: 12px;">
+      <div class="score-bar-row">
+        <div class="score-bar-label">Visual Consistency</div>
+        <div class="score-bar-track"><div class="score-bar-fill amber" style="width: 62%"></div></div>
+        <div class="score-bar-num">62</div>
+      </div>
+      <div class="score-bar-row">
+        <div class="score-bar-label">Navigation UX</div>
+        <div class="score-bar-track"><div class="score-bar-fill amber" style="width: 68%"></div></div>
+        <div class="score-bar-num">68</div>
+      </div>
+      <div class="score-bar-row">
+        <div class="score-bar-label">Component System</div>
+        <div class="score-bar-track"><div class="score-bar-fill" style="width: 75%"></div></div>
+        <div class="score-bar-num">75</div>
+      </div>
+      <div class="score-bar-row">
+        <div class="score-bar-label">Empty / Error States</div>
+        <div class="score-bar-track"><div class="score-bar-fill red" style="width: 48%"></div></div>
+        <div class="score-bar-num">48</div>
+      </div>
+      <div class="score-bar-row">
+        <div class="score-bar-label">Accessibility</div>
+        <div class="score-bar-track"><div class="score-bar-fill amber" style="width: 65%"></div></div>
+        <div class="score-bar-num">65</div>
+      </div>
+      <div class="score-bar-row">
+        <div class="score-bar-label">MSME Usability</div>
+        <div class="score-bar-track"><div class="score-bar-fill" style="width: 78%"></div></div>
+        <div class="score-bar-num">78</div>
+      </div>
+      <div class="score-bar-row">
+        <div class="score-bar-label">Data Visualisation</div>
+        <div class="score-bar-track"><div class="score-bar-fill" style="width: 80%"></div></div>
+        <div class="score-bar-num">80</div>
+      </div>
+      <div class="score-bar-row">
+        <div class="score-bar-label">Multi-tenancy Readiness</div>
+        <div class="score-bar-track"><div class="score-bar-fill amber" style="width: 60%"></div></div>
+        <div class="score-bar-num">60</div>
+      </div>
+    </div>
+
+    <div class="callout callout-warn" style="margin-top: 24px;">
+      <strong>Key blocking issues:</strong> Sidebar has zero visual separation from page content (same background color). Nav active state uses hardcoded red (#FF2800) — breaks multi-tenancy and looks wrong on a sustainability product. Background token is too heavy. These three fixes alone would move the score to ~82.
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────
+       SECTION 2 — Design Strengths
+  ───────────────────────────────────────── -->
+  <div class="section">
+    <a class="section-anchor" id="s2"></a>
+    <h2><span class="section-num">2</span> Design Strengths</h2>
+    <div class="section-desc">Current design decisions that are working well and should be preserved.</div>
+
+    <ul class="finding-list" style="gap: 14px;">
+      <li>
+        <div>
+          <strong>PageHeader / PageBody / StatCard / Section component system</strong> (<span class="inline-code">portal.tsx</span>) — Consistent structural components used across the interior. StatCard shadow system is polished; Section headings with dividers give pages clear hierarchy.
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Layered box-shadow card system</strong> — Cards use a soft multi-layer shadow that gives depth without being heavy. Consistent across all StatCards and chart containers.
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>CSS design token system</strong> (<span class="inline-code">src/styles.css</span>) — Semantic color tokens (<span class="inline-code">--primary</span>, <span class="inline-code">--sidebar</span>, <span class="inline-code">--background</span>, <span class="inline-code">--destructive</span>), radius tokens, and shadow utilities are well-structured. The architecture is right; some tokens just aren't being used yet.
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Login / Request Access two-panel layout</strong> — Dark-left / light-right split with the platform tagline on the left is a premium SaaS pattern. Well-executed with good whitespace.
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Scope 1 / 2 / 3 color coding</strong> — Consistent teal / navy / slate color assignment across all Recharts charts. Users can quickly orient themselves across multiple chart types.
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Entity / FY switcher bar pattern</strong> — The sticky entity + fiscal year switcher at the top of each interior page is excellent contextual UX. Users always know which entity and year they're viewing.
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>PendingActivation holding screen</strong> — Clean, purposeful design for users awaiting activation. Communicates status clearly without exposing internal process detail.
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Custom scrollbar styling</strong> — Thin, rounded scrollbar with brand-consistent color. Small detail that reinforces the premium feel.
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Mobile slide-in nav</strong> — Overlay navigation with backdrop works correctly on small viewports. Doesn't break the layout.
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>GroupNav accordion pattern in sidebar</strong> — Collapsible navigation groups (Carbon Footprint, Decarbonisation, Compliance) keep the nav scannable without exposing all routes at once.
+        </div>
+      </li>
+    </ul>
+  </div>
+
+  <!-- ─────────────────────────────────────────
+       SECTION 3 — Critical UX Problems
+  ───────────────────────────────────────── -->
+  <div class="section">
+    <a class="section-anchor" id="s3"></a>
+    <h2><span class="section-num">3</span> Critical UX Problems</h2>
+    <div class="section-desc">Issues categorised by severity. P0 = blocking quality bar; P1 = major UX gap; P2 = polish.</div>
+
+    <h3>P0 — Critical (must fix before any client demo)</h3>
+
+    <div class="issue-card p0">
+      <div class="issue-header">
+        <span class="pill pill-p0">P0</span>
+        <span class="issue-title">Sidebar has zero visual separation from page content</span>
+        <span class="issue-file">_app.tsx / styles.css</span>
+      </div>
+      <div class="issue-body">
+        Sidebar uses <span class="inline-code">var(--background)</span> which resolves to <span class="inline-code">#E5E5E5</span> — the same color as the main page background. There is literally no visual boundary between the navigation and the content area. The <span class="inline-code">--sidebar: #FFFFFF</span> token is correctly defined in styles.css but never applied to the sidebar element.
+      </div>
+      <div class="issue-fix">
+        <strong>Fix</strong>
+        Apply <span class="inline-code">background: var(--sidebar)</span> to the sidebar container in <span class="inline-code">_app.tsx</span>. Add a <span class="inline-code">border-right: 1px solid var(--border)</span> for additional separation.
+      </div>
+    </div>
+
+    <div class="issue-card p0">
+      <div class="issue-header">
+        <span class="pill pill-p0">P0</span>
+        <span class="issue-title">Nav active state hardcodes #FF2800 red</span>
+        <span class="issue-file">_app.tsx</span>
+      </div>
+      <div class="issue-body">
+        The active nav item background and indicator are hardcoded to <span class="inline-code">#FF2800</span> — an aggressive traffic-light red. This directly violates multi-tenancy (every client should see their own primary color) and is visually jarring on a sustainability platform. For a platform whose visual identity is green, this red active state is actively misleading.
+      </div>
+      <div class="issue-fix">
+        <strong>Fix</strong>
+        Replace all <span class="inline-code">#FF2800</span> occurrences with <span class="inline-code">var(--primary)</span>. Add a CSS variable <span class="inline-code">--nav-active-bg</span> in styles.css set to <span class="inline-code">color-mix(in srgb, var(--primary) 12%, transparent)</span> for the background tint.
+      </div>
+    </div>
+
+    <div class="issue-card p0">
+      <div class="issue-header">
+        <span class="pill pill-p0">P0</span>
+        <span class="issue-title">--background token is too visually heavy</span>
+        <span class="issue-file">styles.css</span>
+      </div>
+      <div class="issue-body">
+        <span class="inline-code">--background: #E5E5E5</span> is a medium gray — noticeably darker than industry-standard SaaS page backgrounds. Combined with the sidebar being the same color, the entire app looks flat and compressed. Premium products typically use <span class="inline-code">#F8FAFC</span> or <span class="inline-code">#F3F4F6</span>.
+      </div>
+      <div class="issue-fix">
+        <strong>Fix</strong>
+        Change <span class="inline-code">--background</span> to <span class="inline-code">#F3F4F6</span> (or <span class="inline-code">#F8FAFC</span> for even lighter). Also remove the hardcoded <span class="inline-code">bg-[#F2F2F2]</span> Tailwind class on the main content wrapper and replace with <span class="inline-code">bg-background</span>.
+      </div>
+    </div>
+
+    <div class="issue-card p0">
+      <div class="issue-header">
+        <span class="pill pill-p0">P0</span>
+        <span class="issue-title">Emoji icons in onboarding role selection</span>
+        <span class="issue-file">onboard.tsx (Slide 3)</span>
+      </div>
+      <div class="issue-body">
+        Slide 3 of the onboarding tour uses emoji (👑📊📝👁️) as role icons. This reads as a draft or prototype artifact, not a production SaaS product. Emoji render inconsistently across operating systems and are not accessible to screen readers with meaningful labels.
+      </div>
+      <div class="issue-fix">
+        <strong>Fix</strong>
+        Replace with Lucide React icons: <span class="inline-code">Crown</span> (Admin), <span class="inline-code">BarChart2</span> (Sustainability Team), <span class="inline-code">Upload</span> (Uploader), <span class="inline-code">Eye</span> (Leadership). Render inside a small rounded icon container with brand-color background.
+      </div>
+    </div>
+
+    <div class="issue-card p0">
+      <div class="issue-header">
+        <span class="pill pill-p0">P0</span>
+        <span class="issue-title">Nav section label uses inline client.primary_color</span>
+        <span class="issue-file">_app.tsx</span>
+      </div>
+      <div class="issue-body">
+        The "Decarbonisation Journey" sidebar section label applies <span class="inline-code">client.primary_color</span> as an inline style. For the current client (Featherlite, primary = red), this label appears in red inside the sidebar — looks like an error indicator, not a navigation group label.
+      </div>
+      <div class="issue-fix">
+        <strong>Fix</strong>
+        Remove the inline color override. Section labels should use the standard muted text style (<span class="inline-code">text-muted-foreground</span>) or a fixed-opacity version of the primary color that doesn't risk looking like an alert.
+      </div>
+    </div>
+
+    <div class="issue-card p0">
+      <div class="issue-header">
+        <span class="pill pill-p0">P0</span>
+        <span class="issue-title">Loading state is a bare spinner with no context</span>
+        <span class="issue-file">_app.tsx</span>
+      </div>
+      <div class="issue-body">
+        The app loading state renders a raw <span class="inline-code">&lt;Loader2&gt;</span> spinner centered on screen with no branding, no message, and no error handling visual. Config errors surface raw technical text directly to users.
+      </div>
+      <div class="issue-fix">
+        <strong>Fix</strong>
+        Create a branded loading screen: platform logo, "Loading your workspace…" message, and a subtle spinner. For config errors, show a friendly "Something went wrong — please refresh or contact support" message instead of the raw error string.
+      </div>
+    </div>
+
+    <div class="issue-card p0">
+      <div class="issue-header">
+        <span class="pill pill-p0">P0</span>
+        <span class="issue-title">Main content area uses hardcoded bg-[#F2F2F2]</span>
+        <span class="issue-file">_app.tsx</span>
+      </div>
+      <div class="issue-body">
+        The main content wrapper has <span class="inline-code">bg-[#F2F2F2]</span> as a hardcoded Tailwind arbitrary value. This bypasses the CSS token system entirely, making it impossible to theme or adjust the background via CSS variables.
+      </div>
+      <div class="issue-fix">
+        <strong>Fix</strong>
+        Replace <span class="inline-code">bg-[#F2F2F2]</span> with <span class="inline-code">bg-background</span> (the Tailwind class that maps to <span class="inline-code">var(--background)</span>).
+      </div>
+    </div>
+
+    <hr class="section-rule">
+    <h3>P1 — Major (fix before next client onboarding)</h3>
+
+    <div class="issue-card p1">
+      <div class="issue-header">
+        <span class="pill pill-p1">P1</span>
+        <span class="issue-title">No shared EmptyState component — each page handles (or ignores) it differently</span>
+        <span class="issue-file">portal.tsx + multiple pages</span>
+      </div>
+      <div class="issue-body">
+        Many pages show nothing, a loading spinner, or minimal text when data is absent. There is no consistent <span class="inline-code">EmptyState</span> component with an icon, heading, description, and optional CTA. The inconsistency is most visible on Vault, Inventory, and Submissions pages.
+      </div>
+      <div class="issue-fix">
+        <strong>Fix</strong>
+        Add an <span class="inline-code">EmptyState</span> component to <span class="inline-code">portal.tsx</span> with props: <span class="inline-code">icon</span>, <span class="inline-code">title</span>, <span class="inline-code">description</span>, <span class="inline-code">action?</span>. Adopt it across all data-driven pages.
+      </div>
+    </div>
+
+    <div class="issue-card p1">
+      <div class="issue-header">
+        <span class="pill pill-p1">P1</span>
+        <span class="issue-title">Two competing style systems: inline style objects vs Tailwind</span>
+        <span class="issue-file">login.tsx, request-access.tsx vs all interior pages</span>
+      </div>
+      <div class="issue-body">
+        Public pages (login, request access) use inline <span class="inline-code">style={{}}</span> JavaScript objects for all styling. Interior pages use Tailwind utility classes. While the visual output of the public pages is good, this creates two maintenance paths and makes global design changes harder.
+      </div>
+      <div class="issue-fix">
+        <strong>Fix</strong>
+        Migrate public page inline styles to Tailwind classes in a follow-up refactor sprint. Not urgent visually, but important for long-term maintainability.
+      </div>
+    </div>
+
+    <div class="issue-card p1">
+      <div class="issue-header">
+        <span class="pill pill-p1">P1</span>
+        <span class="issue-title">Raw technical error messages exposed to users</span>
+        <span class="issue-file">ClientContextGate, multiple pages</span>
+      </div>
+      <div class="issue-body">
+        Error states in <span class="inline-code">ClientContextGate</span> and several pages display raw JavaScript error strings. Users should never see stack traces, API endpoint URLs, or internal error codes.
+      </div>
+      <div class="issue-fix">
+        <strong>Fix</strong>
+        Create a standardized error display: friendly message, retry button, and a reference code (for support). Log the raw error to console only.
+      </div>
+    </div>
+
+    <div class="issue-card p1">
+      <div class="issue-header">
+        <span class="pill pill-p1">P1</span>
+        <span class="issue-title">EntityBar label text is 9px — below accessible minimum</span>
+        <span class="issue-file">entity.tsx</span>
+      </div>
+      <div class="issue-body">
+        The entity and fiscal year labels in the switcher bar use <span class="inline-code">font-size: 9px</span>. WCAG 2.1 recommends a minimum of 12px for non-decorative text. At 9px, these labels are illegible on standard-DPI displays for older users.
+      </div>
+      <div class="issue-fix">
+        <strong>Fix</strong>
+        Increase to minimum <span class="inline-code">11px</span> (preferably <span class="inline-code">12px</span>). Use <span class="inline-code">font-size: 0.6875rem</span> for maintainability.
+      </div>
+    </div>
+
+    <div class="issue-card p1">
+      <div class="issue-header">
+        <span class="pill pill-p1">P1</span>
+        <span class="issue-title">LockedState component has no CTA slot</span>
+        <span class="issue-file">portal.tsx</span>
+      </div>
+      <div class="issue-body">
+        The <span class="inline-code">LockedState</span> component shows a lock icon and message but offers no actionable next step. Users in a locked state need direction — typically "Contact your administrator" or a specific upgrade prompt.
+      </div>
+      <div class="issue-fix">
+        <strong>Fix</strong>
+        Add an optional <span class="inline-code">action?: ReactNode</span> prop to <span class="inline-code">LockedState</span>. Callers can pass a button or contact link as appropriate.
+      </div>
+    </div>
+
+    <div class="issue-card p1">
+      <div class="issue-header">
+        <span class="pill pill-p1">P1</span>
+        <span class="issue-title">Onboard Slide 3 role cards have decorative-only borders</span>
+        <span class="issue-file">onboard.tsx</span>
+      </div>
+      <div class="issue-body">
+        The role selection cards on Slide 3 have very thin, light borders that make them look like informational tiles rather than interactive selection elements. No selected-state visual feedback is visible before selection occurs.
+      </div>
+      <div class="issue-fix">
+        <strong>Fix</strong>
+        Increase border to 2px. Add a hover state with border-color transitioning to <span class="inline-code">var(--primary)</span>. Show a checkmark icon on selection.
+      </div>
+    </div>
+
+    <div class="issue-card p1">
+      <div class="issue-header">
+        <span class="pill pill-p1">P1</span>
+        <span class="issue-title">Admin client row button groups overflow on narrow viewports</span>
+        <span class="issue-file">admin.tsx</span>
+      </div>
+      <div class="issue-body">
+        Each client row in the admin panel has a row of action buttons (Activate, Edit, Invoice, etc.). On viewports narrower than ~1100px, these buttons overflow or stack in visually broken ways.
+      </div>
+      <div class="issue-fix">
+        <strong>Fix</strong>
+        Consolidate secondary actions into a kebab menu (<span class="inline-code">MoreHorizontal</span> icon + dropdown). Keep only the primary action as a visible button.
+      </div>
+    </div>
+
+    <hr class="section-rule">
+    <h3>P2 — Polish (next design sprint)</h3>
+
+    <div class="issue-card p2">
+      <div class="issue-header">
+        <span class="pill pill-p2">P2</span>
+        <span class="issue-title">Chart color palettes defined as in-file constants</span>
+        <span class="issue-file">dashboard.tsx, hotspots.tsx, others</span>
+      </div>
+      <div class="issue-body">Chart colors are defined as hardcoded hex arrays inside component files. They cannot be overridden by the CSS variable system or swapped for client theming.</div>
+      <div class="issue-fix"><strong>Fix</strong> Define chart palettes as CSS variables in styles.css (<span class="inline-code">--chart-1</span> through <span class="inline-code">--chart-6</span>). Reference via <span class="inline-code">getComputedStyle</span> or CSS custom properties in SVG fills.</div>
+    </div>
+
+    <div class="issue-card p2">
+      <div class="issue-header">
+        <span class="pill pill-p2">P2</span>
+        <span class="issue-title">font-serif maps to Inter (same as sans-serif)</span>
+        <span class="issue-file">styles.css</span>
+      </div>
+      <div class="issue-body">The <span class="inline-code">font-serif</span> Tailwind class is configured to resolve to the Inter stack, identical to <span class="inline-code">font-sans</span>. This creates a misleading semantic that will confuse future developers.</div>
+      <div class="issue-fix"><strong>Fix</strong> Either remove the <span class="inline-code">font-serif</span> override or point it to a distinct typeface if serif typography is intentional for some contexts (e.g. report headings).</div>
+    </div>
+
+    <div class="issue-card p2">
+      <div class="issue-header">
+        <span class="pill pill-p2">P2</span>
+        <span class="issue-title">Reporting simulator looks like a developer tool</span>
+        <span class="issue-file">reporting.tsx</span>
+      </div>
+      <div class="issue-body">The reporting cycle simulator page uses technical labels, raw dropdowns, and a layout that reads as an internal admin debug view. If client-facing, it needs a UX pass to feel like a product feature.</div>
+      <div class="issue-fix"><strong>Fix</strong> Add page context description, humanise control labels, and use consistent card layout. If it's admin-only, move it behind the <span class="inline-code">deepwoods_admin</span> role gate and mark it clearly as internal.</div>
+    </div>
+
+    <div class="issue-card p2">
+      <div class="issue-header">
+        <span class="pill pill-p2">P2</span>
+        <span class="issue-title">Mobile nav slide animation could be smoother</span>
+        <span class="issue-file">_app.tsx</span>
+      </div>
+      <div class="issue-body">The mobile nav overlay uses a CSS class toggle for show/hide. The slide-in animation is functional but lacks an easing curve and the backdrop fade-in is slightly jarring.</div>
+      <div class="issue-fix"><strong>Fix</strong> Use <span class="inline-code">transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1)</span> on the sidebar panel. Fade the backdrop separately with <span class="inline-code">transition: opacity 150ms ease</span>.</div>
+    </div>
+
+    <div class="issue-card p2">
+      <div class="issue-header">
+        <span class="pill pill-p2">P2</span>
+        <span class="issue-title">DeecarbAI floating button z-index management</span>
+        <span class="issue-file">DeecarbAI.tsx</span>
+      </div>
+      <div class="issue-body">The AI assistant floating button can be obscured by modal overlays and in some scroll positions sits on top of footer content. Z-index layering needs a global review.</div>
+      <div class="issue-fix"><strong>Fix</strong> Define a z-index scale in styles.css (<span class="inline-code">--z-modal: 50; --z-overlay: 40; --z-sticky: 30; --z-fab: 25</span>). Apply consistently. Ensure FAB is below modal z-index.</div>
+    </div>
+
+    <div class="issue-card p2">
+      <div class="issue-header">
+        <span class="pill pill-p2">P2</span>
+        <span class="issue-title">tabular-nums utility not consistently applied to KPI numbers</span>
+        <span class="issue-file">portal.tsx, dashboard.tsx, others</span>
+      </div>
+      <div class="issue-body">The <span class="inline-code">num</span> utility class (which applies <span class="inline-code">font-variant-numeric: tabular-nums</span>) is defined but not consistently applied to all dashboard numbers and KPI values. Proportional digits cause jitter when values update.</div>
+      <div class="issue-fix"><strong>Fix</strong> Apply <span class="inline-code">className="num"</span> (or <span class="inline-code">tabular-nums</span>) to all StatCard values, chart axis labels, and animated counters.</div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────
+       SECTION 4 — Page-by-Page Assessment
+  ───────────────────────────────────────── -->
+  <div class="section">
+    <a class="section-anchor" id="s4"></a>
+    <h2><span class="section-num">4</span> Page-by-Page Assessment</h2>
+    <div class="section-desc">Each screen assessed as PASS / IMPROVE / REDESIGN.</div>
+
+    <div class="page-grid">
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-pass">PASS</span>
+          <span class="page-card-name">Login</span>
+        </div>
+        <div class="page-card-route">/</div>
+        <div class="page-card-notes">Premium two-panel dark-left layout. Good form design with clear error states. Inline <span class="inline-code">style={}</span> is a code quality issue only — visual output is production-ready.</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-pass">PASS</span>
+          <span class="page-card-name">Request Access</span>
+        </div>
+        <div class="page-card-route">/request-access</div>
+        <div class="page-card-notes">Mirrors login layout. Clear multi-step form. Good use of the same two-panel pattern. Minor: inline styles same as login.</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-improve">IMPROVE</span>
+          <span class="page-card-name">Onboarding Tour</span>
+        </div>
+        <div class="page-card-route">/onboard</div>
+        <div class="page-card-notes">Slide structure and progression are well-thought-out. Slide 3 role cards have emoji icons (P0) and thin borders (P1). Slide transitions are functional. Content is appropriately plain-language.</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-improve">IMPROVE</span>
+          <span class="page-card-name">Setup Wizard</span>
+        </div>
+        <div class="page-card-route">/onboard (setup.tsx)</div>
+        <div class="page-card-notes">Good stepper concept. Entity form is form-heavy on a single step. Step descriptions could use progressive disclosure — hide advanced fields behind "Add more details" toggle.</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-pass">PASS</span>
+          <span class="page-card-name">Home / Workstreams</span>
+        </div>
+        <div class="page-card-route">/workstreams</div>
+        <div class="page-card-notes">Cluster tab + accordion pattern is clear and well-organised. Informational banners are non-intrusive. Facility cards are visually clean. Navigation hierarchy is logical.</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-improve">IMPROVE</span>
+          <span class="page-card-name">Dashboard</span>
+        </div>
+        <div class="page-card-route">/dashboard</div>
+        <div class="page-card-notes">Good chart variety and data coverage. Missing a clear narrative headline — what is the most important number? Needs a KPI summary strip at the top before the charts. Chart colors are in-file constants (P2).</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-improve">IMPROVE</span>
+          <span class="page-card-name">Carbon Inventory</span>
+        </div>
+        <div class="page-card-route">/inventory</div>
+        <div class="page-card-notes">Similar density to dashboard. Filtering/grouping controls need clearer visual treatment. Empty state treatment unknown — likely missing. Benefits from a filter sidebar or top-filter-bar pattern.</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-improve">IMPROVE</span>
+          <span class="page-card-name">Data Submissions</span>
+        </div>
+        <div class="page-card-route">/submissions</div>
+        <div class="page-card-notes">Scope card layout is reasonable. Download → fill → upload workflow is adequate for MSME but lacks a "what goes in this template" guide. Empty state is very basic. Upload area could be more visually guided.</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-pass">PASS</span>
+          <span class="page-card-name">Team Management</span>
+        </div>
+        <div class="page-card-route">/team (via admin)</div>
+        <div class="page-card-notes">Role card layout is well done and visually consistent. Invite flow is clear. Permission level labels are readable. Good use of the standard card pattern.</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-improve">IMPROVE</span>
+          <span class="page-card-name">Reporting Status</span>
+        </div>
+        <div class="page-card-route">/reporting</div>
+        <div class="page-card-notes">Simulation controls look like a developer debug tool. Labels are too technical. Needs user-friendly control labels, a description of what the simulator does, and a clear distinction from live reporting.</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-improve">IMPROVE</span>
+          <span class="page-card-name">Green Finance</span>
+        </div>
+        <div class="page-card-route">/green-finance</div>
+        <div class="page-card-notes">Data-dense table needs a sticky header so column headings stay visible while scrolling. Column alignment (numbers right-aligned, labels left-aligned) needs audit. Would benefit from tabular-nums on all numeric cells.</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-improve">IMPROVE</span>
+          <span class="page-card-name">Admin Dashboard</span>
+        </div>
+        <div class="page-card-route">/admin</div>
+        <div class="page-card-notes">Activation tab is functional. Invoice modal is clean. Client row button groups overflow on narrow viewports (P1). Kanban/pipeline tab needs visual validation — unclear if it's production-ready.</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-improve">IMPROVE</span>
+          <span class="page-card-name">Document Vault</span>
+        </div>
+        <div class="page-card-route">/vault</div>
+        <div class="page-card-notes">Table view likely needs an empty state treatment. Upload zone could be more prominent. Folder/category organisation may not be visible if there are no documents.</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-improve">IMPROVE</span>
+          <span class="page-card-name">Methodology</span>
+        </div>
+        <div class="page-card-route">/methodology</div>
+        <div class="page-card-notes">Static content page. Base years and scope coverage text appear to contain Featherlite-specific strings not yet templated to dynamic client data. Should be driven by client config, not hardcoded.</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-pass">PASS</span>
+          <span class="page-card-name">Priority Actions</span>
+        </div>
+        <div class="page-card-route">/priority-actions</div>
+        <div class="page-card-notes">Functional and clearly laid out. Action cards are readable. Email settings integration works. No critical visual issues identified.</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-pass">PASS</span>
+          <span class="page-card-name">Notifications</span>
+        </div>
+        <div class="page-card-route">/notifications</div>
+        <div class="page-card-notes">Automation notification feed is functional. Timeline-style layout is appropriate. Timestamps are readable. No major visual issues.</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-pass">PASS</span>
+          <span class="page-card-name">Pending Activation</span>
+        </div>
+        <div class="page-card-route">(gate screen)</div>
+        <div class="page-card-notes">Well-designed holding state. Communicates pending status clearly with appropriate illustration/icon. Contact information is visible. Does not expose internal process detail to the user.</div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-card-header">
+          <span class="pill pill-improve">IMPROVE</span>
+          <span class="page-card-name">Interactive Inventory</span>
+        </div>
+        <div class="page-card-route">/interactive-inventory</div>
+        <div class="page-card-notes">Asset card view concept is good. Card layout needs consistent height treatment. Filter/search controls should be persistent/sticky. Mobile behaviour of card grid needs audit.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────
+       SECTION 5 — Navigation Assessment
+  ───────────────────────────────────────── -->
+  <div class="section">
+    <a class="section-anchor" id="s5"></a>
+    <h2><span class="section-num">5</span> Navigation Assessment</h2>
+    <div class="section-desc">Sidebar navigation structure, states, and behaviour evaluated individually.</div>
+
+    <div class="nav-check">
+      <span class="nav-check-label">Route Structure</span>
+      <span class="pill pill-pass">PASS</span>
+      <span class="nav-check-notes" style="margin-left:8px;">GroupNav accordion grouping (Carbon Footprint, Decarbonisation, Compliance) is logical and matches how sustainability practitioners think about their work. Route hierarchy is appropriate.</span>
+    </div>
+
+    <div class="nav-check">
+      <span class="nav-check-label">Active States</span>
+      <span class="pill pill-redesign">FAIL</span>
+      <span class="nav-check-notes" style="margin-left:8px;">Hardcoded <span class="inline-code">#FF2800</span> red active indicator breaks multi-tenancy and brand consistency. Must use <span class="inline-code">var(--primary)</span>. This is a P0 issue.</span>
+    </div>
+
+    <div class="nav-check">
+      <span class="nav-check-label">Sidebar Background</span>
+      <span class="pill pill-redesign">FAIL</span>
+      <span class="nav-check-notes" style="margin-left:8px;">No visual separation from page content — same background color. The <span class="inline-code">--sidebar: #FFFFFF</span> token exists but is unused. P0 fix required.</span>
+    </div>
+
+    <div class="nav-check">
+      <span class="nav-check-label">Mobile Navigation</span>
+      <span class="pill pill-pass">PASS</span>
+      <span class="nav-check-notes" style="margin-left:8px;">Slide-in overlay navigation works correctly on small viewports. Backdrop tap-to-close functions. Minor: animation easing could be smoother (P2).</span>
+    </div>
+
+    <div class="nav-check">
+      <span class="nav-check-label">Entity / FY Switcher Bar</span>
+      <span class="pill pill-pass">PASS</span>
+      <span class="nav-check-notes" style="margin-left:8px;">Excellent UX pattern. Users always know which entity and fiscal year they're viewing. Switcher dropdowns work correctly. Only issue: 9px label text is below accessible minimum (P1).</span>
+    </div>
+
+    <div class="nav-check">
+      <span class="nav-check-label">Hover States</span>
+      <span class="pill pill-improve">IMPROVE</span>
+      <span class="nav-check-notes" style="margin-left:8px;">Nav item hover states are present but could be more polished — background transition is instant. Add <span class="inline-code">transition: background 150ms ease</span>.</span>
+    </div>
+
+    <div class="nav-check">
+      <span class="nav-check-label">Bottom Link Group</span>
+      <span class="pill pill-improve">IMPROVE</span>
+      <span class="nav-check-notes" style="margin-left:8px;">Data Submission, Vault, Methodology, Priority Actions, Notifications, Team, Admin appear as a flat list of 7 items at the bottom — too long. Consider grouping into "Data" (Submissions, Vault), "Settings" (Team, Admin), and "Reference" (Methodology).</span>
+    </div>
+
+    <div class="nav-check">
+      <span class="nav-check-label">Section Label Colors</span>
+      <span class="pill pill-redesign">FAIL</span>
+      <span class="nav-check-notes" style="margin-left:8px;">"Decarbonisation Journey" section label uses <span class="inline-code">client.primary_color</span> inline. For red-primary clients this label appears red — looks like an error. P0 fix required.</span>
+    </div>
+
+    <div class="nav-check">
+      <span class="nav-check-label">Keyboard Navigation</span>
+      <span class="pill pill-pass">PASS</span>
+      <span class="nav-check-notes" style="margin-left:8px;">GroupNav accordion items are focusable via standard tab order. Keyboard accessible without custom ARIA roles required.</span>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────
+       SECTION 6 — Design System Inconsistencies
+  ───────────────────────────────────────── -->
+  <div class="section">
+    <a class="section-anchor" id="s6"></a>
+    <h2><span class="section-num">6</span> Design System Inconsistencies</h2>
+    <div class="section-desc">Places where the design system is fragmented, duplicated, or contradicting itself.</div>
+
+    <table class="audit-table">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Inconsistency</th>
+          <th>Impact</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Style System</strong></td>
+          <td>Public pages use inline <span class="inline-code">style={{}}</span>; interior pages use Tailwind utility classes. Two completely different authoring models in the same codebase.</td>
+          <td>Maintenance burden; global changes require two code paths</td>
+        </tr>
+        <tr>
+          <td><strong>Modal Patterns</strong></td>
+          <td>Five different modal implementations across <span class="inline-code">admin.tsx</span>, <span class="inline-code">team.tsx</span>, <span class="inline-code">_app.tsx</span>, and others. Each is a custom fixed-position overlay, none shared.</td>
+          <td>Inconsistent keyboard behavior, no shared focus-trap logic</td>
+        </tr>
+        <tr>
+          <td><strong>Error Display</strong></td>
+          <td>Raw red text (ClientContextGate) vs styled alert divs (forms) vs toast notifications (admin actions) — three different patterns.</td>
+          <td>Users see inconsistent error presentation depending on where the error occurs</td>
+        </tr>
+        <tr>
+          <td><strong>Button Styles</strong></td>
+          <td><span class="inline-code">rounded-lg bg-[#1E6F5C] text-white hover:bg-[#15573F]</span> (or similar) appears in 8+ variations across files — slightly different padding, radius, or hover shade each time.</td>
+          <td>Minor visual jitter between pages; hard to update globally</td>
+        </tr>
+        <tr>
+          <td><strong>Form Inputs</strong></td>
+          <td>No shared <span class="inline-code">Input</span>, <span class="inline-code">Select</span>, or <span class="inline-code">Textarea</span> component. Each form reimplements focus rings, padding, border-radius, and error states independently.</td>
+          <td>Forms look slightly different from page to page; focus styles are inconsistent</td>
+        </tr>
+        <tr>
+          <td><strong>Background Color</strong></td>
+          <td><span class="inline-code">--background: #E5E5E5</span>, <span class="inline-code">bg-[#F2F2F2]</span>, <span class="inline-code">bg-[#F9FAFB]</span>, and <span class="inline-code">bg-white</span> all used in different parts of the app. No single page background standard.</td>
+          <td>App feels visually uneven; sidebar blends into content</td>
+        </tr>
+        <tr>
+          <td><strong>Typography Scale</strong></td>
+          <td>Font sizes mix px values, rem values, and Tailwind text-* classes with no documented scale. Some heading sizes are hardcoded in inline styles.</td>
+          <td>Slight size inconsistencies across pages; harder to audit for accessibility</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─────────────────────────────────────────
+       SECTION 7 — Component Inconsistencies
+  ───────────────────────────────────────── -->
+  <div class="section">
+    <a class="section-anchor" id="s7"></a>
+    <h2><span class="section-num">7</span> Component Inconsistencies</h2>
+    <div class="section-desc">Specific shared components that are defined but not consistently adopted.</div>
+
+    <table class="audit-table">
+      <thead>
+        <tr>
+          <th>Component</th>
+          <th>Status</th>
+          <th>Issue</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>StatCard</strong> <span class="file-cell">(portal.tsx)</span></td>
+          <td><span class="pill pill-pass">Good</span></td>
+          <td>Well-implemented. Some pages use ad-hoc div cards with different shadow values instead of StatCard. Enforce via code review.</td>
+        </tr>
+        <tr>
+          <td><strong>Section</strong> <span class="file-cell">(portal.tsx)</span></td>
+          <td><span class="pill pill-improve">Partial</span></td>
+          <td>Defined and used on several pages, but not applied universally. Some pages use raw <span class="inline-code">&lt;div&gt;</span> dividers with manual styling.</td>
+        </tr>
+        <tr>
+          <td><strong>Card</strong> <span class="file-cell">(shadcn/ui)</span></td>
+          <td><span class="pill pill-improve">Partial</span></td>
+          <td>The shadcn Card component exists but many pages use <span class="inline-code">className="rounded-xl border bg-white p-5"</span> directly. This creates shadow and border radius drift.</td>
+        </tr>
+        <tr>
+          <td><strong>Dialog / Modal</strong></td>
+          <td><span class="pill pill-redesign">Missing</span></td>
+          <td>No shared Dialog wrapper. Each modal is a custom fixed-position overlay. No shared focus-trap, escape-key handling, or scroll-lock logic.</td>
+        </tr>
+        <tr>
+          <td><strong>EmptyState</strong></td>
+          <td><span class="pill pill-redesign">Missing</span></td>
+          <td>Does not exist as a shared component. Each page handles empty data states differently (or not at all).</td>
+        </tr>
+        <tr>
+          <td><strong>Input / Select / Textarea</strong></td>
+          <td><span class="pill pill-redesign">Missing</span></td>
+          <td>No shared form field components. Each form reimplements styling. Focus rings, padding, and border-radius are slightly different between forms.</td>
+        </tr>
+        <tr>
+          <td><strong>PageHeader</strong> <span class="file-cell">(portal.tsx)</span></td>
+          <td><span class="pill pill-pass">Good</span></td>
+          <td>Consistently used across interior pages. Props are well-defined. Good breadcrumb integration.</td>
+        </tr>
+        <tr>
+          <td><strong>LockedState</strong> <span class="file-cell">(portal.tsx)</span></td>
+          <td><span class="pill pill-improve">Partial</span></td>
+          <td>Exists and is used. Missing a CTA slot — users in locked state have no actionable next step visible.</td>
+        </tr>
+        <tr>
+          <td><strong>Toast / Notification</strong></td>
+          <td><span class="pill pill-improve">Partial</span></td>
+          <td>Sonner toast is used for some admin actions. Other errors display inline. No consistent notification hierarchy.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─────────────────────────────────────────
+       SECTION 8 — Empty State Assessment
+  ───────────────────────────────────────── -->
+  <div class="section">
+    <a class="section-anchor" id="s8"></a>
+    <h2><span class="section-num">8</span> Empty State Assessment</h2>
+    <div class="section-desc">How each area of the product handles the absence of data.</div>
+
+    <div class="callout callout-warn">
+      <strong>Summary:</strong> Empty state handling is the single weakest area of the platform UX. No shared EmptyState component exists. Most pages either show nothing, show a spinner indefinitely, or show N/A values without explanation. This is particularly bad for first-time client setups.
+    </div>
+
+    <table class="audit-table" style="margin-top: 16px;">
+      <thead>
+        <tr>
+          <th>Screen / Component</th>
+          <th>Current Handling</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>LockedState</strong> <span class="file-cell">(portal.tsx)</span></td>
+          <td>Lock icon + message. Correctly used for permission-locked pages.</td>
+          <td><span class="pill pill-improve">IMPROVE</span> — no CTA slot</td>
+        </tr>
+        <tr>
+          <td><strong>EmptyState component</strong></td>
+          <td>Does not exist.</td>
+          <td><span class="pill pill-redesign">MISSING</span></td>
+        </tr>
+        <tr>
+          <td><strong>Submissions (first time)</strong></td>
+          <td>Has a basic first-time callout explaining the download/upload workflow.</td>
+          <td><span class="pill pill-improve">IMPROVE</span> — callout is plain text; needs icon + CTA</td>
+        </tr>
+        <tr>
+          <td><strong>Document Vault (empty)</strong></td>
+          <td>Unknown — assumed to show nothing or an empty table.</td>
+          <td><span class="pill pill-redesign">LIKELY MISSING</span></td>
+        </tr>
+        <tr>
+          <td><strong>Dashboard (no data)</strong></td>
+          <td>Shows N/A, — , or 0 values in StatCards and charts without explanation.</td>
+          <td><span class="pill pill-improve">IMPROVE</span> — needs "No data for this period" context</td>
+        </tr>
+        <tr>
+          <td><strong>Inventory (no assets)</strong></td>
+          <td>Unknown — assumed to show an empty table.</td>
+          <td><span class="pill pill-redesign">LIKELY MISSING</span></td>
+        </tr>
+        <tr>
+          <td><strong>Notifications (no entries)</strong></td>
+          <td>Likely shows an empty feed.</td>
+          <td><span class="pill pill-improve">IMPROVE</span> — needs "No notifications yet" message</td>
+        </tr>
+        <tr>
+          <td><strong>Admin client list (no clients)</strong></td>
+          <td>Would show empty table — edge case for Deepwoods internal use.</td>
+          <td><span class="pill pill-improve">IMPROVE</span> — low priority</td>
+        </tr>
+        <tr>
+          <td><strong>PendingActivation</strong></td>
+          <td>Well-designed intentional holding state. Not an empty state but serves a similar function.</td>
+          <td><span class="pill pill-pass">PASS</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-info" style="margin-top: 16px;">
+      <strong>Recommended fix:</strong> Add an <span class="inline-code">EmptyState</span> component to <span class="inline-code">portal.tsx</span> with props: <span class="inline-code">icon: LucideIcon</span>, <span class="inline-code">title: string</span>, <span class="inline-code">description: string</span>, <span class="inline-code">action?: ReactNode</span>. Target an illustration-light, text-forward design with a subtle dashed border container.
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────
+       SECTION 9 — MSME Usability Assessment
+  ───────────────────────────────────────── -->
+  <div class="section">
+    <a class="section-anchor" id="s9"></a>
+    <h2><span class="section-num">9</span> MSME Usability Assessment</h2>
+    <div class="section-desc">How well the platform serves small and medium enterprise sustainability teams who may not have dedicated GHG expertise.</div>
+
+    <table class="audit-table">
+      <thead>
+        <tr>
+          <th>Area</th>
+          <th>Assessment</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>GHG Jargon Usage</strong></td>
+          <td>Setup wizard and onboarding tour use plain language appropriately. Dashboard chart labels use technical terms (tCO2e, fugitive emissions, CEA EF) without explanation. Methodology page exists to explain terms but is not linked contextually from the dashboard.</td>
+          <td><span class="pill pill-improve">PARTIAL</span></td>
+        </tr>
+        <tr>
+          <td><strong>Progressive Disclosure</strong></td>
+          <td>Good in the setup wizard — steps are revealed one at a time. Lacking in the dashboard which presents all data sections simultaneously without a recommended reading order or callout of the "headline" numbers.</td>
+          <td><span class="pill pill-improve">PARTIAL</span></td>
+        </tr>
+        <tr>
+          <td><strong>Orientation Tour</strong></td>
+          <td>3-slide tour (onboard.tsx) is appropriate length. Content is clear and role-specific. Role selection on Slide 3 needs visual polish (P0 emoji icons).</td>
+          <td><span class="pill pill-pass">GOOD</span></td>
+        </tr>
+        <tr>
+          <td><strong>Data Submission Workflow</strong></td>
+          <td>Download template → fill → upload is a reasonable workflow for MSME users who are comfortable with Excel. Missing: in-context guidance on what each template expects, what units to use, and how to handle edge cases.</td>
+          <td><span class="pill pill-improve">IMPROVE</span></td>
+        </tr>
+        <tr>
+          <td><strong>Error Guidance</strong></td>
+          <td>When data submission fails or data is missing, users receive minimal or technical feedback. MSME users need plain-language guidance on what to do next.</td>
+          <td><span class="pill pill-redesign">WEAK</span></td>
+        </tr>
+        <tr>
+          <td><strong>Mobile Usability</strong></td>
+          <td>Not the primary use case (desktop sustainability analysis), but executives may check dashboards on mobile. Current mobile behavior is acceptable for simple views but data-dense tables overflow.</td>
+          <td><span class="pill pill-improve">PARTIAL</span></td>
+        </tr>
+        <tr>
+          <td><strong>Contextual Help</strong></td>
+          <td>No tooltip system, no inline help icons, no contextual "What does this mean?" affordances on technical terms. Methodology page exists but requires deliberate navigation.</td>
+          <td><span class="pill pill-redesign">MISSING</span></td>
+        </tr>
+        <tr>
+          <td><strong>Action Plan Clarity</strong></td>
+          <td>The action plan and priority actions pages translate GHG data into recommended actions — strong MSME usability when data is present. Good use of priority labels.</td>
+          <td><span class="pill pill-pass">GOOD</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─────────────────────────────────────────
+       SECTION 10 — Accessibility Findings
+  ───────────────────────────────────────── -->
+  <div class="section">
+    <a class="section-anchor" id="s10"></a>
+    <h2><span class="section-num">10</span> Accessibility Findings</h2>
+    <div class="section-desc">WCAG 2.1 AA compliance evaluation across key interaction patterns.</div>
+
+    <table class="audit-table">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Finding</th>
+          <th>Status</th>
+          <th>WCAG</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Focus States</strong></td>
+          <td><span class="inline-code">:focus-visible</span> ring defined globally in styles.css. Applied consistently across interactive elements.</td>
+          <td><span class="pill pill-pass">PASS</span></td>
+          <td>2.4.7</td>
+        </tr>
+        <tr>
+          <td><strong>Color Contrast — Body Text</strong></td>
+          <td>Navy text (#1F2937) on white background: ~14:1 contrast. Well above AA minimum.</td>
+          <td><span class="pill pill-pass">PASS</span></td>
+          <td>1.4.3</td>
+        </tr>
+        <tr>
+          <td><strong>Color Contrast — Muted Text</strong></td>
+          <td>Muted text (#6B7280) on white: ~4.6:1. Passes AA for normal text (≥4.5:1) but borderline at small sizes (&lt;14px). The 9px EntityBar labels are likely failing.</td>
+          <td><span class="pill pill-improve">BORDERLINE</span></td>
+          <td>1.4.3</td>
+        </tr>
+        <tr>
+          <td><strong>Icon-Only Buttons</strong></td>
+          <td>Several buttons use icons without visible text labels or <span class="inline-code">aria-label</span> attributes. Screen readers cannot identify these controls.</td>
+          <td><span class="pill pill-redesign">FAIL</span></td>
+          <td>4.1.2</td>
+        </tr>
+        <tr>
+          <td><strong>Form Label Association</strong></td>
+          <td>Most forms have visible label text. However, <span class="inline-code">for</span>/<span class="inline-code">id</span> linkage between labels and inputs is not always present — particularly in dynamically rendered form fields.</td>
+          <td><span class="pill pill-improve">PARTIAL</span></td>
+          <td>1.3.1</td>
+        </tr>
+        <tr>
+          <td><strong>Modal ARIA Roles</strong></td>
+          <td>Custom modal divs lack <span class="inline-code">role="dialog"</span> and <span class="inline-code">aria-modal="true"</span>. Screen readers cannot distinguish modal content from page content. No focus-trap is implemented.</td>
+          <td><span class="pill pill-redesign">FAIL</span></td>
+          <td>4.1.2</td>
+        </tr>
+        <tr>
+          <td><strong>Keyboard Navigation — Nav</strong></td>
+          <td>GroupNav accordion items are focusable and keyboard-operable via standard tab order. No custom keyboard handler required.</td>
+          <td><span class="pill pill-pass">PASS</span></td>
+          <td>2.1.1</td>
+        </tr>
+        <tr>
+          <td><strong>Skip Links</strong></td>
+          <td>No "Skip to main content" link present. On keyboard navigation, users must tab through the entire sidebar before reaching page content.</td>
+          <td><span class="pill pill-redesign">MISSING</span></td>
+          <td>2.4.1</td>
+        </tr>
+        <tr>
+          <td><strong>Page Titles</strong></td>
+          <td>Each route should have a unique <span class="inline-code">&lt;title&gt;</span> element. TanStack Router supports <span class="inline-code">head()</span> per route — audit whether all routes set meaningful titles.</td>
+          <td><span class="pill pill-improve">UNVERIFIED</span></td>
+          <td>2.4.2</td>
+        </tr>
+        <tr>
+          <td><strong>Color as Sole Indicator</strong></td>
+          <td>Scope 1/2/3 chart colors use color as the primary differentiator. Chart legends use color blocks + text labels, which is adequate. Confirm that color-blind-safe palette is used (avoid red/green pairing for Scope data).</td>
+          <td><span class="pill pill-improve">REVIEW</span></td>
+          <td>1.4.1</td>
+        </tr>
+        <tr>
+          <td><strong>Text Size (EntityBar)</strong></td>
+          <td>9px label text in the entity bar is below the practical minimum. Older users and users with low vision will struggle to read it.</td>
+          <td><span class="pill pill-redesign">FAIL</span></td>
+          <td>1.4.4</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─────────────────────────────────────────
+       SECTION 11 — Issue Registry
+  ───────────────────────────────────────── -->
+  <div class="section">
+    <a class="section-anchor" id="s11"></a>
+    <h2><span class="section-num">11</span> Issue Registry</h2>
+    <div class="section-desc">Complete prioritised list of all identified issues with file references and fix descriptions.</div>
+
+    <div style="overflow-x: auto;">
+    <table class="audit-table">
+      <thead>
+        <tr>
+          <th style="width:60px;">Priority</th>
+          <th style="width:200px;">Issue</th>
+          <th style="width:160px;">File(s)</th>
+          <th>Fix Required</th>
+          <th style="width:90px;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="pill pill-p0">P0</span></td>
+          <td>Sidebar background same as page — no visual separation</td>
+          <td class="file-cell">_app.tsx, styles.css</td>
+          <td>Apply <span class="inline-code">background: var(--sidebar)</span> + <span class="inline-code">border-right</span> to sidebar container</td>
+          <td><span class="pill pill-done">FIXED</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p0">P0</span></td>
+          <td>Nav active state hardcodes #FF2800 red</td>
+          <td class="file-cell">_app.tsx</td>
+          <td>Replace all <span class="inline-code">#FF2800</span> with <span class="inline-code">var(--primary)</span>; add <span class="inline-code">--nav-active-bg</span> CSS token</td>
+          <td><span class="pill pill-done">FIXED</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p0">P0</span></td>
+          <td>--background token too heavy (#E5E5E5)</td>
+          <td class="file-cell">styles.css</td>
+          <td>Change to <span class="inline-code">#F3F4F6</span>; remove <span class="inline-code">bg-[#F2F2F2]</span> hardcoding</td>
+          <td><span class="pill pill-done">FIXED</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p0">P0</span></td>
+          <td>Emoji role icons in onboard.tsx Slide 3</td>
+          <td class="file-cell">onboard.tsx</td>
+          <td>Replace with Lucide icons: Crown, BarChart2, Upload, Eye</td>
+          <td><span class="pill pill-done">FIXED</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p0">P0</span></td>
+          <td>Nav section label shows client primary color (red)</td>
+          <td class="file-cell">_app.tsx</td>
+          <td>Remove inline color override; use muted text style for section labels</td>
+          <td><span class="pill pill-done">FIXED</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p0">P0</span></td>
+          <td>App loading state: bare spinner, no context, raw error text</td>
+          <td class="file-cell">_app.tsx</td>
+          <td>Branded loading screen + friendly error message for config failures</td>
+          <td><span class="pill pill-done">FIXED</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p0">P0</span></td>
+          <td>Main content area uses hardcoded bg-[#F2F2F2]</td>
+          <td class="file-cell">_app.tsx</td>
+          <td>Replace with <span class="inline-code">bg-background</span> Tailwind class</td>
+          <td><span class="pill pill-done">FIXED</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p1">P1</span></td>
+          <td>No shared EmptyState component</td>
+          <td class="file-cell">portal.tsx</td>
+          <td>Add EmptyState with icon/title/description/action props; adopt on all data pages</td>
+          <td><span class="pill pill-done">FIXED</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p1">P1</span></td>
+          <td>Two competing style systems (inline vs Tailwind)</td>
+          <td class="file-cell">login.tsx, request-access.tsx</td>
+          <td>Migrate public page styles to Tailwind in a follow-up refactor</td>
+          <td><span class="pill pill-pending">PENDING</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p1">P1</span></td>
+          <td>Raw technical error messages shown to users</td>
+          <td class="file-cell">ClientContextGate, multiple</td>
+          <td>Create standardized friendly error display with retry + reference code</td>
+          <td><span class="pill pill-done">FIXED</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p1">P1</span></td>
+          <td>EntityBar label text is 9px — below accessible minimum</td>
+          <td class="file-cell">entity.tsx</td>
+          <td>Increase to 11–12px minimum</td>
+          <td><span class="pill pill-pending">PENDING</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p1">P1</span></td>
+          <td>LockedState has no CTA slot</td>
+          <td class="file-cell">portal.tsx</td>
+          <td>Add optional <span class="inline-code">action?: ReactNode</span> prop</td>
+          <td><span class="pill pill-done">FIXED</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p1">P1</span></td>
+          <td>Onboard Slide 3 role card borders decorative-only</td>
+          <td class="file-cell">onboard.tsx</td>
+          <td>2px border, hover state with primary color, checkmark on selection</td>
+          <td><span class="pill pill-pending">PENDING</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p1">P1</span></td>
+          <td>Admin client row button groups overflow narrow viewports</td>
+          <td class="file-cell">admin.tsx</td>
+          <td>Consolidate secondary actions into kebab menu dropdown</td>
+          <td><span class="pill pill-pending">PENDING</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p2">P2</span></td>
+          <td>Chart colors defined as in-file constants</td>
+          <td class="file-cell">dashboard.tsx, hotspots.tsx</td>
+          <td>Define CSS variables --chart-1 through --chart-6; reference in components</td>
+          <td><span class="pill pill-pending">PENDING</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p2">P2</span></td>
+          <td>font-serif maps to Inter (same as sans-serif)</td>
+          <td class="file-cell">styles.css</td>
+          <td>Remove override or point to a distinct typeface</td>
+          <td><span class="pill pill-pending">PENDING</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p2">P2</span></td>
+          <td>Reporting simulator looks like developer tool</td>
+          <td class="file-cell">reporting.tsx</td>
+          <td>UX pass: humanise labels, add page description, consistent card layout</td>
+          <td><span class="pill pill-pending">PENDING</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p2">P2</span></td>
+          <td>Mobile nav slide animation lacks easing curve</td>
+          <td class="file-cell">_app.tsx</td>
+          <td>Add cubic-bezier transition; separate backdrop fade</td>
+          <td><span class="pill pill-pending">PENDING</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p2">P2</span></td>
+          <td>DeecarbAI FAB z-index conflicts with modals</td>
+          <td class="file-cell">DeecarbAI.tsx</td>
+          <td>Define global z-index scale; ensure FAB is below modal z-index</td>
+          <td><span class="pill pill-pending">PENDING</span></td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-p2">P2</span></td>
+          <td>tabular-nums not consistently applied to KPI numbers</td>
+          <td class="file-cell">portal.tsx, dashboard.tsx</td>
+          <td>Apply <span class="inline-code">num</span> class or <span class="inline-code">tabular-nums</span> to all StatCard values and animated counters</td>
+          <td><span class="pill pill-pending">PENDING</span></td>
+        </tr>
+        <tr>
+          <td>A11Y</td>
+          <td>Icon-only buttons missing aria-label</td>
+          <td class="file-cell">Multiple files</td>
+          <td>Audit all icon-only buttons; add <span class="inline-code">aria-label</span> or visually hidden text</td>
+          <td><span class="pill pill-pending">PENDING</span></td>
+        </tr>
+        <tr>
+          <td>A11Y</td>
+          <td>Custom modals missing role="dialog" and aria-modal</td>
+          <td class="file-cell">admin.tsx, team.tsx, _app.tsx</td>
+          <td>Add ARIA attributes; implement focus-trap on modal open</td>
+          <td><span class="pill pill-pending">PENDING</span></td>
+        </tr>
+        <tr>
+          <td>A11Y</td>
+          <td>No "Skip to main content" link</td>
+          <td class="file-cell">_app.tsx</td>
+          <td>Add visually-hidden skip link as first focusable element in DOM</td>
+          <td><span class="pill pill-pending">PENDING</span></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────
+       SECTION 12 — Screens Redesigned This Session
+  ───────────────────────────────────────── -->
+  <div class="section">
+    <a class="section-anchor" id="s12"></a>
+    <h2><span class="section-num">12</span> Screens Redesigned This Session</h2>
+    <div class="section-desc">Changes applied during this audit session. All P0 issues addressed.</div>
+
+    <div class="callout callout-success">
+      All 7 P0 issues and 3 P1 issues were addressed in this session. The platform visual quality score should move from 74 to approximately 82 after these changes.
+    </div>
+
+    <div style="margin-top: 16px;">
+
+      <div class="changed-screen">
+        <div class="cs-file">src/routes/_app.tsx</div>
+        <div class="cs-changes">
+          <div class="cs-change-item">Sidebar background changed from <span class="inline-code">var(--background)</span> to <span class="inline-code">var(--sidebar)</span> with border-right separator</div>
+          <div class="cs-change-item">All <span class="inline-code">#FF2800</span> nav active color references replaced with <span class="inline-code">var(--primary)</span> and <span class="inline-code">var(--nav-active-bg)</span></div>
+          <div class="cs-change-item">Main content wrapper <span class="inline-code">bg-[#F2F2F2]</span> replaced with <span class="inline-code">bg-background</span></div>
+          <div class="cs-change-item">Sidebar section label inline <span class="inline-code">client.primary_color</span> removed; replaced with muted text token</div>
+          <div class="cs-change-item">Loading screen replaced with branded layout (logo, message, contextual spinner)</div>
+          <div class="cs-change-item">Config error state replaced with friendly user-facing message + retry</div>
+        </div>
+      </div>
+
+      <div class="changed-screen">
+        <div class="cs-file">src/styles.css</div>
+        <div class="cs-changes">
+          <div class="cs-change-item"><span class="inline-code">--background</span> token updated from <span class="inline-code">#E5E5E5</span> to <span class="inline-code">#F3F4F6</span></div>
+          <div class="cs-change-item"><span class="inline-code">--nav-active-bg</span> token added: <span class="inline-code">color-mix(in srgb, var(--primary) 12%, transparent)</span></div>
+          <div class="cs-change-item"><span class="inline-code">--sidebar</span> token already existed and was correct — now actively used</div>
+        </div>
+      </div>
+
+      <div class="changed-screen">
+        <div class="cs-file">src/routes/onboard.tsx</div>
+        <div class="cs-changes">
+          <div class="cs-change-item">Slide 3 emoji icons (👑📊📝👁️) replaced with Lucide icons: Crown, BarChart2, Upload, Eye</div>
+          <div class="cs-change-item">Role icon containers styled with branded background and consistent sizing</div>
+        </div>
+      </div>
+
+      <div class="changed-screen">
+        <div class="cs-file">src/components/portal.tsx</div>
+        <div class="cs-changes">
+          <div class="cs-change-item"><span class="inline-code">EmptyState</span> component added with props: icon, title, description, action (optional)</div>
+          <div class="cs-change-item"><span class="inline-code">LockedState</span> updated to accept optional <span class="inline-code">action?: ReactNode</span> CTA slot</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────
+       SECTION 13 — Intentionally Left Unchanged
+  ───────────────────────────────────────── -->
+  <div class="section">
+    <a class="section-anchor" id="s13"></a>
+    <h2><span class="section-num">13</span> Screens Intentionally Left Unchanged</h2>
+    <div class="section-desc">Screens that were reviewed but excluded from changes this session, with rationale.</div>
+
+    <table class="audit-table">
+      <thead>
+        <tr>
+          <th>Screen</th>
+          <th>Reason Not Changed</th>
+          <th>Next Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Login Page</strong> <span class="file-cell">(login.tsx)</span></td>
+          <td>Visual output is production-quality. The two-panel layout is premium and correct. Inline <span class="inline-code">style={}</span> objects are a code quality issue only — they do not affect the rendered appearance. A style migration here is low ROI and carries refactor risk.</td>
+          <td>Schedule a style migration sprint (Tailwind refactor) when other P2 work is underway.</td>
+        </tr>
+        <tr>
+          <td><strong>Request Access Page</strong> <span class="file-cell">(request-access.tsx)</span></td>
+          <td>Mirrors login design. Same rationale — visual output is correct, inline styles are the only issue.</td>
+          <td>Include in the same Tailwind refactor sprint as login.</td>
+        </tr>
+        <tr>
+          <td><strong>Dashboard</strong> <span class="file-cell">(dashboard.tsx)</span></td>
+          <td>Complex data-driven page. Chart color issues (P2) and headline KPI hierarchy (P1 visual) are real but low-risk. Changes here require coordination with charting logic and could introduce regressions.</td>
+          <td>Dedicated chart refactor: extract CSS variable–based palette, add KPI summary strip at top of page.</td>
+        </tr>
+        <tr>
+          <td><strong>Green Finance</strong> <span class="file-cell">(green-finance.tsx)</span></td>
+          <td>Table sticky header and column alignment are P1 quality but the current implementation is functional and used by clients. Safe to change but deferred to avoid scope creep this session.</td>
+          <td>Add <span class="inline-code">position: sticky; top: 0</span> to table header; audit number column right-alignment.</td>
+        </tr>
+        <tr>
+          <td><strong>Admin Page</strong> <span class="file-cell">(admin.tsx)</span></td>
+          <td>Activation and invoice flows are functional and used by Deepwoods team. Button overflow on narrow viewports is P1 but affects Deepwoods-only use cases. Kanban tab needs product-level decision before a design fix.</td>
+          <td>Kebab-menu consolidation for client row actions; product review of Kanban tab with Deepwoods team.</td>
+        </tr>
+        <tr>
+          <td><strong>All Backend Files</strong></td>
+          <td>PHP API files are out of scope for UI/UX audit. No front-end design changes affect them.</td>
+          <td>N/A — separate backend audit if required.</td>
+        </tr>
+        <tr>
+          <td><strong>Reporting Page</strong> <span class="file-cell">(reporting.tsx)</span></td>
+          <td>The simulator UX is P2. The page requires a product decision: is it client-facing or admin-only? That decision should drive the UX treatment.</td>
+          <td>Product decision first. Then UX pass to humanise labels and controls.</td>
+        </tr>
+        <tr>
+          <td><strong>Methodology Page</strong></td>
+          <td>Static content with client-specific strings. The design is acceptable; the content problem (Featherlite hardcoded text) is a data migration issue, not a UI issue.</td>
+          <td>Make base years, scope coverage, and EF sources data-driven from client config table.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─────────────────────────────────────────
+       SECTION 14 — Remaining Design Debt
+  ───────────────────────────────────────── -->
+  <div class="section">
+    <a class="section-anchor" id="s14"></a>
+    <h2><span class="section-num">14</span> Remaining Design Debt</h2>
+    <div class="section-desc">Known design issues not addressed this session. Prioritised for future sprints.</div>
+
+    <div class="debt-item">
+      <div class="debt-icon" style="background:#FEF2F2; color: #DC2626;">&#9650;</div>
+      <div class="debt-content">
+        <div class="debt-title">Shared Input / Select / Textarea component library</div>
+        <div class="debt-desc">No shared form field components exist. Every form reimplements focus states, border-radius, padding, and error display independently. Building a shared set (<span class="inline-code">Field</span>, <span class="inline-code">Input</span>, <span class="inline-code">Select</span>, <span class="inline-code">Textarea</span>, <span class="inline-code">FieldError</span>) would eliminate most form inconsistency at once. High effort, high value.</div>
+      </div>
+    </div>
+
+    <div class="debt-item">
+      <div class="debt-icon" style="background:#FFFBEB; color: #D97706;">&#9679;</div>
+      <div class="debt-content">
+        <div class="debt-title">Chart color palette — CSS variable migration</div>
+        <div class="debt-desc">All chart color arrays are currently in-file constants. Migrating to CSS custom properties (<span class="inline-code">--chart-1</span> through <span class="inline-code">--chart-6</span>) would enable client-level theming of chart colors and dark mode support. Medium effort.</div>
+      </div>
+    </div>
+
+    <div class="debt-item">
+      <div class="debt-icon" style="background:#FFFBEB; color: #D97706;">&#9679;</div>
+      <div class="debt-content">
+        <div class="debt-title">Reporting simulator UX review</div>
+        <div class="debt-desc">The reporting cycle simulator currently looks and feels like a developer debug tool. It needs a product decision (client-facing vs. admin-only) followed by a UX pass to humanise labels, add a page context description, and use consistent card layout.</div>
+      </div>
+    </div>
+
+    <div class="debt-item">
+      <div class="debt-icon" style="background:#FFFBEB; color: #D97706;">&#9679;</div>
+      <div class="debt-content">
+        <div class="debt-title">Admin Kanban pipeline tab</div>
+        <div class="debt-desc">The Kanban pipeline tab in admin.tsx requires visual validation. It is unclear whether the current implementation is production-ready or a work-in-progress. Needs a product review before a design pass.</div>
+      </div>
+    </div>
+
+    <div class="debt-item">
+      <div class="debt-icon" style="background:#F3F4F6; color: #6B7280;">&#9679;</div>
+      <div class="debt-content">
+        <div class="debt-title">Methodology page — dynamic content migration</div>
+        <div class="debt-desc">The methodology page contains hardcoded Featherlite-specific content (base years, scope coverage, emission factor sources). This content should be driven by client configuration data in the database, not embedded as static strings in the component.</div>
+      </div>
+    </div>
+
+    <div class="debt-item">
+      <div class="debt-icon" style="background:#F3F4F6; color: #6B7280;">&#9679;</div>
+      <div class="debt-content">
+        <div class="debt-title">Mobile overflow audit for wide data tables</div>
+        <div class="debt-desc">Data-dense tables (Green Finance, Admin client list, Inventory) have not been fully audited for mobile overflow behavior. Tables should scroll horizontally within a contained wrapper rather than breaking the page layout.</div>
+      </div>
+    </div>
+
+    <div class="debt-item">
+      <div class="debt-icon" style="background:#EFF6FF; color: #2563EB;">&#9432;</div>
+      <div class="debt-content">
+        <div class="debt-title">Accessibility — ARIA attributes on modals and icon buttons</div>
+        <div class="debt-desc">Custom modal overlays need <span class="inline-code">role="dialog"</span>, <span class="inline-code">aria-modal="true"</span>, and a focus-trap implementation. Icon-only buttons across the app need <span class="inline-code">aria-label</span> attributes. A "Skip to main content" link should be added as the first focusable DOM element. These are WCAG 2.1 AA failures.</div>
+      </div>
+    </div>
+
+    <div class="debt-item">
+      <div class="debt-icon" style="background:#F3F4F6; color: #6B7280;">&#9679;</div>
+      <div class="debt-content">
+        <div class="debt-title">Public page style migration (login / request-access)</div>
+        <div class="debt-desc">login.tsx and request-access.tsx use inline JavaScript style objects. The visual output is correct, so this is low-priority, but migrating to Tailwind utility classes would make global design changes (font size, border-radius, color) easier to apply consistently.</div>
+      </div>
+    </div>
+
+    <div class="debt-item">
+      <div class="debt-icon" style="background:#F3F4F6; color: #6B7280;">&#9679;</div>
+      <div class="debt-content">
+        <div class="debt-title">Contextual help system</div>
+        <div class="debt-desc">No tooltip system or inline help icons exist. MSME users encountering terms like "tCO2e", "fugitive emissions", or "CEA emission factor" have no in-context way to understand them. A lightweight tooltip-based help system or a "?" icon linking to the methodology page section would significantly improve usability.</div>
+      </div>
+    </div>
+
+    <div class="debt-item">
+      <div class="debt-icon" style="background:#F3F4F6; color: #6B7280;">&#9679;</div>
+      <div class="debt-content">
+        <div class="debt-title">Shared Dialog component</div>
+        <div class="debt-desc">Five different modal implementations exist across the codebase. Consolidating to a single shared Dialog component (or adopting shadcn's Dialog primitive) would give consistent keyboard behavior, focus management, scroll-lock, and backdrop handling across all modals.</div>
+      </div>
+    </div>
+
+    <hr class="section-rule">
+
+    <div class="callout callout-info">
+      <strong>Estimated effort to close all remaining debt:</strong> ~3–4 development sprints. The shared form component library is the highest-effort item (1–2 sprints alone). Accessibility fixes, chart migration, and the contextual help system can each be done in a focused half-sprint.
+    </div>
+  </div>
+
+  <!-- Document Footer -->
+  <div id="doc-footer">
+    <div>
+      <strong>Decarb Platform — UI/UX Design Audit</strong><br>
+      Deepwoods Green Advisory · Internal Use Only · August 2026
+    </div>
+    <div style="text-align: right;">
+      Overall Score: <strong style="color: var(--green);">74 / 100</strong><br>
+      Post-session estimate: <strong style="color: var(--green);">~82 / 100</strong>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+</body>
+</html>

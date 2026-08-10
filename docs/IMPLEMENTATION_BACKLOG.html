@@ -1,0 +1,1378 @@
+<title>Implementation Backlog — Decarb Platform</title>
+<style>
+/* ── Design tokens ──────────────────────────────────────────────── */
+:root {
+  --c-ground:    #F4F8F5;
+  --c-surface:   #FFFFFF;
+  --c-surface-2: #EEF5F1;
+  --c-border:    #D0E2D8;
+  --c-text:      #0C1810;
+  --c-text-2:    #55706A;
+  --c-text-3:    #8BAAA2;
+  --c-accent:    #1A7848;
+  --c-accent-2:  #13603A;
+  --c-accent-bg: #E6F3EC;
+  --c-code-bg:   #EDF5F0;
+  --c-code-txt:  #0C4A2E;
+  --c-tag-bg:    #DCF0E5;
+  --c-warn:      #D97706;
+  --c-warn-bg:   #FEF3C7;
+  --f-body:      'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --f-mono:      'Cascadia Code', 'Consolas', 'SF Mono', monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-ground:    #0C1810;
+    --c-surface:   #142019;
+    --c-surface-2: #1A2D23;
+    --c-border:    #243D2E;
+    --c-text:      #DFF0E6;
+    --c-text-2:    #7AA890;
+    --c-text-3:    #4A6E5C;
+    --c-accent:    #2CA864;
+    --c-accent-2:  #3DC47A;
+    --c-accent-bg: #102A1A;
+    --c-code-bg:   #0F2318;
+    --c-code-txt:  #6FE4A6;
+    --c-tag-bg:    #163324;
+    --c-warn:      #FCA826;
+    --c-warn-bg:   #2D1F06;
+  }
+}
+
+:root[data-theme="dark"] {
+  --c-ground:    #0C1810;
+  --c-surface:   #142019;
+  --c-surface-2: #1A2D23;
+  --c-border:    #243D2E;
+  --c-text:      #DFF0E6;
+  --c-text-2:    #7AA890;
+  --c-text-3:    #4A6E5C;
+  --c-accent:    #2CA864;
+  --c-accent-2:  #3DC47A;
+  --c-accent-bg: #102A1A;
+  --c-code-bg:   #0F2318;
+  --c-code-txt:  #6FE4A6;
+  --c-tag-bg:    #163324;
+  --c-warn:      #FCA826;
+  --c-warn-bg:   #2D1F06;
+}
+
+:root[data-theme="light"] {
+  --c-ground:    #F4F8F5;
+  --c-surface:   #FFFFFF;
+  --c-surface-2: #EEF5F1;
+  --c-border:    #D0E2D8;
+  --c-text:      #0C1810;
+  --c-text-2:    #55706A;
+  --c-text-3:    #8BAAA2;
+  --c-accent:    #1A7848;
+  --c-accent-2:  #13603A;
+  --c-accent-bg: #E6F3EC;
+  --c-code-bg:   #EDF5F0;
+  --c-code-txt:  #0C4A2E;
+  --c-tag-bg:    #DCF0E5;
+  --c-warn:      #D97706;
+  --c-warn-bg:   #FEF3C7;
+}
+
+/* ── Reset & base ───────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 15px; scroll-behavior: smooth; }
+
+body {
+  font-family: var(--f-body);
+  background: var(--c-ground);
+  color: var(--c-text);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── Layout ─────────────────────────────────────────────────────── */
+.shell {
+  display: flex;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  gap: 2.5rem;
+  align-items: flex-start;
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────── */
+.sidebar {
+  position: sticky;
+  top: 1.5rem;
+  width: 220px;
+  flex-shrink: 0;
+  padding: 1.5rem 0;
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.75rem;
+}
+
+.sidebar-logo-mark {
+  width: 28px;
+  height: 28px;
+  background: var(--c-accent);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-logo-mark svg { width: 16px; height: 16px; fill: white; }
+
+.sidebar-logo-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--c-text-2);
+}
+
+.nav-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--c-text-3);
+  margin: 0 0 0.5rem;
+}
+
+.nav-items { list-style: none; margin-bottom: 1.5rem; }
+
+.nav-items a {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 5px;
+  text-decoration: none;
+  color: var(--c-text-2);
+  font-size: 0.8rem;
+  transition: background 0.1s, color 0.1s;
+}
+
+.nav-items a:hover,
+.nav-items a:focus-visible {
+  background: var(--c-accent-bg);
+  color: var(--c-accent);
+  outline: none;
+}
+
+.nav-num {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  font-size: 0.65rem;
+  font-weight: 700;
+  font-family: var(--f-mono);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-accent);
+  flex-shrink: 0;
+}
+
+.effort-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.effort-table th {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--c-text-3);
+  text-align: left;
+  padding: 0.3rem 0.4rem;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.effort-table td {
+  padding: 0.3rem 0.4rem;
+  color: var(--c-text-2);
+  border-bottom: 1px solid var(--c-border);
+  font-variant-numeric: tabular-nums;
+}
+
+.effort-table tr:last-child td {
+  font-weight: 700;
+  color: var(--c-text);
+  border-bottom: none;
+}
+
+.effort-table td:first-child { color: var(--c-accent); font-weight: 600; }
+
+/* ── Main content ───────────────────────────────────────────────── */
+.main {
+  flex: 1;
+  min-width: 0;
+  padding: 2rem 0 4rem;
+}
+
+/* ── Page header ────────────────────────────────────────────────── */
+.page-header { margin-bottom: 2.5rem; }
+
+.page-eyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--c-accent);
+  margin-bottom: 0.4rem;
+}
+
+.page-title {
+  font-size: 1.8rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-wrap: balance;
+  margin-bottom: 0.5rem;
+}
+
+.page-subtitle {
+  font-size: 0.875rem;
+  color: var(--c-text-2);
+  max-width: 54ch;
+}
+
+/* ── Dependency diagram ─────────────────────────────────────────── */
+.dep-block {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 2.5rem;
+  overflow-x: auto;
+}
+
+.dep-block-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--c-text-3);
+  margin-bottom: 1rem;
+}
+
+.dep-flow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  white-space: nowrap;
+}
+
+.dep-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.dep-box {
+  background: var(--c-accent-bg);
+  border: 1.5px solid var(--c-accent);
+  border-radius: 7px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--c-accent);
+  text-align: center;
+  min-width: 130px;
+}
+
+.dep-box small {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--c-text-2);
+}
+
+.dep-arrow {
+  align-self: center;
+  color: var(--c-text-3);
+  font-size: 1rem;
+  padding: 0 0.3rem;
+  line-height: 1;
+}
+
+.dep-fork {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-self: center;
+}
+
+.dep-fork-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+/* ── Epic card ──────────────────────────────────────────────────── */
+.epic {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  margin-bottom: 2rem;
+  overflow: hidden;
+}
+
+.epic-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.25rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-surface-2);
+}
+
+.epic-num {
+  font-family: var(--f-mono);
+  font-size: 2.2rem;
+  font-weight: 300;
+  line-height: 1;
+  color: var(--c-accent);
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.epic-title-block { flex: 1; min-width: 0; }
+
+.epic-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 0.25rem;
+}
+
+.epic-tagline {
+  font-size: 0.8rem;
+  color: var(--c-text-2);
+  font-style: italic;
+}
+
+.epic-chips {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.chip {
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.chip-effort { background: var(--c-tag-bg); color: var(--c-accent); }
+.chip-dep    { background: var(--c-surface); border: 1px solid var(--c-border); color: var(--c-text-2); }
+.chip-blockers { background: var(--c-warn-bg); color: var(--c-warn); }
+
+/* ── Epic body ──────────────────────────────────────────────────── */
+.epic-body { padding: 1.25rem 1.5rem; }
+
+.epic-objectives {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.obj-box {
+  background: var(--c-ground);
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+}
+
+.obj-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--c-accent);
+  margin-bottom: 0.35rem;
+}
+
+.obj-text { font-size: 0.82rem; color: var(--c-text); line-height: 1.5; }
+
+/* ── Sections grid ──────────────────────────────────────────────── */
+.sections-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.section { }
+
+.section-full { grid-column: 1 / -1; }
+
+.section-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--c-text-3);
+  margin-bottom: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--c-border);
+}
+
+/* ── DOD list ───────────────────────────────────────────────────── */
+.dod-list { list-style: none; }
+
+.dod-list li {
+  font-size: 0.8rem;
+  color: var(--c-text);
+  padding: 0.25rem 0;
+  padding-left: 1.25rem;
+  position: relative;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.dod-list li:last-child { border-bottom: none; }
+
+.dod-list li::before {
+  content: '◆';
+  font-size: 0.5rem;
+  color: var(--c-accent);
+  position: absolute;
+  left: 0.1rem;
+  top: 0.45rem;
+}
+
+/* ── File list ──────────────────────────────────────────────────── */
+.file-list { list-style: none; }
+
+.file-list li {
+  font-size: 0.775rem;
+  padding: 0.2rem 0;
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.file-list li:last-child { border-bottom: none; }
+
+.file-path {
+  font-family: var(--f-mono);
+  font-size: 0.72rem;
+  color: var(--c-accent);
+  background: var(--c-code-bg);
+  padding: 0.05rem 0.35rem;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.file-new {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--c-warn);
+  background: var(--c-warn-bg);
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.file-desc { font-size: 0.75rem; color: var(--c-text-2); }
+
+/* ── Code block ─────────────────────────────────────────────────── */
+.code-block {
+  background: var(--c-code-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 7px;
+  overflow-x: auto;
+  margin: 0;
+}
+
+.code-block pre {
+  padding: 0.85rem 1rem;
+  font-family: var(--f-mono);
+  font-size: 0.72rem;
+  line-height: 1.6;
+  color: var(--c-code-txt);
+  white-space: pre;
+}
+
+/* ── Change list ────────────────────────────────────────────────── */
+.change-list { list-style: none; }
+
+.change-list li {
+  font-size: 0.8rem;
+  color: var(--c-text);
+  padding: 0.2rem 0 0.2rem 1.1rem;
+  position: relative;
+  border-bottom: 1px solid var(--c-border);
+  line-height: 1.4;
+}
+
+.change-list li:last-child { border-bottom: none; }
+
+.change-list li::before {
+  content: '→';
+  font-size: 0.7rem;
+  color: var(--c-text-3);
+  position: absolute;
+  left: 0;
+  top: 0.28rem;
+}
+
+.change-list li code {
+  font-family: var(--f-mono);
+  font-size: 0.7rem;
+  background: var(--c-code-bg);
+  color: var(--c-accent);
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+}
+
+/* ── Checklist ──────────────────────────────────────────────────── */
+.checklist { list-style: none; }
+
+.checklist li {
+  font-size: 0.78rem;
+  color: var(--c-text);
+  padding: 0.25rem 0 0.25rem 1.5rem;
+  position: relative;
+  border-bottom: 1px solid var(--c-border);
+  line-height: 1.4;
+}
+
+.checklist li:last-child { border-bottom: none; }
+
+.checklist li::before {
+  content: '';
+  width: 13px;
+  height: 13px;
+  border: 1.5px solid var(--c-border);
+  border-radius: 3px;
+  background: var(--c-surface);
+  position: absolute;
+  left: 0.1rem;
+  top: 0.38rem;
+}
+
+.checklist li code {
+  font-family: var(--f-mono);
+  font-size: 0.7rem;
+  background: var(--c-code-bg);
+  color: var(--c-accent);
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+}
+
+/* ── None badge ─────────────────────────────────────────────────── */
+.none-badge {
+  font-size: 0.78rem;
+  color: var(--c-text-3);
+  font-style: italic;
+}
+
+/* ── Summary table ──────────────────────────────────────────────── */
+.summary-table-wrap {
+  overflow-x: auto;
+  margin-bottom: 2.5rem;
+}
+
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.summary-table th {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--c-text-3);
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid var(--c-border);
+  white-space: nowrap;
+}
+
+.summary-table td {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--c-border);
+  color: var(--c-text-2);
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-table tr:last-child td {
+  font-weight: 700;
+  color: var(--c-text);
+  border-bottom: none;
+}
+
+.summary-table .t-epic {
+  font-weight: 600;
+  color: var(--c-accent);
+  font-family: var(--f-mono);
+  font-size: 0.75rem;
+}
+
+.summary-table .t-blockers {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.b-tag {
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-family: var(--f-mono);
+  background: var(--c-tag-bg);
+  color: var(--c-accent);
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────── */
+@media (max-width: 860px) {
+  .shell { flex-direction: column; padding: 0 1rem; gap: 0; }
+  .sidebar { position: static; width: 100%; padding: 1.5rem 0 0; border-bottom: 1px solid var(--c-border); margin-bottom: 1.5rem; }
+  .epic-objectives { grid-template-columns: 1fr; }
+  .sections-grid { grid-template-columns: 1fr; }
+  .section-full { grid-column: 1; }
+  .epic-chips { justify-content: flex-start; }
+  .dep-flow { flex-wrap: wrap; gap: 0.5rem; }
+}
+
+@media (max-width: 560px) {
+  .epic-header { flex-direction: column; gap: 0.75rem; }
+  .epic-num { font-size: 1.6rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+</style>
+
+<div class="shell">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────── -->
+  <nav class="sidebar" aria-label="Epics">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-mark">
+        <svg viewBox="0 0 16 16"><path d="M8 1L14 5V11L8 15L2 11V5L8 1Z"/></svg>
+      </div>
+      <span class="sidebar-logo-text">Decarb Platform</span>
+    </div>
+
+    <p class="nav-label">Epics</p>
+    <ul class="nav-items">
+      <li><a href="#epic-1"><span class="nav-num">1</span>Auth &amp; Role Foundation</a></li>
+      <li><a href="#epic-2"><span class="nav-num">2</span>Client Provisioning</a></li>
+      <li><a href="#epic-3"><span class="nav-num">3</span>White-Label Comms</a></li>
+      <li><a href="#epic-4"><span class="nav-num">4</span>Consolidated Entity</a></li>
+      <li><a href="#epic-5"><span class="nav-num">5</span>Per-Client Config</a></li>
+      <li><a href="#epic-6"><span class="nav-num">6</span>Product Bug Fixes</a></li>
+    </ul>
+
+    <p class="nav-label">Effort</p>
+    <table class="effort-table">
+      <thead><tr><th>Epic</th><th>Days</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>1</td></tr>
+        <tr><td>2</td><td>5</td></tr>
+        <tr><td>3</td><td>2</td></tr>
+        <tr><td>4</td><td>0.5</td></tr>
+        <tr><td>5</td><td>3</td></tr>
+        <tr><td>6</td><td>2</td></tr>
+        <tr><td>Total</td><td>~13–14</td></tr>
+      </tbody>
+    </table>
+  </nav>
+
+  <!-- ── Main ─────────────────────────────────────────────────── -->
+  <main class="main">
+
+    <header class="page-header">
+      <p class="page-eyebrow">Sprint 2–4 — 15 Blockers</p>
+      <h1 class="page-title">Implementation Backlog</h1>
+      <p class="page-subtitle">Once all Epics are complete, the platform can onboard any new client without code changes.</p>
+    </header>
+
+    <!-- Dependency diagram -->
+    <div class="dep-block">
+      <p class="dep-block-title">Dependency chain</p>
+      <div class="dep-flow">
+        <div class="dep-node">
+          <div class="dep-box">Epic 1<small>Auth &amp; Role</small></div>
+        </div>
+        <span class="dep-arrow">→</span>
+        <div class="dep-fork">
+          <div class="dep-fork-row">
+            <div class="dep-box">Epic 2<small>Provisioning</small></div>
+            <span class="dep-arrow">→</span>
+            <div class="dep-box">Epic 3<small>Communications</small></div>
+            <span class="dep-arrow">→</span>
+            <div class="dep-box">Epic 5<small>Per-Client Config</small></div>
+            <span class="dep-arrow">→</span>
+            <div class="dep-box">Epic 6<small>Bug Fixes</small></div>
+          </div>
+          <div class="dep-fork-row">
+            <div class="dep-box">Epic 4<small>Entity Logic</small></div>
+            <span class="dep-arrow" style="opacity:0.3">→</span>
+            <span style="font-size:0.72rem;color:var(--c-text-3);align-self:center">also unlocks Epic 5</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary table -->
+    <div class="summary-table-wrap">
+      <table class="summary-table">
+        <thead>
+          <tr>
+            <th>Epic</th>
+            <th>Title</th>
+            <th>Effort</th>
+            <th>Blockers addressed</th>
+            <th>Depends on</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="t-epic">E-1</td>
+            <td>Auth &amp; Role Foundation</td>
+            <td>1 day</td>
+            <td class="t-blockers"><span class="b-tag">C-1</span><span class="b-tag">A-3</span></td>
+            <td>None</td>
+          </tr>
+          <tr>
+            <td class="t-epic">E-2</td>
+            <td>Client Provisioning</td>
+            <td>5 days</td>
+            <td class="t-blockers"><span class="b-tag">A-1</span><span class="b-tag">A-2</span></td>
+            <td>E-1</td>
+          </tr>
+          <tr>
+            <td class="t-epic">E-3</td>
+            <td>White-Label Communications</td>
+            <td>2 days</td>
+            <td class="t-blockers"><span class="b-tag">B-1</span><span class="b-tag">B-2</span><span class="b-tag">B-3</span></td>
+            <td>E-2</td>
+          </tr>
+          <tr>
+            <td class="t-epic">E-4</td>
+            <td>Consolidated Entity Logic</td>
+            <td>0.5 day</td>
+            <td class="t-blockers"><span class="b-tag">C-2</span></td>
+            <td>E-1</td>
+          </tr>
+          <tr>
+            <td class="t-epic">E-5</td>
+            <td>Per-Client Config &amp; Analytics</td>
+            <td>3 days</td>
+            <td class="t-blockers"><span class="b-tag">B-4</span><span class="b-tag">E-1</span><span class="b-tag">E-2</span></td>
+            <td>E-3, E-4</td>
+          </tr>
+          <tr>
+            <td class="t-epic">E-6</td>
+            <td>Product Bug Fixes</td>
+            <td>2 days</td>
+            <td class="t-blockers"><span class="b-tag">D-1</span><span class="b-tag">F-1</span><span class="b-tag">F-2</span><span class="b-tag">F-3</span></td>
+            <td>E-5</td>
+          </tr>
+          <tr>
+            <td colspan="2"><strong>Total</strong></td>
+            <td><strong>~13–14 days</strong></td>
+            <td colspan="2"><strong>15 blockers</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════
+         EPIC 1
+    ══════════════════════════════════════════════════════════════ -->
+    <article class="epic" id="epic-1">
+      <div class="epic-header">
+        <span class="epic-num">01</span>
+        <div class="epic-title-block">
+          <h2 class="epic-title">Auth &amp; Role Foundation</h2>
+          <p class="epic-tagline">"Before anything else works, auth must work."</p>
+        </div>
+        <div class="epic-chips">
+          <span class="chip chip-effort">1 day</span>
+          <span class="chip chip-dep">No deps</span>
+          <span class="chip chip-blockers">C-1 · A-3</span>
+        </div>
+      </div>
+      <div class="epic-body">
+        <div class="epic-objectives">
+          <div class="obj-box">
+            <p class="obj-label">Business objective</p>
+            <p class="obj-text">No authenticated user is silently logged out. Administrators can create client accounts with the correct platform roles through the API.</p>
+          </div>
+          <div class="obj-box">
+            <p class="obj-label">Technical objective</p>
+            <p class="obj-text">Remove <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">featherlite_team</code>, <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">featherlite_leadership</code>, <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">automation_demo</code> from the <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">users.role</code> ENUM. Update <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">users.php</code> <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">$validRoles</code>. Add <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">client_id</code> to user INSERT.</p>
+          </div>
+        </div>
+
+        <div class="sections-grid">
+          <div class="section section-full">
+            <p class="section-label">Definition of Done</p>
+            <ul class="dod-list">
+              <li>The <code style="font-family:var(--f-mono);font-size:0.85em">role</code> ENUM contains exactly the 5 generic platform roles</li>
+              <li>All existing users holding legacy roles are migrated before the ALTER runs</li>
+              <li><code style="font-family:var(--f-mono);font-size:0.85em">users.php POST</code> accepts exactly <code style="font-family:var(--f-mono);font-size:0.85em">sustainability_team | client_uploader | client_leadership | deepwoods_admin | deepwoods_coordinator</code> and rejects all others with 400</li>
+              <li>A new user with any valid role can log in without silent logout</li>
+              <li>Featherlite's existing users continue to work after migration</li>
+            </ul>
+          </div>
+
+          <div class="section">
+            <p class="section-label">Files affected</p>
+            <ul class="file-list">
+              <li><span class="file-path">database/schema_combined.sql</span><span class="file-desc">— ALTER TABLE ENUM definition</span></li>
+              <li><span class="file-path">database/migrations/001_migrate_legacy_roles.sql</span><span class="file-new">NEW</span></li>
+              <li><span class="file-path">backend/api/users.php</span><span class="file-desc">— $validRoles + client_id in INSERT</span></li>
+            </ul>
+          </div>
+
+          <div class="section">
+            <p class="section-label">API changes</p>
+            <ul class="change-list">
+              <li><code>users.php:25</code> — <code>$validRoles</code> updated to 5 platform roles</li>
+              <li><code>users.php POST INSERT</code> — add <code>client_id</code>; validate it exists in <code>clients</code></li>
+              <li>All other endpoints: no change (they already use session <code>client_id</code>)</li>
+            </ul>
+          </div>
+
+          <div class="section section-full">
+            <p class="section-label">Database migration</p>
+            <div class="code-block"><pre>-- Step 1: migrate existing legacy-role users BEFORE the ALTER
+UPDATE users SET role = 'sustainability_team'
+  WHERE role IN ('featherlite_team', 'automation_demo');
+UPDATE users SET role = 'client_leadership'
+  WHERE role = 'featherlite_leadership';
+
+-- Step 2: remove legacy values from the ENUM
+ALTER TABLE users
+  MODIFY COLUMN role
+    ENUM('sustainability_team','client_uploader','client_leadership',
+         'deepwoods_admin','deepwoods_coordinator')
+    NOT NULL DEFAULT 'sustainability_team';</pre></div>
+          </div>
+
+          <div class="section">
+            <p class="section-label">UI changes</p>
+            <p class="none-badge">None — role guards in <code style="font-family:var(--f-mono);font-size:0.85em">_app.tsx ROLE_META</code> resolve correctly once the ENUM is fixed.</p>
+          </div>
+
+          <div class="section">
+            <p class="section-label">Testing checklist</p>
+            <ul class="checklist">
+              <li>Featherlite users with legacy roles can log in after migration</li>
+              <li><code>POST /api/users.php</code> with <code>role=featherlite_team</code> → 400</li>
+              <li><code>POST /api/users.php</code> with <code>role=sustainability_team</code> + valid <code>client_id</code> → 201</li>
+              <li>New <code>sustainability_team</code> user logs in, no silent logout</li>
+              <li>New <code>client_uploader</code> user logs in, no silent logout</li>
+              <li><code>ROLE_META</code> in <code>_app.tsx</code> resolves correctly for all five roles</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ══════════════════════════════════════════════════════════
+         EPIC 2
+    ══════════════════════════════════════════════════════════════ -->
+    <article class="epic" id="epic-2">
+      <div class="epic-header">
+        <span class="epic-num">02</span>
+        <div class="epic-title-block">
+          <h2 class="epic-title">Client Provisioning</h2>
+          <p class="epic-tagline">"If you can't create a client, you can't onboard anyone."</p>
+        </div>
+        <div class="epic-chips">
+          <span class="chip chip-effort">5 days</span>
+          <span class="chip chip-dep">Needs E-1</span>
+          <span class="chip chip-blockers">A-1 · A-2</span>
+        </div>
+      </div>
+      <div class="epic-body">
+        <div class="epic-objectives">
+          <div class="obj-box">
+            <p class="obj-label">Business objective</p>
+            <p class="obj-text">Deepwoods staff can onboard a new client — company details, entities, fiscal year configuration, first user — entirely through the portal without direct database or server access.</p>
+          </div>
+          <div class="obj-box">
+            <p class="obj-label">Technical objective</p>
+            <p class="obj-text">Create <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">clients.php</code> CRUD endpoint. Wire <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">onboard.tsx</code> final step to POST. Connect all four admin console tabs to live API data. Remove all <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">fl_</code>-prefixed localStorage keys.</p>
+          </div>
+        </div>
+
+        <div class="sections-grid">
+          <div class="section section-full">
+            <p class="section-label">Definition of Done</p>
+            <ul class="dod-list">
+              <li>Completing the onboarding wizard creates rows in <code style="font-family:var(--f-mono);font-size:0.85em">clients</code>, <code style="font-family:var(--f-mono);font-size:0.85em">client_entities</code>, and <code style="font-family:var(--f-mono);font-size:0.85em">client_config</code> atomically</li>
+              <li>Admin console client list is sourced from the database — <code style="font-family:var(--f-mono);font-size:0.85em">DUMMY_CLIENTS</code> static array removed</li>
+              <li>Admin can create a user for any client with any valid role via the console</li>
+              <li>Submission queue and audit log tabs show real, client-scoped data from the API</li>
+              <li>No <code style="font-family:var(--f-mono);font-size:0.85em">fl_clients</code> or <code style="font-family:var(--f-mono);font-size:0.85em">fl_onboard_draft</code> written to localStorage</li>
+              <li>Duplicate slug returns a 409 with a clear error message</li>
+            </ul>
+          </div>
+
+          <div class="section">
+            <p class="section-label">Files affected</p>
+            <ul class="file-list">
+              <li><span class="file-path">backend/api/clients.php</span><span class="file-new">NEW</span></li>
+              <li><span class="file-path">src/routes/onboard.tsx</span><span class="file-desc">— wire 7 steps to API</span></li>
+              <li><span class="file-path">src/routes/_app.admin.tsx</span><span class="file-desc">— all 4 tabs rewrite</span></li>
+              <li><span class="file-path">backend/api/users.php</span><span class="file-desc">— GET scoped to admin's client</span></li>
+              <li><span class="file-path">src/lib/api.ts</span><span class="file-desc">— add <code>useClients()</code> hook</span></li>
+            </ul>
+          </div>
+
+          <div class="section">
+            <p class="section-label">Database changes</p>
+            <p class="none-badge">None — <code style="font-family:var(--f-mono);font-size:0.85em">clients</code>, <code style="font-family:var(--f-mono);font-size:0.85em">client_entities</code>, <code style="font-family:var(--f-mono);font-size:0.85em">client_config</code> tables already exist. This Epic populates them via the API.</p>
+          </div>
+
+          <div class="section section-full">
+            <p class="section-label">API changes (new endpoint: clients.php)</p>
+            <ul class="change-list">
+              <li><code>GET /api/clients.php</code> — list all clients (deepwoods_admin only)</li>
+              <li><code>POST /api/clients.php</code> — create client + entities + default config rows atomically; duplicate slug → 409</li>
+              <li><code>PATCH /api/clients.php?id=</code> — update client name or config values</li>
+              <li><code>GET /api/clients.php?id=</code> — single client detail</li>
+            </ul>
+          </div>
+
+          <div class="section section-full">
+            <p class="section-label">UI changes</p>
+            <ul class="change-list">
+              <li><code>onboard.tsx</code> — remove all localStorage persistence; buffer in React state; final step calls <code>POST /api/clients.php</code>; <code>MONTHS_SHORT</code> derived from selected fiscal year start, not hardcoded; <code>fl_onboard_draft</code> key removed</li>
+              <li><code>_app.admin.tsx</code> — Clients tab: replace <code>DUMMY_CLIENTS</code> with <code>useClients()</code>; Users tab: replace hardcoded array with <code>useUsers()</code>; Submissions tab: <code>useSubmissions(&#123; clientId &#125;)</code>; Audit tab: <code>useAuditLog(&#123; clientId &#125;)</code>; wire "Create User", "Activate", "Deactivate" buttons to API</li>
+            </ul>
+          </div>
+
+          <div class="section section-full">
+            <p class="section-label">Testing checklist</p>
+            <ul class="checklist">
+              <li>Completing onboarding wizard creates client row in DB</li>
+              <li>Entity rows created for each entity entered in the wizard</li>
+              <li>Default <code>client_config</code> rows created on completion</li>
+              <li>Admin console client list shows real clients from DB</li>
+              <li>Client B appears alongside Client A immediately after onboarding</li>
+              <li>Admin can create a user for Client B with role <code>sustainability_team</code></li>
+              <li>Submissions queue filters to the selected client</li>
+              <li>Audit log tab filters to the selected client</li>
+              <li>Duplicate slug rejected with 409</li>
+              <li>No <code>fl_clients</code> or <code>fl_onboard_draft</code> in localStorage after any flow</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ══════════════════════════════════════════════════════════
+         EPIC 3
+    ══════════════════════════════════════════════════════════════ -->
+    <article class="epic" id="epic-3">
+      <div class="epic-header">
+        <span class="epic-num">03</span>
+        <div class="epic-title-block">
+          <h2 class="epic-title">White-Label Communications</h2>
+          <p class="epic-tagline">"Every email must speak for the correct client, not Featherlite."</p>
+        </div>
+        <div class="epic-chips">
+          <span class="chip chip-effort">2 days</span>
+          <span class="chip chip-dep">Needs E-2</span>
+          <span class="chip chip-blockers">B-1 · B-2 · B-3</span>
+        </div>
+      </div>
+      <div class="epic-body">
+        <div class="epic-objectives">
+          <div class="obj-box">
+            <p class="obj-label">Business objective</p>
+            <p class="obj-text">Every automated email — password resets, notification digests, status updates — is branded to the correct client. No external client sees "Featherlite GHG Portal" in any communication.</p>
+          </div>
+          <div class="obj-box">
+            <p class="obj-label">Technical objective</p>
+            <p class="obj-text">Remove all "Featherlite GHG Portal" string literals from the PHP mail layer. Replace with dynamic lookups: portal name from <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">client_config.portal_name</code>, portal URL from <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">client_config.portal_url</code>, notification content from the <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">priority_items</code> table.</p>
+          </div>
+        </div>
+
+        <div class="sections-grid">
+          <div class="section section-full">
+            <p class="section-label">Definition of Done</p>
+            <ul class="dod-list">
+              <li>Password reset email subject and body use the client's <code style="font-family:var(--f-mono);font-size:0.85em">portal_name</code> from <code style="font-family:var(--f-mono);font-size:0.85em">client_config</code></li>
+              <li><code style="font-family:var(--f-mono);font-size:0.85em">Smtp.php $fromName</code> is a constructor parameter, not a hardcoded constant</li>
+              <li>Notification digest links to the client's <code style="font-family:var(--f-mono);font-size:0.85em">portal_url</code> from config</li>
+              <li>Notification content pulled from <code style="font-family:var(--f-mono);font-size:0.85em">priority_items</code> table — static <code style="font-family:var(--f-mono);font-size:0.85em">$ACTION_ITEMS</code> / <code style="font-family:var(--f-mono);font-size:0.85em">$UPDATE_ITEMS</code> arrays removed</li>
+              <li><code style="font-family:var(--f-mono);font-size:0.85em">grep "Featherlite" backend/api/forgot-password.php backend/api/Smtp.php backend/api/send-notification.php</code> returns zero matches</li>
+            </ul>
+          </div>
+
+          <div class="section">
+            <p class="section-label">Files affected</p>
+            <ul class="file-list">
+              <li><span class="file-path">backend/api/forgot-password.php</span><span class="file-desc">— portal_name from DB</span></li>
+              <li><span class="file-path">backend/api/Smtp.php</span><span class="file-desc">— parameterize $fromName</span></li>
+              <li><span class="file-path">backend/api/send-notification.php</span><span class="file-desc">— portal_url + dynamic content</span></li>
+              <li><span class="file-path">database/migrations/002_client_config_comms_keys.sql</span><span class="file-new">NEW</span></li>
+            </ul>
+          </div>
+
+          <div class="section">
+            <p class="section-label">Database changes</p>
+            <ul class="change-list">
+              <li>New <code>client_config</code> key: <code>portal_name</code> — e.g. "Featherlite GHG Portal"</li>
+              <li>New <code>client_config</code> key: <code>portal_url</code> — e.g. "https://featherlite.sustainablyyours.me"</li>
+              <li>Migration seeds both keys for Featherlite; Epic 2 onboarding wizard collects them as required fields</li>
+            </ul>
+          </div>
+
+          <div class="section section-full">
+            <p class="section-label">API changes</p>
+            <ul class="change-list">
+              <li><code>forgot-password.php</code> — JOIN <code>users → clients</code>; use <code>$client['portal_name']</code> in subject/body</li>
+              <li><code>Smtp.php</code> — accept <code>$fromName</code> as constructor arg; update callers; EHLO hostname from config</li>
+              <li><code>send-notification.php</code> — replace <code>$PORTAL_URL</code> with <code>getConfig($pdo, $clientId, 'portal_url')</code>; replace static arrays with <code>SELECT * FROM priority_items WHERE client_id = ? ORDER BY priority DESC LIMIT 5</code></li>
+            </ul>
+          </div>
+
+          <div class="section">
+            <p class="section-label">UI changes</p>
+            <p class="none-badge">None.</p>
+          </div>
+
+          <div class="section">
+            <p class="section-label">Testing checklist</p>
+            <ul class="checklist">
+              <li>Password reset for Client B references Client B's portal_name</li>
+              <li>Password reset for Client A (Featherlite) still shows "Featherlite GHG Portal"</li>
+              <li>Notification digest for Client B links to Client B's portal_url</li>
+              <li>Notification content matches Client B's actual <code>priority_items</code> rows</li>
+              <li>"From" name does not contain "Featherlite" for Client B emails</li>
+              <li>EHLO hostname does not contain "featherlite"</li>
+              <li>grep "Featherlite" in the three PHP files → zero matches</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ══════════════════════════════════════════════════════════
+         EPIC 4
+    ══════════════════════════════════════════════════════════════ -->
+    <article class="epic" id="epic-4">
+      <div class="epic-header">
+        <span class="epic-num">04</span>
+        <div class="epic-title-block">
+          <h2 class="epic-title">Consolidated Entity Logic</h2>
+          <p class="epic-tagline">"Any client's consolidated entity must work, not just FL."</p>
+        </div>
+        <div class="epic-chips">
+          <span class="chip chip-effort">0.5 day</span>
+          <span class="chip chip-dep">Needs E-1</span>
+          <span class="chip chip-blockers">C-2</span>
+        </div>
+      </div>
+      <div class="epic-body">
+        <div class="epic-objectives">
+          <div class="obj-box">
+            <p class="obj-label">Business objective</p>
+            <p class="obj-text">All decarbonisation and credits data endpoints return correct results for any client, regardless of how their consolidated entity is named.</p>
+          </div>
+          <div class="obj-box">
+            <p class="obj-label">Technical objective</p>
+            <p class="obj-text">Replace the hardcoded <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">$entity !== 'FL'</code> check in four PHP endpoints with a DB-driven consolidated entity lookup per client.</p>
+          </div>
+        </div>
+
+        <div class="sections-grid">
+          <div class="section section-full">
+            <p class="section-label">Definition of Done</p>
+            <ul class="dod-list">
+              <li>All four endpoints determine consolidated status by querying <code style="font-family:var(--f-mono);font-size:0.85em">client_entities WHERE client_id = ? AND is_consolidated = 1</code></li>
+              <li>Passing a consolidated entity code for ANY client returns all-entity data</li>
+              <li>Passing a non-consolidated entity code returns only that entity's data</li>
+              <li>Featherlite's existing behaviour is unchanged (FL still returns all-entity data)</li>
+              <li>The string literal <code style="font-family:var(--f-mono);font-size:0.85em">'FL'</code> does not appear in any of the four files</li>
+            </ul>
+          </div>
+
+          <div class="section">
+            <p class="section-label">Files affected</p>
+            <ul class="file-list">
+              <li><span class="file-path">backend/api/decarb/actions.php</span></li>
+              <li><span class="file-path">backend/api/decarb/assets.php</span></li>
+              <li><span class="file-path">backend/api/credits/irec.php</span></li>
+              <li><span class="file-path">backend/api/credits/grid-mwh.php</span></li>
+            </ul>
+          </div>
+
+          <div class="section">
+            <p class="section-label">Database changes</p>
+            <p class="none-badge">None — uses existing <code style="font-family:var(--f-mono);font-size:0.85em">client_entities.is_consolidated</code> column.</p>
+          </div>
+
+          <div class="section section-full">
+            <p class="section-label">API changes — pattern applied to all 4 files</p>
+            <div class="code-block"><pre>// Before:
+if ($entity &amp;&amp; $entity !== 'FL') { /* apply entity filter */ }
+
+// After:
+$consStmt = $pdo->prepare(
+    'SELECT code FROM client_entities WHERE client_id = ? AND is_consolidated = 1'
+);
+$consStmt->execute([$clientId]);
+$consolidatedCode = $consStmt->fetchColumn() ?: null;
+
+if ($entity &amp;&amp; $entity !== $consolidatedCode) { /* apply entity filter */ }</pre></div>
+          </div>
+
+          <div class="section">
+            <p class="section-label">UI changes</p>
+            <p class="none-badge">None — same request/response shape.</p>
+          </div>
+
+          <div class="section">
+            <p class="section-label">Testing checklist</p>
+            <ul class="checklist">
+              <li>Featherlite: <code>?entity=FL</code> → all-entity data</li>
+              <li>Featherlite: <code>?entity=FP</code> → FP-only data</li>
+              <li>Client B: <code>?entity=&lt;consolidated&gt;</code> → all-entity data</li>
+              <li>Client B: <code>?entity=&lt;leaf&gt;</code> → filtered data</li>
+              <li><code>grep -r "'FL'" backend/api/decarb/ backend/api/credits/</code> → zero matches</li>
+              <li>Same four tests pass for <code>assets.php</code>, <code>irec.php</code>, <code>grid-mwh.php</code></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ══════════════════════════════════════════════════════════
+         EPIC 5
+    ══════════════════════════════════════════════════════════════ -->
+    <article class="epic" id="epic-5">
+      <div class="epic-header">
+        <span class="epic-num">05</span>
+        <div class="epic-title-block">
+          <h2 class="epic-title">Per-Client Configuration &amp; Analytics</h2>
+          <p class="epic-tagline">"Every page must reflect each client's own targets and history."</p>
+        </div>
+        <div class="epic-chips">
+          <span class="chip chip-effort">3 days</span>
+          <span class="chip chip-dep">Needs E-3 + E-4</span>
+          <span class="chip chip-blockers">B-4 · E-1 · E-2</span>
+        </div>
+      </div>
+      <div class="epic-body">
+        <div class="epic-objectives">
+          <div class="obj-box">
+            <p class="obj-label">Business objective</p>
+            <p class="obj-text">All analytics pages display baselines, reduction targets, and milestones specific to each client's configuration — not Featherlite's FY22 base year, 42% SBTi target, and specific timeline.</p>
+          </div>
+          <div class="obj-box">
+            <p class="obj-label">Technical objective</p>
+            <p class="obj-text">Replace all hardcoded <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">"FY22"</code> / <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">"FY24"</code> / <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">1150</code> literals in 5 pages with values from <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">ctx.targets</code> and <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">ctx.config</code>. Rewrite methodology page to be fully data-driven.</p>
+          </div>
+        </div>
+
+        <div class="sections-grid">
+          <div class="section section-full">
+            <p class="section-label">Definition of Done</p>
+            <ul class="dod-list">
+              <li>All five analytics pages read base years from <code style="font-family:var(--f-mono);font-size:0.85em">ctx.targets.s12_base_year</code> / <code style="font-family:var(--f-mono);font-size:0.85em">ctx.targets.s3_base_year</code></li>
+              <li>Methodology page renders the correct consolidation approach, base years, S3 boundary, and grid EF for the authenticated client — no static Featherlite content remains</li>
+              <li><code style="font-family:var(--f-mono);font-size:0.85em">DECARB_MILESTONES</code> static array in <code style="font-family:var(--f-mono);font-size:0.85em">_app.progress.tsx</code> removed; milestones generated from <code style="font-family:var(--f-mono);font-size:0.85em">ctx.targets</code></li>
+              <li>A client with <code style="font-family:var(--f-mono);font-size:0.85em">s12_base_year = 'FY23'</code> in the DB sees FY23 as baseline on all five pages without any code change</li>
+              <li>Green Finance page does not throw when base year is not FY22</li>
+              <li>TypeScript: 0 errors after all changes</li>
+            </ul>
+          </div>
+
+          <div class="section">
+            <p class="section-label">Files affected</p>
+            <ul class="file-list">
+              <li><span class="file-path">src/routes/_app.methodology.tsx</span><span class="file-desc">— full rewrite</span></li>
+              <li><span class="file-path">src/routes/_app.overview.tsx</span></li>
+              <li><span class="file-path">src/routes/_app.trends.tsx</span></li>
+              <li><span class="file-path">src/routes/_app.action-plan.tsx</span></li>
+              <li><span class="file-path">src/routes/_app.green-finance.tsx</span></li>
+              <li><span class="file-path">src/routes/_app.progress.tsx</span></li>
+              <li><span class="file-path">backend/api/context.php</span><span class="file-desc">— add grid_ef, consolidation_approach, s3_boundary_json to response</span></li>
+              <li><span class="file-path">database/migrations/003_client_config_analytics_keys.sql</span><span class="file-new">NEW</span></li>
+            </ul>
+          </div>
+
+          <div class="section">
+            <p class="section-label">Database changes</p>
+            <ul class="change-list">
+              <li>New <code>client_config</code> keys seeded for Featherlite; required in Epic 2 onboarding:</li>
+              <li><code>grid_ef</code> — grid emission factor (e.g. "0.727")</li>
+              <li><code>consolidation_approach</code> — e.g. "Operational Control"</li>
+              <li><code>s3_boundary_json</code> — JSON array of included S3 categories</li>
+              <li><code>fiscal_year_start_month</code> — integer 1–12</li>
+              <li><code>sbti_target_year</code> — year of SBTi commitment (null if uncommitted)</li>
+              <li><code>netzero_year</code> — target net-zero year (null if not set)</li>
+            </ul>
+          </div>
+
+          <div class="section">
+            <p class="section-label">API changes</p>
+            <ul class="change-list">
+              <li><code>context.php</code> — include <code>grid_ef</code>, <code>consolidation_approach</code>, <code>s3_boundary_json</code>, <code>fiscal_year_start_month</code> in the <code>config</code> object</li>
+            </ul>
+          </div>
+
+          <div class="section section-full">
+            <p class="section-label">UI changes</p>
+            <ul class="change-list">
+              <li><code>_app.methodology.tsx</code> — every static fact replaced with <code>ctx.config.*</code> / <code>ctx.targets.*</code>; placeholder block if a config key is missing</li>
+              <li><code>_app.overview.tsx</code> — <code>"FY22"</code> → <code>ctx.targets.s12_base_year ?? ctx.reporting_years[0]</code></li>
+              <li><code>_app.trends.tsx</code> — same base year substitution; remove "Cats 4 &amp; 12 first reported FY25" annotation</li>
+              <li><code>_app.action-plan.tsx</code> — glidepath terminal target from <code>ctx.targets.sbti_target_s12</code>; remove <code>1150</code> magic number; year axis from <code>ctx.reporting_years</code></li>
+              <li><code>_app.green-finance.tsx</code> — <code>FYS = ctx.reporting_years</code>; replace <code>slices.find(s =&gt; s.fy === "FY22")!</code> with null-safe lookup using <code>ctx.targets.s12_base_year</code></li>
+              <li><code>_app.progress.tsx</code> — remove <code>DECARB_MILESTONES</code>; generate milestones from <code>ctx.targets</code> (<code>base_year_s12</code>, <code>sbti_target_year</code>, <code>netzero_year</code>)</li>
+            </ul>
+          </div>
+
+          <div class="section section-full">
+            <p class="section-label">Testing checklist</p>
+            <ul class="checklist">
+              <li>Client A (Featherlite, FY22) — all 5 pages show FY22 as baseline (regression)</li>
+              <li>Client B (FY23 base) — all 5 pages show FY23 as baseline without code change</li>
+              <li>Methodology page shows Client B's consolidation approach from DB</li>
+              <li>Methodology page shows Client B's S3 boundary categories from DB</li>
+              <li>Green Finance renders without crash when base year is FY23</li>
+              <li>Progress page shows no SBTi milestone for a client with <code>sbti_target_year = null</code></li>
+              <li>Action plan glidepath terminal target reflects Client B's SBTi % target</li>
+              <li>TypeScript: 0 errors after all changes</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- ══════════════════════════════════════════════════════════
+         EPIC 6
+    ══════════════════════════════════════════════════════════════ -->
+    <article class="epic" id="epic-6">
+      <div class="epic-header">
+        <span class="epic-num">06</span>
+        <div class="epic-title-block">
+          <h2 class="epic-title">Product Bug Fixes</h2>
+          <p class="epic-tagline">"Every page a second client sees must work correctly on day one."</p>
+        </div>
+        <div class="epic-chips">
+          <span class="chip chip-effort">2 days</span>
+          <span class="chip chip-dep">Needs E-5</span>
+          <span class="chip chip-blockers">D-1 · F-1 · F-2 · F-3</span>
+        </div>
+      </div>
+      <div class="epic-body">
+        <div class="epic-objectives">
+          <div class="obj-box">
+            <p class="obj-label">Business objective</p>
+            <p class="obj-text">The peer benchmarking, scenario planning, and document vault features are fully functional for all clients. No live page crashes due to unguarded data-shape assumptions.</p>
+          </div>
+          <div class="obj-box">
+            <p class="obj-label">Technical objective</p>
+            <p class="obj-text">Fix the FY key format mismatch in <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">_app.peer.tsx</code>. Wire <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">ScenarioProvider</code> to <code style="font-family:var(--f-mono);font-size:0.8em;background:var(--c-code-bg);color:var(--c-accent);padding:0.05rem 0.25rem;border-radius:3px">useDecarbActions()</code>. Implement a real vault upload API call. Green Finance non-null assertion guard (overlaps Epic 5).</p>
+          </div>
+        </div>
+
+        <div class="sections-grid">
+          <div class="section section-full">
+            <p class="section-label">Definition of Done</p>
+            <ul class="dod-list">
+              <li>Peer benchmarking cards show actual emissions figures for all peers with DB data</li>
+              <li>Scenario Builder computes non-zero abatement when at least one lever is enabled</li>
+              <li>Vault upload modal calls <code style="font-family:var(--f-mono);font-size:0.85em">POST /api/vault.php</code> and shows success only after server confirms receipt</li>
+              <li><code style="font-family:var(--f-mono);font-size:0.85em">ScenarioProvider</code> — both <code style="font-family:var(--f-mono);font-size:0.85em">[] as Action[]</code> literals replaced with live <code style="font-family:var(--f-mono);font-size:0.85em">useDecarbActions()</code> data</li>
+              <li>TypeScript: 0 errors</li>
+            </ul>
+          </div>
+
+          <div class="section">
+            <p class="section-label">Files affected</p>
+            <ul class="file-list">
+              <li><span class="file-path">src/routes/_app.peer.tsx</span><span class="file-desc">— FY key format fix</span></li>
+              <li><span class="file-path">src/components/decarb/shared.tsx</span><span class="file-desc">— ScenarioProvider wired</span></li>
+              <li><span class="file-path">src/routes/_app.vault.tsx</span><span class="file-desc">— upload modal wired to API</span></li>
+              <li><span class="file-path">backend/api/vault.php</span><span class="file-desc">— extend to handle POST</span></li>
+            </ul>
+          </div>
+
+          <div class="section">
+            <p class="section-label">Database changes</p>
+            <p class="none-badge">None — <code style="font-family:var(--f-mono);font-size:0.85em">vault_documents</code> table already exists.</p>
+          </div>
+
+          <div class="section">
+            <p class="section-label">API changes</p>
+            <ul class="change-list">
+              <li><code>vault.php POST</code> — insert a <code>vault_documents</code> row; authenticated, scoped to authenticated client; body: <code>{ entity, fy, title, type, drive_link }</code>; returns new row</li>
+            </ul>
+          </div>
+
+          <div class="section section-full">
+            <p class="section-label">UI changes</p>
+            <ul class="change-list">
+              <li><code>_app.peer.tsx</code> — <code>getLatestTotal</code>: iterate <code>Object.keys(p.totals)</code> (calendar-year keyed) rather than <code>reporting_years</code> (FY-format); or normalise <code>p.totals</code> keys to FY format at construction time so both sides match</li>
+              <li><code>decarb/shared.tsx ScenarioProvider</code> — add <code>const &#123; data: actions = [] &#125; = useDecarbActions();</code>; replace both <code>[] as Action[]</code> literals with <code>actions</code>; add <code>actions</code> to the <code>totals</code> useMemo dependency array</li>
+              <li><code>_app.vault.tsx</code> — wire upload modal submit to <code>authFetch("vault.php", &#123; method: "POST", body: JSON.stringify(meta) &#125;)</code>; show success only on <code>res.ok</code>; show error message on failure; refresh document list after successful upload</li>
+            </ul>
+          </div>
+
+          <div class="section section-full">
+            <p class="section-label">Testing checklist</p>
+            <ul class="checklist">
+              <li>Peer card for a peer with DB data shows a non-zero emissions figure</li>
+              <li>Peer comparison chart values and peer card figures are numerically consistent</li>
+              <li>Enabling a lever in Scenario Builder produces non-zero <code>abatement</code> and <code>cost</code></li>
+              <li>Saving a scenario persists a non-zero abatement value</li>
+              <li>Vault upload modal: submitting calls <code>POST /api/vault.php</code></li>
+              <li>Vault success message appears only after server returns 200</li>
+              <li>Vault error message shown on 4xx/5xx response</li>
+              <li>Vault document list refreshes after successful upload</li>
+              <li>TypeScript: 0 errors after all changes</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </article>
+
+  </main>
+</div>

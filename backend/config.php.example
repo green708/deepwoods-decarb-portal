@@ -1,0 +1,39 @@
+<?php
+// Copy this file to config.php and fill in real values.
+// config.php must NEVER be committed to git or placed anywhere web-servable.
+
+return [
+    'db' => [
+        'host' => 'localhost',           // Hostinger MySQL host — usually localhost
+        'name' => 'u833634340_GHG',
+        'user' => 'u833634340_GHG',
+        'pass' => 'REPLACE_WITH_REAL_PASSWORD',
+    ],
+    'drive' => [
+        // OAuth as the real Drive-owning Google account — NOT a service account.
+        // Service accounts have no storage quota on personal "My Drive" folders,
+        // only on Shared Drives (which require Google Workspace). See
+        // oauth-start.php for the one-time authorization flow.
+        'oauth_client_id' => 'REPLACE_WITH_OAUTH_CLIENT_ID',
+        'oauth_client_secret' => 'REPLACE_WITH_OAUTH_CLIENT_SECRET',
+        'oauth_redirect_uri' => 'https://yourdomain.com/backend/oauth-callback.php',
+        'token_path' => __DIR__ . '/drive-token.json', // created automatically by oauth-callback.php
+        'root_folder_id' => '1SRz-lmrdK4a4zjGt36xQe5UVi16uUTes',
+    ],
+    'smtp' => [
+        'host' => 'smtp.gmail.com',
+        'port' => 587,
+        'username' => 'REPLACE_WITH_GMAIL_ADDRESS',
+        'app_password' => 'REPLACE_WITH_GMAIL_APP_PASSWORD', // no spaces
+        'from_email' => 'REPLACE_WITH_GMAIL_ADDRESS',
+        'from_name' => 'YOUR_PLATFORM_NAME GHG Portal',
+    ],
+    'app_base_url' => 'https://yourdomain.com',
+    // Human-readable platform name used in email subjects and bodies.
+    'platform_name' => 'Deepwoods GHG Portal',
+    // Email address that receives Request Access notifications from the public form.
+    'admin_email' => 'REPLACE_WITH_DEEPWOODS_ADMIN_EMAIL',
+    // Legacy shared-secret gate — real per-user auth (sessions table) now
+    // handles most endpoints; this only still guards a couple of edge cases.
+    'api_key' => 'c02fc20af1546bf6ba8c3cd09067c00af26742d68ae76aa2',
+];

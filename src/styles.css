@@ -1,0 +1,246 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-navy: var(--navy);
+  --color-navy-2: var(--navy-2);
+  --color-sky: var(--sky);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-alert: var(--alert);
+  /* GHG Portal extended palette */
+  --color-ghg-green: var(--ghg-green);
+  --color-ghg-green-dark: var(--ghg-green-dark);
+  --color-ghg-blue: var(--ghg-blue);
+  --color-ghg-info: var(--ghg-info);
+  --color-ghg-amber: var(--ghg-amber);
+  --color-ghg-error: var(--ghg-error);
+  /* Component states */
+  --color-hover-bg: var(--hover-bg);
+  --color-active-bg: var(--active-bg);
+  --color-active-text: var(--active-text);
+  --color-disabled-bg: var(--disabled-bg);
+  /* Inter — clean, neutral, highly readable. Primary font per GHG Portal font book. */
+  --font-serif: "Inter", "Helvetica Neue", Arial, sans-serif;
+  --font-sans: "Inter", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* GHG Portal / Dashboard — Color System
+   Neutrals as the foundation. Green represents sustainability and positive impact.
+   Blue drives interaction and information. Semantic colors reserved for status only. */
+:root {
+  --radius: 0.5rem;
+
+  /* ── Neutral Foundation ─────────────────────────────── */
+  --background: #F3F4F6;          /* Main Background */
+  --foreground: #1F2937;          /* Primary Text */
+  --card: #FFFFFF;                /* Card / Surface */
+  --card-foreground: #1F2937;
+  --popover: #FFFFFF;
+  --popover-foreground: #1F2937;
+
+  /* Surfaces */
+  --muted: #F5F5F5;               /* Secondary Background */
+  --muted-foreground: #6B7280;    /* Secondary Text */
+  --accent: #F0F2F5;              /* Tertiary Background */
+  --accent-foreground: #1F2937;
+
+  /* ── Primary & Secondary Actions ───────────────────── */
+  --primary: #FF2800;             /* Brand Primary — Main Actions */
+  --primary-foreground: #FFFFFF;
+  --secondary: #F5F5F5;           /* Secondary Background */
+  --secondary-foreground: #1F2937;
+
+  /* ── Borders & Inputs ───────────────────────────────── */
+  --border: #D1D5DB;              /* Border / Divider */
+  --input: #D1D5DB;
+  --ring: #1E6F5C;                /* Secondary Green — focus ring */
+
+  /* ── Semantic Status ────────────────────────────────── */
+  --destructive: #D90429;         /* Error / Alt Red */
+  --destructive-foreground: #FFFFFF;
+  --success: #16A34A;             /* Success Green */
+  --warning: #D97706;             /* Warning Amber */
+  --alert: #D90429;               /* Error */
+
+  /* ── Brand Tokens (used throughout codebase) ────────── */
+  --navy: #1F2937;                /* Primary Text — headings / ink */
+  --navy-2: #6B7280;              /* Secondary Text */
+  --sky: #0EA5E9;                 /* Info Blue */
+  --brand-red: #FF2800;           /* Brand Primary Red — CTAs */
+  --brand-light-bg: #F0F2F5;     /* Tertiary Background */
+  --brand-gray: #6B7280;         /* Secondary Text */
+  --deepwoods-green: #1E6F5C;     /* Deepwoods / Secondary Green */
+
+  /* ── GHG Portal Extended Palette ───────────────────── */
+  --ghg-green: #1E6F5C;           /* Secondary Green (Sustainability) */
+  --ghg-green-dark: #155E4A;      /* Green Hover / Dark */
+  --ghg-blue: #3B82F6;            /* Secondary Blue (Interactive / Links) */
+  --ghg-info: #0EA5E9;            /* Info Blue */
+  --ghg-amber: #D97706;           /* Warning Amber */
+  --ghg-error: #D90429;           /* Error / Alt Red */
+
+  /* ── Chart / Data Viz Series ────────────────────────── */
+  --chart-1: #1E6F5C;             /* Series 1 — Primary */
+  --chart-2: #3B82F6;             /* Series 2 — Secondary */
+  --chart-3: #64748B;             /* Series 3 — Tertiary */
+  --chart-4: #22C55E;             /* Series 4 — Comparison */
+  --chart-5: #F59E0B;             /* Series 5 — Forecast (Amber) */
+  --chart-6: #CBD5E1;             /* Series 6 — Previous Year (Light Gray) */
+
+  /* ── Component States (Surface & Component States from spec) ────────────────── */
+  --hover-bg: #F3F4F6;            /* Hover Background */
+  --active-bg: #E6F4EF;           /* Active / Selected (green tint) */
+  --active-text: #1E6F5C;         /* Active text */
+  --disabled-bg: #F1F5F9;         /* Disabled Background */
+  --disabled-text: #94A3BB;       /* Disabled Text */
+  --overlay-bg: rgba(15, 23, 42, 0.06);
+  --shadow-light: rgba(15, 23, 42, 0.08);
+  --shadow-medium: rgba(15, 23, 42, 0.16);
+
+  /* ── Navigation active state (tinted from --primary, multi-tenant) ─────────── */
+  --nav-active-bg: color-mix(in oklab, var(--primary) 10%, white);
+
+  /* ── Carbon-compass aliases (used by decarb pages) ──────────────────────────── */
+  --scope1: #1E6F5C;
+  --scope2: #3B82F6;
+  --scope3: #64748B;
+  --ink: #1F2937;
+  --ink-muted: #6B7280;
+  --brand-red: #FF2800;
+  --success-bg: #E6F4EF;
+  --warning-bg: #FEF3C7;
+  --critical: #D90429;
+  --critical-bg: #FEE2E2;
+  --sidebar: #FFFFFF;
+
+  /* ── Data Intensity Scale (Heatmaps / Maps) ─────────────────────────────────── */
+  --intensity-0: #F1F8F5;
+  --intensity-1: #D8EDE3;
+  --intensity-2: #A7DCC3;
+  --intensity-3: #6CC89F;
+  --intensity-4: #3BAB7E;
+  --intensity-5: #1E6F5C;
+}
+
+.dark {
+  --background: oklch(0.17 0 0);
+  --foreground: oklch(0.98 0 0);
+  --card: oklch(0.23 0 0);
+  --card-foreground: oklch(0.98 0 0);
+  --popover: oklch(0.23 0 0);
+  --popover-foreground: oklch(0.98 0 0);
+  --primary: #FF2800;
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.29 0 0);
+  --secondary-foreground: oklch(0.98 0 0);
+  --muted: oklch(0.29 0 0);
+  --muted-foreground: oklch(0.72 0 0);
+  --accent: oklch(0.33 0 0);
+  --accent-foreground: oklch(0.98 0 0);
+  --destructive: #D90429;
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: #1E6F5C;
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+
+  html { scroll-behavior: smooth; }
+
+  /* ── Thin, minimal scrollbar ───────────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+  * { scrollbar-width: thin; scrollbar-color: #CBD5E1 transparent; }
+
+  /* ── Focus ring ───────────────────────────────────────────────────────────── */
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 22px;
+    letter-spacing: 0;
+  }
+  /* Inter at appropriate weights for hierarchy per GHG Portal font book */
+  h1 {
+    font-family: var(--font-sans);
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 36px;
+    letter-spacing: -0.01em;
+  }
+  h2 {
+    font-family: var(--font-sans);
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 30px;
+    letter-spacing: -0.01em;
+  }
+  h3 {
+    font-family: var(--font-sans);
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 26px;
+    letter-spacing: 0;
+  }
+  /* .font-serif kept for backward compat — renders as Inter (display weight) */
+  .font-serif { font-family: var(--font-sans); font-weight: 700; }
+  .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+}
+
+@utility report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  & th {
+    text-align: left;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted-foreground);
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--muted);
+  }
+  & td {
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.875rem;
+  }
+  & tbody tr:nth-child(even) td { background: color-mix(in oklab, var(--muted) 60%, transparent); }
+  & td.num, & th.num { text-align: right; font-family: var(--font-mono); }
+}
