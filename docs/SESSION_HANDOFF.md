@@ -6,7 +6,31 @@
 ---
 
 ## Last Updated
-2026-08-09 — UI/UX Design Audit Pass (P0 + P1 complete, build verified)
+2026-08-10 — Documentation session: TESTER_USER_FLOW.html created
+
+---
+
+## Completed This Session (2026-08-10)
+
+### Documentation — Tester User-Flow Guide
+
+**`docs/TESTER_USER_FLOW.html`** — NEW standalone HTML tester guide (12 sections, ~700 lines)
+
+Covers every user journey, role, and page in the platform:
+1. Portal overview — tech stack, auth model, 5 roles, key URLs
+2. Entry-point decision tree — all auth/gate branches from `/` landing
+3. New / Prospective Client journey — Request Access + Demo mode flows
+4. Deepwoods Admin journey — all 5 admin tabs with live-vs-mock status
+5. Existing Client journey — daily workflow, all 21 workspace modules
+6. First-time Client journey — all 3 gates (change password → activation → orientation → setup)
+7. Role-based access matrix — what each of the 5 roles can/cannot do
+8. Complete page map — all 29 routes with data source and implementation status
+9. Golden-path test cases — 9 specific test scenarios with step-by-step checklists
+10. Security & access boundary tests — 15 specific test cases
+11. Implementation status — fully live, partially implemented, configuration-dependent
+12. Known gaps & blockers — bugs, missing features, pre-test checklist
+
+No application code was changed this session. Pure documentation only.
 
 ---
 
@@ -261,7 +285,7 @@ Market research files moved:
 
 ## Currently Working On
 
-Nothing in progress — milestone complete.
+Nothing in progress — documentation session complete.
 
 ---
 

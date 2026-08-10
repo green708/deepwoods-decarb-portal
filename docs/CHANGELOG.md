@@ -4,6 +4,16 @@ Key milestones and changes. Newest first.
 
 ---
 
+## 2026-08-10 — Tester User-Flow Guide
+
+**`docs/TESTER_USER_FLOW.html`** — NEW standalone HTML document
+
+Comprehensive tester and QA guide for the full platform. Covers all 29 routes, all 5 roles, all user journeys, 9 golden-path test cases, 15 security/access tests, and a full implementation status matrix. Written for interns and testers unfamiliar with the codebase.
+
+No application code was changed.
+
+---
+
 ## 2026-08-09 — Aug 14 Alpha: Multi-Tenant Hardcoding Sweep + Request Access + Invite + Invoice
 
 ### Priority 1: Multi-tenant generalization — remaining hardcoding

@@ -1,0 +1,2007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Decarb Platform — Tester User-Flow Guide</title>
+<style>
+  :root {
+    --green: #16a34a;
+    --green-light: #dcfce7;
+    --green-dark: #14532d;
+    --amber: #d97706;
+    --amber-light: #fef3c7;
+    --red: #dc2626;
+    --red-light: #fee2e2;
+    --blue: #2563eb;
+    --blue-light: #dbeafe;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-600: #4b5563;
+    --gray-700: #374151;
+    --gray-800: #1f2937;
+    --gray-900: #111827;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--gray-800);
+    background: var(--gray-50);
+  }
+
+  /* ─── HEADER ─────────────────────────────────────────────────────────── */
+  .site-header {
+    background: var(--green-dark);
+    color: white;
+    padding: 32px 48px 24px;
+    border-bottom: 4px solid var(--green);
+  }
+  .site-header .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.7;
+    margin-bottom: 6px;
+  }
+  .site-header h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
+  .site-header .subtitle { opacity: 0.8; font-size: 15px; }
+  .site-header .meta {
+    margin-top: 14px;
+    display: flex;
+    gap: 24px;
+    font-size: 12px;
+    opacity: 0.65;
+  }
+
+  /* ─── LAYOUT ─────────────────────────────────────────────────────────── */
+  .layout { display: flex; min-height: calc(100vh - 120px); }
+
+  /* ─── TOC SIDEBAR ────────────────────────────────────────────────────── */
+  .toc {
+    width: 240px;
+    flex-shrink: 0;
+    background: white;
+    border-right: 1px solid var(--gray-200);
+    padding: 24px 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+  .toc-title {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--gray-600);
+    padding: 0 20px 12px;
+    font-weight: 600;
+  }
+  .toc a {
+    display: block;
+    padding: 6px 20px;
+    color: var(--gray-700);
+    text-decoration: none;
+    font-size: 13px;
+    border-left: 3px solid transparent;
+    line-height: 1.4;
+  }
+  .toc a:hover { background: var(--gray-50); color: var(--green); }
+  .toc a.active { border-color: var(--green); color: var(--green); font-weight: 600; background: var(--green-light); }
+  .toc .part-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--gray-600);
+    padding: 14px 20px 4px;
+    font-weight: 700;
+  }
+
+  /* ─── MAIN CONTENT ───────────────────────────────────────────────────── */
+  .main { flex: 1; padding: 40px 48px; max-width: 960px; }
+
+  /* ─── SECTION HEADING ────────────────────────────────────────────────── */
+  .section {
+    margin-bottom: 56px;
+    scroll-margin-top: 24px;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--gray-200);
+  }
+  .part-badge {
+    background: var(--green-dark);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+  .section h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--gray-900);
+  }
+
+  /* ─── CARDS ─────────────────────────────────────────────────────────── */
+  .card {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+  .card h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--gray-900);
+    margin-bottom: 10px;
+  }
+  .card h4 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--gray-700);
+    margin: 14px 0 6px;
+  }
+
+  /* ─── CALLOUTS ───────────────────────────────────────────────────────── */
+  .callout {
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin: 16px 0;
+    font-size: 13px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .callout .icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .callout.info    { background: var(--blue-light);  border-left: 4px solid var(--blue);  }
+  .callout.warning { background: var(--amber-light); border-left: 4px solid var(--amber); }
+  .callout.danger  { background: var(--red-light);   border-left: 4px solid var(--red);   }
+  .callout.success { background: var(--green-light);  border-left: 4px solid var(--green); }
+  .callout strong { display: block; margin-bottom: 4px; }
+
+  /* ─── STEP FLOW ──────────────────────────────────────────────────────── */
+  .steps { list-style: none; position: relative; }
+  .steps::before {
+    content: '';
+    position: absolute;
+    left: 19px;
+    top: 24px;
+    bottom: 8px;
+    width: 2px;
+    background: var(--gray-200);
+  }
+  .steps li {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 18px;
+    position: relative;
+  }
+  .step-num {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--green);
+    color: white;
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
+  .step-body { flex: 1; padding-top: 8px; }
+  .step-body strong { display: block; font-size: 14px; color: var(--gray-900); margin-bottom: 3px; }
+  .step-body span { color: var(--gray-600); font-size: 13px; }
+  .step-body code {
+    display: inline-block;
+    background: var(--gray-100);
+    border: 1px solid var(--gray-200);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    color: var(--green-dark);
+    margin: 2px 1px;
+  }
+  .step-gate {
+    display: inline-block;
+    background: var(--amber-light);
+    border: 1px solid var(--amber);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: #92400e;
+    font-weight: 600;
+    margin-left: 6px;
+  }
+
+  /* ─── TABLES ─────────────────────────────────────────────────────────── */
+  .table-wrap { overflow-x: auto; margin: 16px 0; border-radius: 8px; border: 1px solid var(--gray-200); }
+  table { width: 100%; border-collapse: collapse; background: white; font-size: 13px; }
+  th {
+    background: var(--gray-800);
+    color: white;
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--gray-100); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: var(--gray-50); }
+  tr:nth-child(even):hover td, tr:hover td { background: #f0fdf4; }
+  td code {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 11px;
+    background: var(--gray-100);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--green-dark);
+  }
+
+  /* ─── BADGES ─────────────────────────────────────────────────────────── */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.6;
+    white-space: nowrap;
+  }
+  .badge-green  { background: var(--green-light);  color: var(--green-dark); }
+  .badge-amber  { background: var(--amber-light);  color: #92400e; }
+  .badge-red    { background: var(--red-light);    color: #991b1b; }
+  .badge-blue   { background: var(--blue-light);   color: #1e40af; }
+  .badge-gray   { background: var(--gray-100);     color: var(--gray-600); }
+
+  /* ─── DECISION TREE ──────────────────────────────────────────────────── */
+  .tree {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    padding: 24px;
+    font-size: 13px;
+  }
+  .tree-node {
+    position: relative;
+    padding-left: 28px;
+    margin-bottom: 10px;
+  }
+  .tree-node::before {
+    content: '▶';
+    position: absolute;
+    left: 0;
+    color: var(--green);
+    font-size: 10px;
+    top: 3px;
+  }
+  .tree-node.leaf::before { content: '→'; color: var(--gray-600); }
+  .tree-children { padding-left: 20px; margin-top: 6px; border-left: 2px solid var(--gray-200); margin-left: 9px; padding-top: 4px; }
+  .tree-condition {
+    display: inline-block;
+    background: var(--gray-100);
+    border-radius: 4px;
+    padding: 1px 7px;
+    font-size: 11px;
+    color: var(--gray-600);
+    font-style: italic;
+    margin-left: 6px;
+  }
+  .tree-dest {
+    font-weight: 600;
+    color: var(--green-dark);
+  }
+  .tree-route {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 11px;
+    background: var(--green-light);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: var(--green-dark);
+  }
+
+  /* ─── TEST CASE CARD ──────────────────────────────────────────────────── */
+  .test-case {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .test-case-header {
+    background: var(--gray-800);
+    color: white;
+    padding: 14px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .test-case-header .tc-id {
+    font-size: 11px;
+    font-family: monospace;
+    opacity: 0.7;
+    margin-right: 10px;
+  }
+  .test-case-header .tc-title { font-weight: 600; font-size: 14px; }
+  .test-case-body { padding: 16px 20px; }
+  .test-case-body .field { margin-bottom: 10px; }
+  .test-case-body .label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--gray-600);
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .checklist { list-style: none; }
+  .checklist li {
+    padding: 4px 0 4px 24px;
+    position: relative;
+    font-size: 13px;
+    color: var(--gray-700);
+    border-bottom: 1px solid var(--gray-100);
+  }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist li::before {
+    content: '☐';
+    position: absolute;
+    left: 0;
+    color: var(--gray-400);
+    font-size: 14px;
+  }
+
+  /* ─── STATUS GRID ────────────────────────────────────────────────────── */
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .status-item {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 6px;
+    padding: 12px 16px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .status-icon { font-size: 18px; flex-shrink: 0; }
+  .status-item .si-name { font-weight: 600; font-size: 13px; color: var(--gray-900); }
+  .status-item .si-note { font-size: 12px; color: var(--gray-600); margin-top: 2px; }
+
+  /* ─── ROLE MATRIX ────────────────────────────────────────────────────── */
+  .check  { color: var(--green); font-size: 16px; }
+  .cross  { color: var(--red);   font-size: 16px; }
+  .partial { color: var(--amber); font-size: 14px; }
+
+  /* ─── FOOTER ──────────────────────────────────────────────────────────── */
+  .footer {
+    background: var(--gray-800);
+    color: var(--gray-300);
+    text-align: center;
+    padding: 20px;
+    font-size: 12px;
+    margin-top: 60px;
+  }
+
+  /* ─── MISC ─────────────────────────────────────────────────────────── */
+  p { margin-bottom: 10px; }
+  ul, ol { padding-left: 20px; margin-bottom: 10px; }
+  li { margin-bottom: 4px; }
+  strong { color: var(--gray-900); }
+  code.route {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    background: var(--green-light);
+    color: var(--green-dark);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+
+  hr.divider { border: none; border-top: 1px solid var(--gray-200); margin: 20px 0; }
+
+  .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- HEADER                                                                  -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="site-header">
+  <div class="eyebrow">Deepwoods Green · Internal QA Document</div>
+  <h1>Decarb Platform — Tester User-Flow Guide</h1>
+  <div class="subtitle">Complete walkthrough of every user journey, role, and page — written for testers and new team members.</div>
+  <div class="meta">
+    <span>Version 1.0</span>
+    <span>Last updated: 2026-08-10</span>
+    <span>Production site: green-tiger-803731.hostingersite.com</span>
+    <span>Covers: All 29 routes</span>
+  </div>
+</div>
+
+<div class="layout">
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TOC SIDEBAR                                                              -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<nav class="toc">
+  <div class="toc-title">Contents</div>
+  <div class="part-label">Overview</div>
+  <a href="#part1">1. Portal Overview</a>
+  <a href="#part2">2. Entry-Point Decision Tree</a>
+  <div class="part-label">Journeys</div>
+  <a href="#part3">3. New / Prospective Client</a>
+  <a href="#part4">4. Deepwoods Admin Journey</a>
+  <a href="#part5">5. Existing Client User Journey</a>
+  <a href="#part6">6. First-Time Client User Journey</a>
+  <div class="part-label">Reference</div>
+  <a href="#part7">7. Role-Based Access Matrix</a>
+  <a href="#part8">8. Complete Page Map</a>
+  <div class="part-label">Testing</div>
+  <a href="#part9">9. Golden-Path Test Cases</a>
+  <a href="#part10">10. Security &amp; Access Tests</a>
+  <div class="part-label">Status</div>
+  <a href="#part11">11. Implementation Status</a>
+  <a href="#part12">12. Known Gaps &amp; Blockers</a>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- MAIN CONTENT                                                             -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<main class="main">
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<!-- PART 1: PORTAL OVERVIEW                                                  -->
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="section" id="part1">
+  <div class="section-header">
+    <span class="part-badge">PART 1</span>
+    <h2>Portal Overview</h2>
+  </div>
+
+  <div class="card">
+    <h3>What is this platform?</h3>
+    <p>A <strong>multi-tenant GHG Accounting &amp; Decarbonization Planning portal</strong> built by Deepwoods Green. Each client organisation gets their own isolated workspace. The same codebase and backend serve all clients — a client slug and JWT token route each request to the correct data.</p>
+    <div class="callout info">
+      <span class="icon">ℹ️</span>
+      <div>
+        <strong>Multi-tenant architecture</strong>
+        Every page you see is generic. Client name, logo, entities, facilities, and GHG data all come from the database at login time. Nothing is hardcoded for a specific client.
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="card">
+      <h3>Tech stack (brief)</h3>
+      <ul>
+        <li><strong>Frontend:</strong> React 19 SPA (TanStack Start)</li>
+        <li><strong>Routing:</strong> TanStack Router (file-based)</li>
+        <li><strong>State/Data:</strong> TanStack Query v5</li>
+        <li><strong>UI:</strong> shadcn/ui + Tailwind CSS v4</li>
+        <li><strong>Backend:</strong> PHP 8 + MySQL (Hostinger)</li>
+        <li><strong>Charts:</strong> Recharts</li>
+        <li><strong>Auth:</strong> JWT stored in localStorage</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Auth model</h3>
+      <ul>
+        <li><strong>Token:</strong> <code>fl_session_token</code> in localStorage</li>
+        <li><strong>Role:</strong> <code>fl_role</code> in localStorage</li>
+        <li><strong>Demo mode:</strong> <code>fl_demo_mode=1</code> — intercepts all API calls with local mock data</li>
+        <li><strong>Must change password:</strong> <code>fl_must_change_password=1</code> forces modal on next page load</li>
+        <li><strong>Orientation flag:</strong> <code>decarb_orientation_done</code> — if missing, redirects to <code>/onboard</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>The five user roles</h3>
+    <div class="table-wrap">
+      <table>
+        <tr>
+          <th>Role slug</th>
+          <th>Label</th>
+          <th>Organisation</th>
+          <th>Description</th>
+        </tr>
+        <tr>
+          <td><code>sustainability_team</code></td>
+          <td>ESG Manager / Owner</td>
+          <td>Client</td>
+          <td>Full portal access — primary client role. Can upload data, manage team, view all modules.</td>
+        </tr>
+        <tr>
+          <td><code>client_uploader</code></td>
+          <td>Data Submitter / Entity Manager</td>
+          <td>Client</td>
+          <td>Data submission only. May be scoped to a single entity.</td>
+        </tr>
+        <tr>
+          <td><code>client_leadership</code></td>
+          <td>Viewer / Leadership</td>
+          <td>Client</td>
+          <td>Read-only access. No vault, no uploads.</td>
+        </tr>
+        <tr>
+          <td><code>deepwoods_admin</code></td>
+          <td>Admin</td>
+          <td>Deepwoods</td>
+          <td>All clients, all admin pages. Full operational access.</td>
+        </tr>
+        <tr>
+          <td><code>deepwoods_coordinator</code></td>
+          <td>Coordinator</td>
+          <td>Deepwoods</td>
+          <td>All clients, coordinator view. No admin panel.</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Key URLs</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Environment</th><th>URL</th><th>Notes</th></tr>
+        <tr><td>Production</td><td><code>green-tiger-803731.hostingersite.com</code></td><td>Live site on Hostinger</td></tr>
+        <tr><td>Local dev</td><td><code>localhost:3000</code></td><td><code>npm run dev</code></td></tr>
+        <tr><td>Backend API</td><td><code>/api/</code> (relative)</td><td>PHP 8 on same Hostinger domain</td></tr>
+        <tr><td>GHG Automation</td><td>Set via <code>VITE_GHG_WEBAPP_URL</code></td><td>Google Apps Script endpoint</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<!-- PART 2: ENTRY-POINT DECISION TREE                                        -->
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="section" id="part2">
+  <div class="section-header">
+    <span class="part-badge">PART 2</span>
+    <h2>Entry-Point Decision Tree</h2>
+  </div>
+
+  <p>This tree shows what happens when a visitor arrives at the site. Follow the path that matches your scenario.</p>
+
+  <div class="tree">
+    <div class="tree-node">
+      Visitor arrives at <span class="tree-route">/</span>
+      <div class="tree-children">
+
+        <div class="tree-node">
+          <strong>No JWT token in localStorage</strong>
+          <div class="tree-children">
+            <div class="tree-node leaf">
+              Sees the <span class="tree-dest">Login page</span> — email + password form, Demo button, "New client?" link, "Forgot password?" link
+            </div>
+            <div class="tree-node">
+              Clicks <em>"New client?"</em> / "Start your GHG inventory" link
+              <div class="tree-children">
+                <div class="tree-node leaf">→ <span class="tree-route">/onboard</span> — redirected back to <span class="tree-route">/</span> since no token<br>then → <span class="tree-route">/request-access</span> (public form for prospective clients)</div>
+              </div>
+            </div>
+            <div class="tree-node">
+              Clicks <em>"Forgot password?"</em>
+              <div class="tree-children">
+                <div class="tree-node leaf">→ <span class="tree-route">/forgot-password</span> — enter email → receive reset link</div>
+              </div>
+            </div>
+            <div class="tree-node">
+              Clicks <em>"Demo portal"</em>
+              <div class="tree-children">
+                <div class="tree-node leaf">→ Sets <code>fl_demo_mode=1</code> + fake token → <span class="tree-route">/workstreams</span> (demo data)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tree-node">
+          <strong>Valid JWT token present — logs in</strong>
+          <div class="tree-children">
+            <div class="tree-node">
+              Role is <code>deepwoods_admin</code> or <code>deepwoods_coordinator</code>
+              <div class="tree-children">
+                <div class="tree-node leaf">→ Skips orientation check → <span class="tree-route">/workstreams</span> (client selector)</div>
+              </div>
+            </div>
+            <div class="tree-node">
+              Role is client role + <code>fl_must_change_password=1</code>
+              <div class="tree-children">
+                <div class="tree-node leaf">→ <span class="tree-route">/workstreams</span> but forced <strong>ChangePasswordModal</strong> blocks everything until password changed</div>
+              </div>
+            </div>
+            <div class="tree-node">
+              Client account <code>is_active = false</code>
+              <div class="tree-children">
+                <div class="tree-node leaf">→ <strong>PendingActivation</strong> screen — "Your workspace is being set up" with Sign Out button</div>
+              </div>
+            </div>
+            <div class="tree-node">
+              Client active + <code>decarb_orientation_done</code> missing in localStorage
+              <div class="tree-children">
+                <div class="tree-node leaf">→ <span class="tree-route">/onboard</span> — 3-slide orientation tour</div>
+              </div>
+            </div>
+            <div class="tree-node">
+              Client active + oriented + <code>setup_complete ≠ "true"</code>
+              <div class="tree-children">
+                <div class="tree-node leaf">→ <span class="tree-route">/workstreams</span> but <strong>Setup Banner</strong> shown prominently → links to <span class="tree-route">/setup</span></div>
+              </div>
+            </div>
+            <div class="tree-node">
+              Client active + oriented + setup complete + no special flags
+              <div class="tree-children">
+                <div class="tree-node leaf">→ <span class="tree-route">/workstreams</span> — full workspace, sidebar visible</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="callout warning">
+    <span class="icon">⚠️</span>
+    <div>
+      <strong>Important: localStorage state matters</strong>
+      Browser localStorage persists across sessions. When testing different flows, clear it between runs: DevTools → Application → Local Storage → Clear. Otherwise orientation/setup banners won't reappear.
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<!-- PART 3: NEW / PROSPECTIVE CLIENT JOURNEY                                 -->
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="section" id="part3">
+  <div class="section-header">
+    <span class="part-badge">PART 3</span>
+    <h2>New / Prospective Client Journey</h2>
+  </div>
+
+  <p>Someone who finds the platform but has no account yet. Their journey ends when Deepwoods converts them into an active client.</p>
+
+  <div class="card">
+    <h3>Phase 1 — Discovery &amp; Inquiry (No account required)</h3>
+    <ol class="steps">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>Arrive at login page</strong>
+          <span>Visits <code class="route">/</code>. Sees two-panel layout: dark left panel (Deepwoods branding, value proposition) and white right panel (login form). Sees "New client?" / "Start your GHG inventory" link at the bottom.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Navigate to Request Access form</strong>
+          <span>Clicks the new client link → routed to <code class="route">/request-access</code> (public, no auth required).</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>Fill in the Request Access form</strong>
+          <span>Fields: Full name* · Company* · Work email* · Phone (optional) · Company size (optional) · Message (optional). Clicks "Submit request".</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <strong>See success state</strong>
+          <span>Form replaced by a confirmation message. No email is sent to prospect (backend just stores the row). Deepwoods receives a notification via admin panel.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <strong>Deepwoods follow-up (offline)</strong>
+          <span>A Deepwoods admin logs in to <code class="route">/admin</code> → Engagements tab → sees the inquiry. Decides whether to proceed. This step is manual.</span>
+        </div>
+      </li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h3>Phase 2 — Try the Demo (Optional, no account required)</h3>
+    <ol class="steps">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>Click "Demo portal" on login page</strong>
+          <span>Sets <code>fl_demo_mode=1</code> + a fake session token in localStorage. No server call.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Explore the workspace</strong>
+          <span>Redirected to <code class="route">/workstreams</code>. All data is mock data served from local files. No real API calls are made. The sidebar shows all modules.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>Sign out of demo</strong>
+          <span>Clicking "Sign out" clears localStorage and returns to <code class="route">/</code>.</span>
+        </div>
+      </li>
+    </ol>
+    <div class="callout info">
+      <span class="icon">ℹ️</span>
+      <div>Demo mode intercepts ALL API calls via the <code>authFetch()</code> function. Any action in demo mode (upload, submit, invite) will NOT actually save data. Toasts may still appear as if it worked — this is expected.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<!-- PART 4: DEEPWOODS ADMIN JOURNEY                                          -->
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="section" id="part4">
+  <div class="section-header">
+    <span class="part-badge">PART 4</span>
+    <h2>Deepwoods Admin Journey</h2>
+  </div>
+
+  <p>The <code>deepwoods_admin</code> role manages all client accounts. They skip the orientation/setup gates and see a cross-client workspace.</p>
+
+  <div class="card">
+    <h3>Login &amp; navigation</h3>
+    <ol class="steps">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>Log in at <code class="route">/</code></strong>
+          <span>Enters email + password. After <code>login()</code> succeeds, redirected to <code class="route">/workstreams</code>. No orientation check — Deepwoods roles skip it.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Sidebar — full access</strong>
+          <span>Sees all navigation items. The "Admin" link appears at the bottom of the sidebar (only for <code>deepwoods_admin</code>). Entity/FY switcher at the top of the sidebar for switching between client contexts.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>Navigate to <code class="route">/admin</code></strong>
+          <span>5 tabs appear. Access is guarded by <code>canAdmin</code> permission — non-admin roles see a locked state instead.</span>
+        </div>
+      </li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h3>Admin Tab 1 — Client Activation</h3>
+    <p><span class="badge badge-green">Live data</span> Data comes from <code>useActivationClients()</code> API hook.</p>
+    <h4>What you see</h4>
+    <ul>
+      <li><strong>Pending clients</strong> (amber badge) — newly onboarded, awaiting activation</li>
+      <li><strong>Active clients</strong> (green badge) — currently live workspaces</li>
+    </ul>
+    <h4>Actions per client row</h4>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Action</th><th>What it does</th><th>State</th></tr>
+        <tr><td>Activate</td><td>Sets <code>is_active=true</code> in DB. Client can now log in to full workspace.</td><td><span class="badge badge-green">Live</span></td></tr>
+        <tr><td>Deactivate</td><td>Sets <code>is_active=false</code>. Client sees PendingActivation screen on next login.</td><td><span class="badge badge-green">Live</span></td></tr>
+        <tr><td>Invoice</td><td>Opens Invoice modal. Fields: ref number, status (pending/paid/waived), date, notes. Saved to DB.</td><td><span class="badge badge-green">Live</span></td></tr>
+        <tr><td>Invite user</td><td>Opens InviteUserModal. Generates temp password, sends invite email via <code>invite-user.php</code>.</td><td><span class="badge badge-green">Live</span></td></tr>
+        <tr><td>GHG Setup</td><td>Appears for active clients with setup complete. Opens GHG automation setup for that client.</td><td><span class="badge badge-green">Live</span></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Admin Tab 2 — Engagements</h3>
+    <p><span class="badge badge-green">Live data</span> Data comes from <code>useClients()</code> API hook.</p>
+    <h4>Actions</h4>
+    <ul>
+      <li><strong>"New client" button</strong> → <code>CreateClientModal</code>: name, slug, currency, reporting period. Creates DB row.</li>
+      <li><strong>Client row expand</strong> → see status pipeline. Buttons: "Move to Review", "Mark Report Ready"</li>
+      <li><strong>Relevance Screening button</strong> → opens screening UI (session-state only, see Tab 4)</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>Admin Tab 3 — Submissions Queue</h3>
+    <p><span class="badge badge-amber">Static mock data</span> 5 hardcoded submission entries. Approve/Reject buttons show toast notifications only — no backend call is made. This tab is not production-ready.</p>
+  </div>
+
+  <div class="card">
+    <h3>Admin Tab 4 — Relevance Screening</h3>
+    <p><span class="badge badge-amber">Session state only</span> Shows 15 Scope 3 categories. Click Relevant / Not Sure / Not Relevant per category. Category 3 (Fuel &amp; Energy) is always pre-marked as Relevant. State is lost on page refresh — not persisted to DB.</p>
+  </div>
+
+  <div class="card">
+    <h3>Admin Tab 5 — Audit Log</h3>
+    <p><span class="badge badge-amber">Static mock data</span> 9 hardcoded entries (Activation, Invite, Invoice, etc.). No real audit data from DB yet.</p>
+  </div>
+
+  <div class="callout warning">
+    <span class="icon">⚠️</span>
+    <div>
+      <strong>Admin requires migration 002 and 004</strong>
+      The Activation tab requires DB migration <code>002_client_activation.sql</code> (adds <code>is_active</code> column). Invoice tracking requires <code>004_invoice_tracking.sql</code>. Without these, the tab will show DB errors.
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<!-- PART 5: EXISTING CLIENT USER JOURNEY                                     -->
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="section" id="part5">
+  <div class="section-header">
+    <span class="part-badge">PART 5</span>
+    <h2>Existing Client User Journey</h2>
+  </div>
+
+  <p>A client who has already completed setup and orientation. They go straight to the workspace on each login.</p>
+
+  <div class="card">
+    <h3>Daily / recurring workflow</h3>
+    <ol class="steps">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>Login → <code class="route">/workstreams</code></strong>
+          <span>No gates triggered. Sees the Carbon Cluster selector with their organisation's data. If team invite or data collection nudge banners were dismissed previously, they stay hidden.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Switch entities / fiscal years</strong>
+          <span>Entity switcher at top of sidebar. Fiscal year switcher next to it. Changing either re-fetches all data for that scope.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>Navigate workspace modules</strong>
+          <span>Sidebar links filtered by <code>enabled_pages</code> from ClientContext. Not all modules may be enabled for every client.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <strong>Submit data</strong>
+          <span>Go to <code class="route">/submissions</code>. Select scope card → multi-step wizard: entity → download template → upload CSV → upload evidence docs → review → submit.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <strong>Check dashboards</strong>
+          <span><code class="route">/overview</code> for KPI summary, <code class="route">/dashboard</code> for full carbon footprint breakdown, <code class="route">/hotspots</code> for where emissions are concentrated.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <strong>Review action plan &amp; progress</strong>
+          <span><code class="route">/action-plan</code> for decarbonisation actions, <code class="route">/progress</code> for milestone tracking.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">7</div>
+        <div class="step-body">
+          <strong>Upload documents to vault</strong>
+          <span><code class="route">/vault</code> → 4 folders (Raw Data / Evidence / Reports / Certificates). Upload modal available. Only roles with <code>canVault=true</code> can access.</span>
+        </div>
+      </li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h3>All workspace modules — at a glance</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Route</th><th>Module</th><th>Primary use</th></tr>
+        <tr><td><code>/workstreams</code></td><td>Home</td><td>Carbon cluster overview, org snapshot, facility cards</td></tr>
+        <tr><td><code>/overview</code></td><td>KPI Overview</td><td>Scope 1/2/3 donut chart, trend lines, intensity</td></tr>
+        <tr><td><code>/dashboard</code></td><td>Carbon Dashboard</td><td>Full footprint breakdown, S2 by facility, S3 summary</td></tr>
+        <tr><td><code>/inventory</code></td><td>Asset Register</td><td>Asset list table, filters</td></tr>
+        <tr><td><code>/interactive-inventory</code></td><td>Interactive Inventory</td><td>Card-based asset view</td></tr>
+        <tr><td><code>/hotspots</code></td><td>Emission Hotspots</td><td>Top emission sources, charts</td></tr>
+        <tr><td><code>/action-plan</code></td><td>Action Plan</td><td>Decarbonisation actions with owner and timeline</td></tr>
+        <tr><td><code>/progress</code></td><td>Progress Tracking</td><td>Milestone tracking against decarb targets</td></tr>
+        <tr><td><code>/peer</code></td><td>Peer Benchmarking</td><td>Compare against industry peers</td></tr>
+        <tr><td><code>/green-finance</code></td><td>Green Finance</td><td>Carbon as P&amp;L, financial impact view</td></tr>
+        <tr><td><code>/credits</code></td><td>Renewables &amp; I-RECs</td><td>Renewable energy certificate register</td></tr>
+        <tr><td><code>/reports</code></td><td>Report Library</td><td>Generated PDF reports</td></tr>
+        <tr><td><code>/reporting</code></td><td>Reporting Cycle</td><td>Reporting cycle simulator (admin + coordinator)</td></tr>
+        <tr><td><code>/submissions</code></td><td>Data Submissions</td><td>Multi-step data upload wizard</td></tr>
+        <tr><td><code>/vault</code></td><td>Document Vault</td><td>Raw data, evidence, reports, certificates</td></tr>
+        <tr><td><code>/methodology</code></td><td>Methodology</td><td>GHG calculation methodology reference</td></tr>
+        <tr><td><code>/priority-actions</code></td><td>Priority Actions</td><td>Action queue + email notification settings</td></tr>
+        <tr><td><code>/notifications</code></td><td>Notifications</td><td>Automation notification feed from GHG Apps Script</td></tr>
+        <tr><td><code>/team</code></td><td>Team Management</td><td>Invite and manage team members (owner role only)</td></tr>
+        <tr><td><code>/trends</code></td><td>Historical Trends</td><td>Tabular year-on-year trend data</td></tr>
+        <tr><td><code>/admin</code></td><td>Admin Panel</td><td>Deepwoods-only: client management, submissions queue</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<!-- PART 6: FIRST-TIME CLIENT USER JOURNEY                                   -->
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="section" id="part6">
+  <div class="section-header">
+    <span class="part-badge">PART 6</span>
+    <h2>First-Time Client User Journey</h2>
+  </div>
+
+  <p>A brand-new client user who receives an invite email and logs in for the first time. Three gates stand between them and the workspace.</p>
+
+  <div class="card">
+    <h3>Gate 1 — Change Password (if invited via temp password)</h3>
+    <ol class="steps">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>Receive invite email</strong>
+          <span>Deepwoods sends invite via admin panel → <code>invite-user.php</code>. Email contains temp password. A flag <code>must_change_password=1</code> is set in DB for this user.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Log in at <code class="route">/</code> with temp password</strong>
+          <span>On success, <code>fl_must_change_password=1</code> is set in localStorage alongside the JWT token.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>ChangePasswordModal appears</strong> <span class="step-gate">BLOCKING GATE</span>
+          <span>A modal opens immediately. In "forced" mode, the X button is hidden and the modal cannot be dismissed. User must enter current password + new password + confirm new password and click "Update password".</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <strong>Password changed</strong>
+          <span>Modal closes. <code>fl_must_change_password</code> cleared from localStorage. Proceeds to Gate 2.</span>
+        </div>
+      </li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h3>Gate 2 — Client Activation Check</h3>
+    <ol class="steps">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>ClientContextGate checks <code>is_active</code></strong> <span class="step-gate">BLOCKING GATE</span>
+          <span>After login, the app calls <code>me.php</code> and then loads ClientContext from <code>context.php</code>.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>If <code>is_active = false</code> → PendingActivation screen</strong>
+          <span>Full-page message: "Your workspace is being set up. A Deepwoods team member will activate your account shortly." Sign Out button only.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>If <code>is_active = true</code> → proceeds to Gate 3</strong>
+          <span>Client is active. Moves to orientation check.</span>
+        </div>
+      </li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h3>Gate 3 — Orientation Tour</h3>
+    <ol class="steps">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong><code>decarb_orientation_done</code> is absent in localStorage</strong> <span class="step-gate">SOFT GATE</span>
+          <span>ClientContextGate redirects to <code class="route">/onboard</code>.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Slide 1 — Welcome</strong>
+          <span>Portal overview. Lists 6 modules (GHG Inventory, Action Plan, Progress Tracking, Peer Benchmarking, Green Finance, Document Vault). "Next →" button.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>Slide 2 — Annual GHG Cycle</strong>
+          <span>6-step cycle (Data Collection → Validation → Inventory → Action Planning → Reporting → Review). "Next →" button.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <strong>Slide 3 — Team Roles</strong>
+          <span>4 roles explained (Owner, ESG Manager, Data Submitter, Viewer). "Get started" button.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <strong>"Get started" / "Skip tour"</strong>
+          <span>Both set <code>decarb_orientation_done = "1"</code> in localStorage and navigate to <code class="route">/workstreams</code>.</span>
+        </div>
+      </li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h3>Post-orientation — Setup Wizard (if needed)</h3>
+    <ol class="steps">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>Setup banner on workstreams</strong>
+          <span>If <code>setup_complete ≠ "true"</code>, a prominent amber banner appears: "Complete your workspace setup". Link to <code class="route">/setup</code>.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Step 1 — Org Boundary</strong>
+          <span>Choose consolidation approach (Operational / Financial / Equity). Choose base year (FY21–FY26). Entity list pre-populated from DB (can add new entities).</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>Step 2 — Inventory Boundary</strong>
+          <span>Per-entity scope selection: S1 (Stationary / Mobile / Fugitive) · S2 (Grid / Renewable) · S3 (toggle + individual category selection).</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <strong>Step 3 — Review &amp; Confirm</strong>
+          <span>Summary of all selections with "Edit" links back to steps 1/2. "Confirm &amp; Activate" button.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <strong>Workspace activated!</strong>
+          <span>POST to <code>client-setup.php</code>. Sets <code>setup_complete = true</code> in DB. Clears ClientContext cache. Success screen: two CTAs — "Start data collection" → <code class="route">/submissions</code> or "Go to workspace first" → <code class="route">/workstreams</code>.</span>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<!-- PART 7: ROLE-BASED ACCESS MATRIX                                         -->
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="section" id="part7">
+  <div class="section-header">
+    <span class="part-badge">PART 7</span>
+    <h2>Role-Based Access Matrix</h2>
+  </div>
+
+  <p>What each role can and cannot do. Legend: <span class="check">✓</span> = full access · <span class="cross">✗</span> = blocked · <span class="partial">◐</span> = partial / limited</p>
+
+  <div class="table-wrap">
+    <table>
+      <tr>
+        <th>Capability / Page</th>
+        <th>sustainability_team</th>
+        <th>client_uploader</th>
+        <th>client_leadership</th>
+        <th>deepwoods_admin</th>
+        <th>deepwoods_coordinator</th>
+      </tr>
+      <tr>
+        <td><strong>Login</strong></td>
+        <td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td>
+      </tr>
+      <tr>
+        <td><strong>Demo mode</strong></td>
+        <td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td>
+      </tr>
+      <tr>
+        <td><strong>Orientation tour (/onboard)</strong></td>
+        <td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="cross">✗ (skipped)</td><td class="cross">✗ (skipped)</td>
+      </tr>
+      <tr>
+        <td><strong>Setup wizard (/setup)</strong></td>
+        <td class="check">✓</td><td class="partial">◐ (if permitted)</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td>
+      </tr>
+      <tr>
+        <td><strong>Workstreams home</strong></td>
+        <td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td>
+      </tr>
+      <tr>
+        <td><strong>Dashboard, Overview, Hotspots</strong></td>
+        <td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td>
+      </tr>
+      <tr>
+        <td><strong>Inventory, Interactive Inventory</strong></td>
+        <td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td>
+      </tr>
+      <tr>
+        <td><strong>Action Plan, Progress, Trends</strong></td>
+        <td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td>
+      </tr>
+      <tr>
+        <td><strong>Peer, Green Finance, Credits</strong></td>
+        <td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td>
+      </tr>
+      <tr>
+        <td><strong>Reports, Methodology</strong></td>
+        <td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td>
+      </tr>
+      <tr>
+        <td><strong>Notifications, Priority Actions</strong></td>
+        <td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td>
+      </tr>
+      <tr>
+        <td><strong>Data Submissions (/submissions)</strong></td>
+        <td class="check">✓</td><td class="check">✓</td><td class="cross">✗ (LockedState)</td><td class="cross">✗ (LockedState)</td><td class="cross">✗ (LockedState)</td>
+      </tr>
+      <tr>
+        <td><strong>Document Vault (/vault)</strong></td>
+        <td class="check">✓</td><td class="check">✓</td><td class="cross">✗</td><td class="check">✓</td><td class="cross">✗</td>
+      </tr>
+      <tr>
+        <td><strong>Team Management (/team)</strong></td>
+        <td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td>
+      </tr>
+      <tr>
+        <td><strong>Reporting cycle (/reporting)</strong></td>
+        <td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td>
+      </tr>
+      <tr>
+        <td><strong>Admin panel (/admin)</strong></td>
+        <td class="cross">✗ (LockedState)</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td><td class="cross">✗</td>
+      </tr>
+      <tr>
+        <td><strong>Invite team members</strong></td>
+        <td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓ (via admin)</td><td class="cross">✗</td>
+      </tr>
+      <tr>
+        <td><strong>Request access form</strong></td>
+        <td colspan="5" style="text-align:center;color:var(--gray-600)">Public — anyone including unauthenticated users</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <span class="icon">ℹ️</span>
+    <div>
+      <strong>Entity scoping for client_uploader</strong>
+      A <code>client_uploader</code> with <code>entity_scope</code> set in the DB can only see data for their assigned entity. Data from other entities is filtered out. This is typically used for site-level data submitters (e.g. a factory manager submitting for their facility only).
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<!-- PART 8: COMPLETE PAGE MAP                                                 -->
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="section" id="part8">
+  <div class="section-header">
+    <span class="part-badge">PART 8</span>
+    <h2>Complete Page Map</h2>
+  </div>
+
+  <div class="callout info">
+    <span class="icon">ℹ️</span>
+    <div>All routes are React SPA routes handled by TanStack Router. The backend serves a single <code>index.html</code>; all routing is client-side. Direct URL access works because the server is configured to serve <code>index.html</code> for all paths.</div>
+  </div>
+
+  <h3 style="margin: 20px 0 10px; font-size: 15px; color: var(--gray-700);">Public Routes (No auth required)</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th>Route</th><th>Page</th><th>Status</th><th>Notes</th></tr>
+      <tr>
+        <td><code>/</code></td>
+        <td>Login</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>Two-panel layout. Email/password form + Demo button + New client link + Forgot password.</td>
+      </tr>
+      <tr>
+        <td><code>/request-access</code></td>
+        <td>Request Access</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>Public form for prospective clients. POSTs to <code>request-access.php</code>. Requires migration 003.</td>
+      </tr>
+      <tr>
+        <td><code>/forgot-password</code></td>
+        <td>Forgot Password</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>Email input → sends reset link. Dark background layout.</td>
+      </tr>
+      <tr>
+        <td><code>/reset-password</code></td>
+        <td>Reset Password</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>Requires <code>?token=</code> query param from the emailed link.</td>
+      </tr>
+    </table>
+  </div>
+
+  <h3 style="margin: 20px 0 10px; font-size: 15px; color: var(--gray-700);">Pre-Workspace Routes (Auth required, no sidebar)</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th>Route</th><th>Page</th><th>Status</th><th>Notes</th></tr>
+      <tr>
+        <td><code>/onboard</code></td>
+        <td>Orientation Tour</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>3-slide tour. Deepwoods roles skip this automatically. Sets <code>decarb_orientation_done</code> on completion.</td>
+      </tr>
+      <tr>
+        <td><code>/setup</code></td>
+        <td>Setup Wizard</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>3-step wizard (Org Boundary → Inventory Boundary → Review). POSTs to <code>client-setup.php</code>.</td>
+      </tr>
+    </table>
+  </div>
+
+  <h3 style="margin: 20px 0 10px; font-size: 15px; color: var(--gray-700);">Workspace Routes (Full auth + ClientContext + sidebar)</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th>Route</th><th>Module</th><th>Data source</th><th>Status</th><th>Notes</th></tr>
+      <tr>
+        <td><code>/workstreams</code></td>
+        <td>Home</td>
+        <td>Live API</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>Setup banner if incomplete. Team invite + data nudge banners for owners. Cluster selector. Facility cards.</td>
+      </tr>
+      <tr>
+        <td><code>/overview</code></td>
+        <td>KPI Overview</td>
+        <td>Live API</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>Scope 1/2/3 donut, trend lines, intensity metrics.</td>
+      </tr>
+      <tr>
+        <td><code>/dashboard</code></td>
+        <td>Carbon Dashboard</td>
+        <td>Live API</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>Full footprint dashboard. Multiple chart types. Highest data dependency page.</td>
+      </tr>
+      <tr>
+        <td><code>/inventory</code></td>
+        <td>Asset Register</td>
+        <td>Live API</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>Tabular asset list with filtering.</td>
+      </tr>
+      <tr>
+        <td><code>/interactive-inventory</code></td>
+        <td>Interactive Inventory</td>
+        <td>Live API</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>Card-based view of the same asset data.</td>
+      </tr>
+      <tr>
+        <td><code>/hotspots</code></td>
+        <td>Hotspot Analysis</td>
+        <td>Live API</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>Top emission sources, pareto-style analysis.</td>
+      </tr>
+      <tr>
+        <td><code>/action-plan</code></td>
+        <td>Action Plan</td>
+        <td>Live API</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>Decarbonisation actions with owner, timeline, status.</td>
+      </tr>
+      <tr>
+        <td><code>/progress</code></td>
+        <td>Progress Tracking</td>
+        <td>Live API</td>
+        <td><span class="badge badge-amber">Partial</span></td>
+        <td><code>DECARB_MILESTONES</code> still partially hardcoded. Main chart pulls from API.</td>
+      </tr>
+      <tr>
+        <td><code>/peer</code></td>
+        <td>Peer Benchmarking</td>
+        <td>Live API</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>Peer comparison from <code>usePeers()</code>.</td>
+      </tr>
+      <tr>
+        <td><code>/green-finance</code></td>
+        <td>Green Finance</td>
+        <td>Live API</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>Recently fixed: now uses dynamic years from API instead of hardcoded list.</td>
+      </tr>
+      <tr>
+        <td><code>/credits</code></td>
+        <td>Renewables &amp; I-RECs</td>
+        <td>Live API</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>I-REC register and renewable energy certificates.</td>
+      </tr>
+      <tr>
+        <td><code>/reports</code></td>
+        <td>Report Library</td>
+        <td>Live API</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>Generated PDF reports listing.</td>
+      </tr>
+      <tr>
+        <td><code>/reporting</code></td>
+        <td>Reporting Cycle</td>
+        <td>Live API</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>Deepwoods/coordinator only. Recently fixed: entities now dynamic.</td>
+      </tr>
+      <tr>
+        <td><code>/submissions</code></td>
+        <td>Data Submissions</td>
+        <td>Live API</td>
+        <td><span class="badge badge-amber">Partial</span></td>
+        <td>Multi-step wizard works. <strong>Known bug:</strong> facility dropdown empty (FACILITIES=[]).</td>
+      </tr>
+      <tr>
+        <td><code>/vault</code></td>
+        <td>Document Vault</td>
+        <td>Live API</td>
+        <td><span class="badge badge-amber">Partial</span></td>
+        <td>UI complete. Upload modal present. Backend integration unclear. Folder dates hardcoded.</td>
+      </tr>
+      <tr>
+        <td><code>/methodology</code></td>
+        <td>Methodology</td>
+        <td>Static content</td>
+        <td><span class="badge badge-amber">Partial</span></td>
+        <td>Content still has Featherlite-specific rows. Hook exists but page not wired to it.</td>
+      </tr>
+      <tr>
+        <td><code>/priority-actions</code></td>
+        <td>Priority Actions</td>
+        <td>Live API</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>3 tabs: Action Needed, Updates, Email Settings.</td>
+      </tr>
+      <tr>
+        <td><code>/notifications</code></td>
+        <td>Notifications</td>
+        <td>GHG API / Mock</td>
+        <td><span class="badge badge-amber">Config-dependent</span></td>
+        <td>Live only if <code>VITE_GHG_WEBAPP_URL</code> is configured. Falls back to mock in demo mode.</td>
+      </tr>
+      <tr>
+        <td><code>/team</code></td>
+        <td>Team Management</td>
+        <td>Live API</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td><code>sustainability_team</code> only. Invite modal → <code>invite-user.php</code>.</td>
+      </tr>
+      <tr>
+        <td><code>/trends</code></td>
+        <td>Historical Trends</td>
+        <td>Live API</td>
+        <td><span class="badge badge-green">Live</span></td>
+        <td>Fixed 2026-08-06: <code>YEARS/INV</code> → <code>reporting_years/inv()</code> crash resolved.</td>
+      </tr>
+      <tr>
+        <td><code>/admin</code></td>
+        <td>Admin Panel</td>
+        <td>Live API + Mock</td>
+        <td><span class="badge badge-amber">Partial</span></td>
+        <td>Tabs 1–2 live. Tabs 3–5 mock/static. Requires migrations 002 + 004.</td>
+      </tr>
+    </table>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<!-- PART 9: GOLDEN-PATH TEST CASES                                           -->
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="section" id="part9">
+  <div class="section-header">
+    <span class="part-badge">PART 9</span>
+    <h2>Golden-Path Test Cases</h2>
+  </div>
+
+  <div class="callout info">
+    <span class="icon">ℹ️</span>
+    <div>Run these tests in order. Each one covers a distinct user journey. Before each test, clear localStorage via DevTools → Application → Local Storage → Clear All, unless told otherwise.</div>
+  </div>
+
+  <!-- TC-01 -->
+  <div class="test-case">
+    <div class="test-case-header">
+      <span><span class="tc-id">TC-01</span><span class="tc-title">Unauthenticated visitor — Request Access flow</span></span>
+      <span><span class="badge badge-blue">Public</span></span>
+    </div>
+    <div class="test-case-body">
+      <div class="field"><div class="label">Precondition</div>No localStorage. Migration 003 (client_requests table) must be applied.</div>
+      <div class="field"><div class="label">Steps</div>
+        <ul class="checklist">
+          <li>Navigate to site root (<code>/</code>). Verify login page appears with both panels visible.</li>
+          <li>Click "New client?" / "Start your GHG inventory" link at bottom right.</li>
+          <li>Verify redirect to <code>/request-access</code>. Verify page is accessible without login.</li>
+          <li>Fill in all required fields (name, company, email). Leave optional fields blank. Submit.</li>
+          <li>Verify success state appears (form replaced by confirmation message).</li>
+          <li>As deepwoods_admin, log in → <code>/admin</code> → Engagements tab → verify the inquiry row appears.</li>
+        </ul>
+      </div>
+      <div class="field"><div class="label">Pass criteria</div>Success state shown. Request visible in admin Engagements tab.</div>
+    </div>
+  </div>
+
+  <!-- TC-02 -->
+  <div class="test-case">
+    <div class="test-case-header">
+      <span><span class="tc-id">TC-02</span><span class="tc-title">Demo mode — full workspace exploration</span></span>
+      <span><span class="badge badge-blue">Demo</span></span>
+    </div>
+    <div class="test-case-body">
+      <div class="field"><div class="label">Precondition</div>No localStorage. No account required.</div>
+      <div class="field"><div class="label">Steps</div>
+        <ul class="checklist">
+          <li>On login page, click the "Demo portal" button (not the email form).</li>
+          <li>Verify redirect to <code>/workstreams</code>. Check localStorage: <code>fl_demo_mode=1</code> present.</li>
+          <li>Navigate through: Overview → Dashboard → Inventory → Hotspots → Action Plan → Reports.</li>
+          <li>Verify charts render without errors. Verify no 401/network errors in browser DevTools.</li>
+          <li>Attempt to go to <code>/submissions</code>. Verify wizard loads (scope cards shown).</li>
+          <li>Sign out (sidebar or profile menu). Verify return to <code>/</code> and localStorage cleared.</li>
+        </ul>
+      </div>
+      <div class="field"><div class="label">Pass criteria</div>All pages load with mock data. No API errors. Logout clears localStorage.</div>
+    </div>
+  </div>
+
+  <!-- TC-03 -->
+  <div class="test-case">
+    <div class="test-case-header">
+      <span><span class="tc-id">TC-03</span><span class="tc-title">First-time client user — password change gate</span></span>
+      <span><span class="badge badge-amber">Client</span></span>
+    </div>
+    <div class="test-case-body">
+      <div class="field"><div class="label">Precondition</div>A user exists in DB with <code>must_change_password=1</code>. Clear localStorage. Client account must be active.</div>
+      <div class="field"><div class="label">Steps</div>
+        <ul class="checklist">
+          <li>Log in with the user's temp credentials.</li>
+          <li>Verify ChangePasswordModal appears immediately (before seeing any page content).</li>
+          <li>Verify the modal's X button is hidden (cannot dismiss without changing password).</li>
+          <li>Enter wrong current password — verify error message appears.</li>
+          <li>Enter correct current password + matching new password + confirm. Click "Update password".</li>
+          <li>Verify modal closes. Verify <code>fl_must_change_password</code> cleared from localStorage.</li>
+          <li>Verify user can now navigate normally (orientation tour if new account).</li>
+        </ul>
+      </div>
+      <div class="field"><div class="label">Pass criteria</div>Modal is undismissable. Validates old password. Clears flag after success.</div>
+    </div>
+  </div>
+
+  <!-- TC-04 -->
+  <div class="test-case">
+    <div class="test-case-header">
+      <span><span class="tc-id">TC-04</span><span class="tc-title">First-time client user — full onboarding flow</span></span>
+      <span><span class="badge badge-amber">Client</span></span>
+    </div>
+    <div class="test-case-body">
+      <div class="field"><div class="label">Precondition</div>Active client user. <code>decarb_orientation_done</code> absent. <code>setup_complete ≠ "true"</code>. Clear localStorage.</div>
+      <div class="field"><div class="label">Steps</div>
+        <ul class="checklist">
+          <li>Log in. Verify redirect to <code>/onboard</code> (not <code>/workstreams</code>).</li>
+          <li>Click through Slide 1 → 2 → 3. Verify "Skip tour" link is present on all slides.</li>
+          <li>On Slide 3, click "Get started". Verify <code>decarb_orientation_done="1"</code> in localStorage.</li>
+          <li>Verify redirect to <code>/workstreams</code>. Verify setup banner is visible (amber warning).</li>
+          <li>Click the setup banner link → <code>/setup</code>. Complete Step 1 (Org Boundary).</li>
+          <li>Complete Step 2 (Inventory Boundary — select at least one scope per entity).</li>
+          <li>On Step 3, review summary. Click "Confirm &amp; Activate".</li>
+          <li>Verify success screen appears with "Start data collection" and "Go to workspace" CTAs.</li>
+          <li>Click "Go to workspace first" → <code>/workstreams</code>. Verify setup banner is GONE.</li>
+        </ul>
+      </div>
+      <div class="field"><div class="label">Pass criteria</div>Full onboarding flows without errors. Setup banner disappears after confirmation.</div>
+    </div>
+  </div>
+
+  <!-- TC-05 -->
+  <div class="test-case">
+    <div class="test-case-header">
+      <span><span class="tc-id">TC-05</span><span class="tc-title">Data submission wizard — Scope 1</span></span>
+      <span><span class="badge badge-amber">Client</span></span>
+    </div>
+    <div class="test-case-body">
+      <div class="field"><div class="label">Precondition</div>sustainability_team or client_uploader user. Active account. Setup complete.</div>
+      <div class="field"><div class="label">Steps</div>
+        <ul class="checklist">
+          <li>Navigate to <code>/submissions</code>. Verify scope cards are visible (not LockedState).</li>
+          <li>Click "Scope 1" card. Verify wizard opens at Step 1 (Entity selection).</li>
+          <li>Select entity from dropdown. Click "Next".</li>
+          <li>Verify Step 2 shows template download link. Download the template CSV.</li>
+          <li>Re-upload a CSV file (can use the template itself for testing). Click "Next".</li>
+          <li>Step 3 (Evidence): upload a PDF or image document. Click "Next".</li>
+          <li>Step 4 (Review): verify all details shown correctly. Click "Submit".</li>
+          <li>Verify success state or toast. Check submission appears in the admin Submissions Queue.</li>
+          <li>Note: Inventory Update scope card will show empty facility dropdown (known bug — document, do not fix).</li>
+        </ul>
+      </div>
+      <div class="field"><div class="label">Pass criteria</div>Wizard completes without crash. Submission recorded in backend.</div>
+    </div>
+  </div>
+
+  <!-- TC-06 -->
+  <div class="test-case">
+    <div class="test-case-header">
+      <span><span class="tc-id">TC-06</span><span class="tc-title">Team invite flow</span></span>
+      <span><span class="badge badge-amber">Client</span></span>
+    </div>
+    <div class="test-case-body">
+      <div class="field"><div class="label">Precondition</div>sustainability_team user. Active account. Setup complete. SMTP configured in backend config.</div>
+      <div class="field"><div class="label">Steps</div>
+        <ul class="checklist">
+          <li>Navigate to <code>/team</code>. Verify member list loads.</li>
+          <li>Click "Invite team member" button. Verify InviteUserModal opens.</li>
+          <li>Select role "Data Submitter" (client_uploader). Enter valid email address.</li>
+          <li>Click "Send invite". Verify success toast appears.</li>
+          <li>Check that invite email is received at the specified address (if SMTP configured).</li>
+          <li>Log in with the temp credentials from the email. Verify must_change_password flow.</li>
+          <li>After password change, verify new user has correct role and access.</li>
+        </ul>
+      </div>
+      <div class="field"><div class="label">Pass criteria</div>Invite modal works. Email received. New user can log in with temp credentials.</div>
+    </div>
+  </div>
+
+  <!-- TC-07 -->
+  <div class="test-case">
+    <div class="test-case-header">
+      <span><span class="tc-id">TC-07</span><span class="tc-title">Deepwoods Admin — activate a new client</span></span>
+      <span><span class="badge badge-green">Admin</span></span>
+    </div>
+    <div class="test-case-body">
+      <div class="field"><div class="label">Precondition</div>deepwoods_admin credentials. Migration 002 applied. An inactive client exists in DB.</div>
+      <div class="field"><div class="label">Steps</div>
+        <ul class="checklist">
+          <li>Log in as deepwoods_admin. Navigate to <code>/admin</code> → Client Activation tab.</li>
+          <li>Verify "Pending" section shows the inactive client (amber badge).</li>
+          <li>Click "Activate" for the client. Verify success toast. Verify client moves to "Active" section.</li>
+          <li>Log out. Log in as that client's user. Verify PendingActivation screen does NOT appear.</li>
+          <li>Back as admin: click "Deactivate" for the same client. Verify it moves back to Pending.</li>
+          <li>Log in as client user again. Verify PendingActivation screen appears this time.</li>
+        </ul>
+      </div>
+      <div class="field"><div class="label">Pass criteria</div>Activate/Deactivate toggle works. Client user sees correct state on login.</div>
+    </div>
+  </div>
+
+  <!-- TC-08 -->
+  <div class="test-case">
+    <div class="test-case-header">
+      <span><span class="tc-id">TC-08</span><span class="tc-title">Deepwoods Admin — create new client engagement</span></span>
+      <span><span class="badge badge-green">Admin</span></span>
+    </div>
+    <div class="test-case-body">
+      <div class="field"><div class="label">Precondition</div>deepwoods_admin credentials. Logged in at <code>/admin</code>.</div>
+      <div class="field"><div class="label">Steps</div>
+        <ul class="checklist">
+          <li>Click "Engagements" tab in admin panel.</li>
+          <li>Click "New client" button. Verify CreateClientModal opens.</li>
+          <li>Enter: Client name, unique slug (lowercase, hyphens), currency (INR/USD), reporting period.</li>
+          <li>Click Create. Verify new client appears in the Engagements list.</li>
+          <li>Expand the new client row. Verify status pipeline is visible.</li>
+          <li>Click "Move to Review". Verify status updates in the row.</li>
+          <li>Navigate to Client Activation tab. Verify new client appears in Pending section.</li>
+        </ul>
+      </div>
+      <div class="field"><div class="label">Pass criteria</div>Client created and visible in both Engagements and Activation tabs.</div>
+    </div>
+  </div>
+
+  <!-- TC-09 -->
+  <div class="test-case">
+    <div class="test-case-header">
+      <span><span class="tc-id">TC-09</span><span class="tc-title">Password reset flow</span></span>
+      <span><span class="badge badge-blue">Public</span></span>
+    </div>
+    <div class="test-case-body">
+      <div class="field"><div class="label">Precondition</div>A real user email address. SMTP configured. Clear localStorage.</div>
+      <div class="field"><div class="label">Steps</div>
+        <ul class="checklist">
+          <li>On login page, click "Forgot password?". Verify redirect to <code>/forgot-password</code>.</li>
+          <li>Enter the user's email. Click "Send reset link".</li>
+          <li>Verify success message shown on page.</li>
+          <li>Check email inbox. Open reset email. Click the reset link.</li>
+          <li>Verify redirect to <code>/reset-password?token=...</code>. Verify token is present in URL.</li>
+          <li>Enter new password + confirm. Click "Reset password".</li>
+          <li>Verify success. Log in with new password at <code>/</code>.</li>
+        </ul>
+      </div>
+      <div class="field"><div class="label">Pass criteria</div>Email received. Token link works. New password accepted at login.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<!-- PART 10: SECURITY & ACCESS TESTS                                         -->
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="section" id="part10">
+  <div class="section-header">
+    <span class="part-badge">PART 10</span>
+    <h2>Security &amp; Access Boundary Tests</h2>
+  </div>
+
+  <div class="callout danger">
+    <span class="icon">🔒</span>
+    <div>
+      <strong>Do NOT test these on production with real credentials you don't own.</strong>
+      These tests verify that access controls are enforced. Use test accounts only.
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Authentication boundary tests</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>#</th><th>Test</th><th>Expected result</th></tr>
+        <tr>
+          <td>S-01</td>
+          <td>Navigate to <code>/workstreams</code> without any localStorage token.</td>
+          <td>Redirect to <code>/</code> login page. No workspace content shown.</td>
+        </tr>
+        <tr>
+          <td>S-02</td>
+          <td>Set a fake/expired JWT in <code>fl_session_token</code> localStorage. Navigate to <code>/workstreams</code>.</td>
+          <td><code>me.php</code> returns 401. User logged out automatically. Redirect to <code>/</code>.</td>
+        </tr>
+        <tr>
+          <td>S-03</td>
+          <td>Copy a valid token from one user's browser. Use it in another browser as a different user.</td>
+          <td>The token is valid for the original user only. Data returned belongs to that user's client.</td>
+        </tr>
+        <tr>
+          <td>S-04</td>
+          <td>Manually set <code>fl_role=deepwoods_admin</code> in localStorage while using a client_leadership token. Navigate to <code>/admin</code>.</td>
+          <td>The backend API still enforces role checks. Admin API calls should return 403. The frontend might show the admin UI but all data fetches should fail.</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Role-based access tests</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>#</th><th>Test</th><th>Expected result</th></tr>
+        <tr>
+          <td>S-05</td>
+          <td>Log in as <code>client_leadership</code>. Navigate to <code>/submissions</code>.</td>
+          <td>LockedState shown. "You don't have permission to submit data." Wizard does not load.</td>
+        </tr>
+        <tr>
+          <td>S-06</td>
+          <td>Log in as <code>client_uploader</code>. Navigate to <code>/team</code>.</td>
+          <td>Route either redirects away or shows a restricted state. Team management not accessible.</td>
+        </tr>
+        <tr>
+          <td>S-07</td>
+          <td>Log in as <code>sustainability_team</code>. Navigate to <code>/admin</code>.</td>
+          <td>LockedState shown. "You don't have access to the admin panel."</td>
+        </tr>
+        <tr>
+          <td>S-08</td>
+          <td>Log in as <code>client_leadership</code>. Navigate to <code>/vault</code>.</td>
+          <td>LockedState or redirect. Vault content not visible.</td>
+        </tr>
+        <tr>
+          <td>S-09</td>
+          <td>Log in as <code>deepwoods_coordinator</code>. Navigate to <code>/admin</code>.</td>
+          <td>LockedState. Coordinator role does not have admin access.</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Activation gate tests</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>#</th><th>Test</th><th>Expected result</th></tr>
+        <tr>
+          <td>S-10</td>
+          <td>Log in as a client user whose account has <code>is_active=false</code> in DB.</td>
+          <td>PendingActivation screen shown. Sidebar NOT visible. Sign Out only option.</td>
+        </tr>
+        <tr>
+          <td>S-11</td>
+          <td>Activate the client (via admin panel). Reload the client user's browser.</td>
+          <td>ClientContext refreshes. Workspace becomes accessible. Orientation tour may appear.</td>
+        </tr>
+        <tr>
+          <td>S-12</td>
+          <td>Try to navigate to <code>/dashboard</code> directly while client is inactive.</td>
+          <td>Still shows PendingActivation screen. Gate applies to all workspace routes.</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Demo mode isolation tests</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>#</th><th>Test</th><th>Expected result</th></tr>
+        <tr>
+          <td>S-13</td>
+          <td>In demo mode, attempt to submit data via <code>/submissions</code> wizard.</td>
+          <td>Wizard completes UI steps, but no real POST is made. Check Network tab in DevTools — submission endpoint should NOT be called.</td>
+        </tr>
+        <tr>
+          <td>S-14</td>
+          <td>In demo mode, navigate to <code>/team</code> and invite a user.</td>
+          <td>UI may complete, but no real invite is sent. Network tab shows no real API call.</td>
+        </tr>
+        <tr>
+          <td>S-15</td>
+          <td>Manually set <code>fl_demo_mode=1</code> in localStorage while having a real valid token.</td>
+          <td>All API calls are intercepted by mock. Real data is not shown. This is intentional behaviour.</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<!-- PART 11: IMPLEMENTATION STATUS                                           -->
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="section" id="part11">
+  <div class="section-header">
+    <span class="part-badge">PART 11</span>
+    <h2>Current Implementation Status</h2>
+  </div>
+
+  <div class="callout success">
+    <span class="icon">✅</span>
+    <div><strong>Fully implemented (live data, no known issues)</strong></div>
+  </div>
+  <div class="status-grid">
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Login / Logout</div><div class="si-note">JWT auth, roles, localStorage flags</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Demo mode</div><div class="si-note">Local mocks, all pages accessible</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Forgot / Reset password</div><div class="si-note">Token-based flow, requires SMTP</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Request Access form</div><div class="si-note">Requires migration 003</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Orientation tour</div><div class="si-note">3 slides, sets localStorage flag</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Setup wizard</div><div class="si-note">3 steps, saves to DB via client-setup.php</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">PendingActivation screen</div><div class="si-note">Shown when is_active=false</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">ChangePasswordModal</div><div class="si-note">Blocking gate on first login</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Workstreams home</div><div class="si-note">Banners, cluster selector, facility cards</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Overview / Dashboard</div><div class="si-note">All charts from live API</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Inventory / Interactive</div><div class="si-note">Asset register + card view</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Hotspots analysis</div><div class="si-note">Top emission sources</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Action Plan</div><div class="si-note">Live data, owner/timeline/status</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Peer Benchmarking</div><div class="si-note">usePeers() API hook</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Green Finance</div><div class="si-note">Fixed Aug 2026 — dynamic years</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Credits / I-RECs</div><div class="si-note">Certificate register</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Reports Library</div><div class="si-note">PDF report listing</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Reporting Cycle</div><div class="si-note">Fixed Aug 2026 — dynamic entities</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Team Management</div><div class="si-note">Invite via invite-user.php</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Admin — Activation tab</div><div class="si-note">Live Activate/Deactivate/Invoice/Invite</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Admin — Engagements tab</div><div class="si-note">Live — create client, manage pipeline</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Priority Actions</div><div class="si-note">3 tabs, email settings</div></div></div>
+    <div class="status-item"><div class="status-icon">✅</div><div><div class="si-name">Trends Table</div><div class="si-note">Fixed Aug 2026 — crash resolved</div></div></div>
+  </div>
+
+  <div class="callout warning" style="margin-top: 20px;">
+    <span class="icon">🟡</span>
+    <div><strong>Partially implemented (works but has known limitations)</strong></div>
+  </div>
+  <div class="status-grid">
+    <div class="status-item"><div class="status-icon">🟡</div><div><div class="si-name">Data Submissions</div><div class="si-note">Wizard works; facility dropdown empty (FACILITIES=[])</div></div></div>
+    <div class="status-item"><div class="status-icon">🟡</div><div><div class="si-name">Progress Tracking</div><div class="si-note">Main chart live; DECARB_MILESTONES partially hardcoded</div></div></div>
+    <div class="status-item"><div class="status-icon">🟡</div><div><div class="si-name">Document Vault</div><div class="si-note">UI complete; upload backend integration unclear</div></div></div>
+    <div class="status-item"><div class="status-icon">🟡</div><div><div class="si-name">Methodology page</div><div class="si-note">Content has Featherlite-specific rows; hook exists but not wired</div></div></div>
+    <div class="status-item"><div class="status-icon">🟡</div><div><div class="si-name">Notifications</div><div class="si-note">Live only if VITE_GHG_WEBAPP_URL configured; mock otherwise</div></div></div>
+    <div class="status-item"><div class="status-icon">🟡</div><div><div class="si-name">Admin — Submissions Queue</div><div class="si-note">Static mock — 5 hardcoded rows, no backend</div></div></div>
+    <div class="status-item"><div class="status-icon">🟡</div><div><div class="si-name">Admin — Relevance Screening</div><div class="si-note">Session state only — not saved to DB</div></div></div>
+    <div class="status-item"><div class="status-icon">🟡</div><div><div class="si-name">Admin — Audit Log</div><div class="si-note">Static mock — 9 hardcoded entries</div></div></div>
+  </div>
+
+  <div class="callout danger" style="margin-top: 20px;">
+    <span class="icon">⚠️</span>
+    <div><strong>Requires configuration or migration before testing</strong></div>
+  </div>
+  <div class="status-grid">
+    <div class="status-item"><div class="status-icon">⚠️</div><div><div class="si-name">Migration 001</div><div class="si-note">Rename legacy DB roles (featherlite_team etc.) to generic roles</div></div></div>
+    <div class="status-item"><div class="status-icon">⚠️</div><div><div class="si-name">Migration 002</div><div class="si-note">Add is_active column — required for Admin Activation tab</div></div></div>
+    <div class="status-item"><div class="status-icon">⚠️</div><div><div class="si-name">Migration 003</div><div class="si-note">Create client_requests table — required for Request Access form</div></div></div>
+    <div class="status-item"><div class="status-icon">⚠️</div><div><div class="si-name">Migration 004</div><div class="si-note">Add invoice tracking fields — required for Invoice modal</div></div></div>
+    <div class="status-item"><div class="status-icon">⚠️</div><div><div class="si-name">SMTP config</div><div class="si-note">backend/config.php: admin_email, platform_base_url — for password reset + invites</div></div></div>
+    <div class="status-item"><div class="status-icon">⚠️</div><div><div class="si-name">GHG webapp URL</div><div class="si-note">VITE_GHG_WEBAPP_URL env var — for live Notifications page</div></div></div>
+    <div class="status-item"><div class="status-icon">⚠️</div><div><div class="si-name">HP-1: Groq API keys</div><div class="si-note">DeecarbAI.tsx has client-side Groq keys — security risk, must move to server</div></div></div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<!-- PART 12: KNOWN GAPS & BLOCKERS                                           -->
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="section" id="part12">
+  <div class="section-header">
+    <span class="part-badge">PART 12</span>
+    <h2>Known Gaps &amp; Blockers</h2>
+  </div>
+
+  <div class="card">
+    <h3>Bugs — Active</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>ID</th><th>Description</th><th>Affected area</th><th>Workaround</th></tr>
+        <tr>
+          <td><strong>CT-1</strong></td>
+          <td>Legacy DB roles (<code>featherlite_team</code>, <code>featherlite_leadership</code>, <code>automation_demo</code>) not yet renamed to generic role names.</td>
+          <td>All auth-gated pages for legacy users</td>
+          <td>Run migration 001. Until then, legacy role users may see incorrect access.</td>
+        </tr>
+        <tr>
+          <td><strong>HP-1</strong></td>
+          <td>Groq API keys are in client-side code (<code>src/components/DeecarbAI.tsx</code>). Keys are visible in browser bundle.</td>
+          <td>DeecarbAI chat component</td>
+          <td>Do not use AI chat in production until keys are moved to server-side proxy.</td>
+        </tr>
+        <tr>
+          <td><strong>FACILITIES-BUG</strong></td>
+          <td><code>FACILITIES = []</code> in <code>_app.submissions.tsx</code> causes empty facility dropdown in the Inventory Update wizard.</td>
+          <td>Submissions → Inventory Update wizard step</td>
+          <td>Other scope wizards (S1, S2, S3) are not affected. Avoid testing Inventory Update wizard until fixed.</td>
+        </tr>
+        <tr>
+          <td><strong>METHODOLOGY-STATIC</strong></td>
+          <td>Methodology page (<code>/methodology</code>) has hardcoded Featherlite-specific content (base year FY2021-22, their entity names).</td>
+          <td>Methodology page</td>
+          <td>Do not rely on methodology page for multi-tenant testing. The <code>useMethodology()</code> hook exists but is not wired to the page.</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Bugs — Fixed (recent)</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>ID</th><th>Description</th><th>Fixed</th></tr>
+        <tr>
+          <td><del>ARC-M5</del></td>
+          <td><code>submissionsStore.ts</code> had hardcoded client slug. Now accepts <code>clientSlug</code> parameter.</td>
+          <td>2026-08-06</td>
+        </tr>
+        <tr>
+          <td><del>CT-3</del></td>
+          <td><code>_app.trends.tsx</code> crashed due to <code>YEARS/INV</code> references. Fixed to use <code>reporting_years/inv()</code>.</td>
+          <td>2026-08-06</td>
+        </tr>
+        <tr>
+          <td><del>Green Finance</del></td>
+          <td>Green Finance page had hardcoded year list. Now dynamic from API.</td>
+          <td>2026-08-06</td>
+        </tr>
+        <tr>
+          <td><del>Reporting</del></td>
+          <td>Reporting cycle page had hardcoded entity names. Now dynamic from ClientContext.</td>
+          <td>2026-08-06</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Features not yet implemented</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Feature</th><th>Current state</th><th>Priority</th></tr>
+        <tr>
+          <td>Admin Submissions Queue — backend</td>
+          <td>Static mock data only. Approve/Reject are UI toasts with no real API.</td>
+          <td>Medium</td>
+        </tr>
+        <tr>
+          <td>Admin Audit Log — real data</td>
+          <td>9 hardcoded entries. No DB table being written to.</td>
+          <td>Medium</td>
+        </tr>
+        <tr>
+          <td>Admin Relevance Screening — persistence</td>
+          <td>Session state only. Selections lost on page refresh.</td>
+          <td>Low</td>
+        </tr>
+        <tr>
+          <td>Document Vault — confirmed upload backend</td>
+          <td>UI complete, upload modal present, backend integration unverified.</td>
+          <td>High</td>
+        </tr>
+        <tr>
+          <td>Methodology page — dynamic content</td>
+          <td>Hook <code>useMethodology()</code> exists but page uses static content.</td>
+          <td>Medium</td>
+        </tr>
+        <tr>
+          <td>GHG Notifications — live mode</td>
+          <td>Falls back to mock unless <code>VITE_GHG_WEBAPP_URL</code> is configured.</td>
+          <td>Config task</td>
+        </tr>
+        <tr>
+          <td>Test suite</td>
+          <td>Tests directory is a placeholder. No automated tests exist.</td>
+          <td>Future</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Pre-test checklist for a clean test environment</h3>
+    <ul class="checklist">
+      <li>Run all 4 DB migrations (001–004) on the test database.</li>
+      <li>Configure <code>backend/config.php</code>: <code>admin_email</code>, <code>platform_base_url</code>.</li>
+      <li>Set <code>VITE_GHG_WEBAPP_URL</code> in <code>.env.local</code> if testing Notifications (optional).</li>
+      <li>Create at least one inactive test client and one active test client in DB.</li>
+      <li>Create test users for each of the 5 roles.</li>
+      <li>Ensure one test user has <code>must_change_password=1</code> to test TC-03.</li>
+      <li>Configure SMTP (or test email) for invite and password reset flows.</li>
+      <li>Clear browser localStorage between test runs (DevTools → Application → Local Storage → Clear All).</li>
+      <li>Verify CORS proxy (<code>ghg-proxy.php</code>) is deployed to <code>public_html/</code> separately from the app bundle.</li>
+    </ul>
+  </div>
+</section>
+
+</main>
+</div>
+
+<div class="footer">
+  Decarb Platform — Tester User-Flow Guide v1.0 · Deepwoods Green Internal Document · Generated 2026-08-10 · Not for external distribution
+</div>
+
+<script>
+  // Highlight active TOC item on scroll
+  const sections = document.querySelectorAll('.section');
+  const tocLinks = document.querySelectorAll('.toc a');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.id;
+        tocLinks.forEach(link => {
+          link.classList.toggle('active', link.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { rootMargin: '-10% 0px -80% 0px' });
+
+  sections.forEach(section => observer.observe(section));
+</script>
+</body>
+</html>
