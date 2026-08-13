@@ -446,6 +446,9 @@
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 <nav class="toc">
   <div class="toc-title">Contents</div>
+  <div class="part-label">Before You Test</div>
+  <a href="#credentials">Test Credentials</a>
+  <a href="#env-setup">Environment Setup</a>
   <div class="part-label">Overview</div>
   <a href="#part1">1. Portal Overview</a>
   <a href="#part2">2. Entry-Point Decision Tree</a>
@@ -469,6 +472,348 @@
 <!-- MAIN CONTENT                                                             -->
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 <main class="main">
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<!-- TEST CREDENTIALS                                                          -->
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="section" id="credentials">
+  <div class="section-header">
+    <span class="part-badge" style="background:#991b1b">TEST ACCOUNTS</span>
+    <h2>Test Credentials</h2>
+  </div>
+
+  <div class="callout danger">
+    <span class="icon">🔒</span>
+    <div>
+      <strong>SECURITY RULES — READ BEFORE TESTING</strong>
+      <ul style="margin-top:6px;padding-left:16px">
+        <li>Do NOT use Featherlite production credentials for any test.</li>
+        <li>Do NOT use the real Deepwoods admin account as a generic tester credential.</li>
+        <li>Do NOT share test passwords in Slack, email, or any public channel.</li>
+        <li>All accounts below are <strong>TEST ACCOUNT — NOT FOR PRODUCTION USE</strong>.</li>
+        <li>SMTP app passwords, DB passwords, and API keys are never stored in this document.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout warning">
+    <span class="icon">⚠️</span>
+    <div>
+      <strong>Test accounts are NOT YET CREATED in the production database.</strong>
+      See the "Test Accounts To Create" section below for the exact steps to provision them before testing.
+      Until created, all accounts below show status <span class="badge badge-red">NOT CREATED</span>.
+    </div>
+  </div>
+
+  <h3 style="margin:20px 0 12px;font-size:15px">Credential Status Matrix</h3>
+  <div class="table-wrap">
+    <table>
+      <tr>
+        <th>Account</th>
+        <th>Role</th>
+        <th>Tenant</th>
+        <th>Email (to create)</th>
+        <th>Status</th>
+        <th>Used in</th>
+      </tr>
+      <tr>
+        <td><strong>Deepwoods Admin</strong></td>
+        <td><code>deepwoods_admin</code></td>
+        <td>Deepwoods</td>
+        <td><em>test.admin@deepwoodsgreen.com</em></td>
+        <td><span class="badge badge-red">NOT CREATED</span></td>
+        <td>TC-06, TC-07, TC-08</td>
+      </tr>
+      <tr>
+        <td><strong>ESG Manager (Owner)</strong></td>
+        <td><code>sustainability_team</code></td>
+        <td>ACME Test</td>
+        <td><em>test.esg@acme-test.example</em></td>
+        <td><span class="badge badge-red">NOT CREATED</span></td>
+        <td>TC-03, TC-04, TC-05</td>
+      </tr>
+      <tr>
+        <td><strong>Data Submitter</strong></td>
+        <td><code>client_uploader</code></td>
+        <td>ACME Test</td>
+        <td><em>test.uploader@acme-test.example</em></td>
+        <td><span class="badge badge-red">NOT CREATED</span></td>
+        <td>TC-05 (invitee)</td>
+      </tr>
+      <tr>
+        <td><strong>Viewer (Leadership)</strong></td>
+        <td><code>client_leadership</code></td>
+        <td>ACME Test</td>
+        <td><em>test.viewer@acme-test.example</em></td>
+        <td><span class="badge badge-red">NOT CREATED</span></td>
+        <td>S-05, S-08 (access tests)</td>
+      </tr>
+      <tr>
+        <td><strong>Public Tester</strong></td>
+        <td>N/A — unauthenticated</td>
+        <td>N/A</td>
+        <td>Any valid email for reset test</td>
+        <td><span class="badge badge-green">No account needed</span></td>
+        <td>TC-01, TC-02, TC-09</td>
+      </tr>
+    </table>
+  </div>
+
+  <h3 style="margin:20px 0 12px;font-size:15px">Account Profiles</h3>
+
+  <div class="card">
+    <h3>1 — Deepwoods Admin</h3>
+    <div class="pill-row">
+      <span class="badge badge-red">NOT CREATED</span>
+      <span class="badge badge-gray">deepwoods_admin</span>
+      <span class="badge badge-gray">Deepwoods org</span>
+    </div>
+    <p style="margin-top:10px"><strong>Purpose:</strong> Create clients, activate/deactivate, invite users, manage engagements, review access requests, access admin portal.</p>
+    <div class="table-wrap" style="margin-top:10px">
+      <table>
+        <tr><td style="width:160px;color:var(--gray-600)">Email</td><td><code>test.admin@deepwoodsgreen.com</code></td></tr>
+        <tr><td style="color:var(--gray-600)">Password</td><td><em>Set during account creation — store in team password manager only</em></td></tr>
+        <tr><td style="color:var(--gray-600)">Login URL</td><td><code>https://green-tiger-803731.hostingersite.com/</code></td></tr>
+        <tr><td style="color:var(--gray-600)">Expected landing</td><td><code>/workstreams</code> → Admin tab visible in sidebar</td></tr>
+      </table>
+    </div>
+    <div class="callout warning" style="margin-top:10px">
+      <span class="icon">⚠️</span>
+      <div>This is a Deepwoods role. It has <code>client_id = NULL</code> in the DB. Do not assign a client_id to this user.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>2 — ESG Manager / Client Owner</h3>
+    <div class="pill-row">
+      <span class="badge badge-red">NOT CREATED</span>
+      <span class="badge badge-gray">sustainability_team</span>
+      <span class="badge badge-gray">ACME Manufacturing Test</span>
+    </div>
+    <p style="margin-top:10px"><strong>Purpose:</strong> Test the first-time client journey end-to-end — forced password change, activation check, orientation tour, workspace setup, data collection, team management.</p>
+    <div class="table-wrap" style="margin-top:10px">
+      <table>
+        <tr><td style="width:160px;color:var(--gray-600)">Email</td><td><code>test.esg@acme-test.example</code></td></tr>
+        <tr><td style="color:var(--gray-600)">Initial password</td><td><em>Temp password generated during invite — shown in admin panel + invite email</em></td></tr>
+        <tr><td style="color:var(--gray-600)">Client</td><td>ACME Manufacturing Test (slug: <code>acme-test</code>)</td></tr>
+        <tr><td style="color:var(--gray-600)">must_change_password</td><td><code>1</code> on first login</td></tr>
+        <tr><td style="color:var(--gray-600)">Expected journey</td><td>Login → Change Password → Activation check → Orientation → Setup → Workspace</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>3 — Data Submitter</h3>
+    <div class="pill-row">
+      <span class="badge badge-red">NOT CREATED</span>
+      <span class="badge badge-gray">client_uploader</span>
+      <span class="badge badge-gray">ACME Manufacturing Test</span>
+    </div>
+    <p style="margin-top:10px"><strong>Purpose:</strong> Test data submission wizard, CSV upload, evidence upload. Invited by the ESG Manager via TC-05.</p>
+    <div class="table-wrap" style="margin-top:10px">
+      <table>
+        <tr><td style="width:160px;color:var(--gray-600)">Email</td><td><code>test.uploader@acme-test.example</code></td></tr>
+        <tr><td style="color:var(--gray-600)">Initial password</td><td><em>Generated during team invite — shown in modal + invite email</em></td></tr>
+        <tr><td style="color:var(--gray-600)">Client</td><td>ACME Manufacturing Test</td></tr>
+        <tr><td style="color:var(--gray-600)">Expected access</td><td>Submissions wizard ✓ · Team page ✗ · Admin ✗</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>4 — Viewer / Leadership</h3>
+    <div class="pill-row">
+      <span class="badge badge-red">NOT CREATED</span>
+      <span class="badge badge-gray">client_leadership</span>
+      <span class="badge badge-gray">ACME Manufacturing Test</span>
+    </div>
+    <p style="margin-top:10px"><strong>Purpose:</strong> Verify read-only access. Confirm that Submissions, Vault, Team pages are blocked.</p>
+    <div class="table-wrap" style="margin-top:10px">
+      <table>
+        <tr><td style="width:160px;color:var(--gray-600)">Email</td><td><code>test.viewer@acme-test.example</code></td></tr>
+        <tr><td style="color:var(--gray-600)">Initial password</td><td><em>Generated during team invite</em></td></tr>
+        <tr><td style="color:var(--gray-600)">Client</td><td>ACME Manufacturing Test</td></tr>
+        <tr><td style="color:var(--gray-600)">Expected access</td><td>Dashboards ✓ · Submissions ✗ (LockedState) · Vault ✗ · Team ✗</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>5 — Public Tester</h3>
+    <div class="pill-row">
+      <span class="badge badge-green">No account needed</span>
+    </div>
+    <p style="margin-top:10px"><strong>Purpose:</strong> Test public-facing flows — Request Access form, Demo portal, Forgot Password.</p>
+    <div class="table-wrap" style="margin-top:10px">
+      <table>
+        <tr><td style="width:160px;color:var(--gray-600)">Login URL</td><td><code>https://green-tiger-803731.hostingersite.com/</code></td></tr>
+        <tr><td style="color:var(--gray-600)">Request Access</td><td><code>/request-access</code> — use any name/email</td></tr>
+        <tr><td style="color:var(--gray-600)">Demo portal</td><td>Click "Demo portal" on login page — no account required</td></tr>
+        <tr><td style="color:var(--gray-600)">Forgot Password</td><td>Use a real inbox you control. Reset email sent by <code>green.featherlite@deepwoodsgreen.com</code></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <h3 style="margin:24px 0 12px;font-size:15px">Test Accounts To Create</h3>
+  <div class="callout info">
+    <span class="icon">ℹ️</span>
+    <div>
+      <strong>Sequence matters.</strong> Create the test client first, then invite users. Use the admin panel — do not INSERT directly into the DB unless noted.
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Step A — Create the test client (Admin → Engagements)</h3>
+    <ol style="padding-left:18px;line-height:2">
+      <li>Log in as a <em>real</em> Deepwoods admin account.</li>
+      <li>Go to <code>/admin</code> → Engagements tab → "New client" button.</li>
+      <li>Fill in: Name = <code>ACME Manufacturing Test</code>, Slug = <code>acme-test</code>, Currency = <code>INR</code>.</li>
+      <li>Confirm creation. Note the client ID shown in the DB or API response.</li>
+    </ol>
+    <div class="callout warning" style="margin-top:10px">
+      <span class="icon">⚠️</span>
+      <div>Migration 002 (<code>002_add_client_activation.sql</code>) must be applied before this step — it adds the <code>is_active</code> column required by the Activation tab.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Step B — Activate the test client (Admin → Client Activation)</h3>
+    <ol style="padding-left:18px;line-height:2">
+      <li>Go to <code>/admin</code> → Client Activation tab.</li>
+      <li>Find "ACME Manufacturing Test" in the Pending section.</li>
+      <li>Click "Activate". Client moves to Active section.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h3>Step C — Invite the ESG Manager (Admin → Client Activation → Invite user)</h3>
+    <ol style="padding-left:18px;line-height:2">
+      <li>In the Active section, find ACME Manufacturing Test.</li>
+      <li>Click "Invite user" → InviteUserModal opens.</li>
+      <li>Email: <code>test.esg@acme-test.example</code>, Role: <code>sustainability_team</code>.</li>
+      <li>Click Send. Note the temporary password shown in the modal — it is also emailed to the address.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h3>Step D — Data Submitter and Viewer accounts</h3>
+    <p>After the ESG Manager has logged in and completed orientation + setup:</p>
+    <ol style="padding-left:18px;line-height:2">
+      <li>Log in as the ESG Manager.</li>
+      <li>Go to <code>/team</code> → "Invite team member".</li>
+      <li>Create Data Submitter: <code>test.uploader@acme-test.example</code>, role <code>client_uploader</code>.</li>
+      <li>Create Viewer: <code>test.viewer@acme-test.example</code>, role <code>client_leadership</code>.</li>
+      <li>Note the temp passwords shown in the success modal for each invite.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h3>Reset Test Environment</h3>
+    <p>To return the test client to the initial (pre-orientation) state without touching production clients:</p>
+    <div class="table-wrap">
+      <table>
+        <tr><th>What to reset</th><th>How</th></tr>
+        <tr>
+          <td>Orientation flag</td>
+          <td>Browser DevTools → Application → Local Storage → delete <code>decarb_orientation_done</code></td>
+        </tr>
+        <tr>
+          <td>Setup completion</td>
+          <td>Run in MySQL: <code>DELETE FROM client_config WHERE client_id = [test_id] AND config_key = 'setup_complete';</code></td>
+        </tr>
+        <tr>
+          <td>Re-test activation gate</td>
+          <td>Admin → Client Activation → Deactivate ACME Test → re-activate as needed</td>
+        </tr>
+        <tr>
+          <td>Re-test must_change_password</td>
+          <td>Run: <code>UPDATE users SET must_change_password = 1 WHERE email = 'test.esg@acme-test.example';</code></td>
+        </tr>
+        <tr>
+          <td>Full teardown</td>
+          <td>Delete all users with <code>client_id = [test_id]</code>, then delete the client row. Do NOT delete any real client rows.</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<!-- ENVIRONMENT SETUP                                                         -->
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="section" id="env-setup">
+  <div class="section-header">
+    <span class="part-badge" style="background:#1d4ed8">ENV SETUP</span>
+    <h2>Environment Setup</h2>
+  </div>
+
+  <div class="callout warning">
+    <span class="icon">⚠️</span>
+    <div>
+      <strong>Run all 4 migrations before testing.</strong>
+      Without the migrations, the Admin Activation tab and the Request Access form will throw DB errors.
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Required migrations (run in order via phpMyAdmin)</h3>
+    <div class="table-wrap">
+      <table>
+        <tr><th>File</th><th>Purpose</th><th>Required for</th></tr>
+        <tr>
+          <td><code>database/migrations/001_migrate_legacy_roles.sql</code></td>
+          <td>Rename legacy Featherlite roles to generic role names</td>
+          <td>Any login by legacy users</td>
+        </tr>
+        <tr>
+          <td><code>database/migrations/002_add_client_activation.sql</code></td>
+          <td>Adds <code>is_active</code> column to <code>clients</code> table</td>
+          <td>Admin Activation tab, TC-07</td>
+        </tr>
+        <tr>
+          <td><code>database/migrations/003_add_client_requests.sql</code></td>
+          <td>Creates <code>client_requests</code> table</td>
+          <td>Request Access form, TC-01</td>
+        </tr>
+        <tr>
+          <td><code>database/migrations/004_add_invoice_fields.sql</code></td>
+          <td>Adds invoice/payment columns to <code>clients</code></td>
+          <td>Admin Invoice modal</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Email configuration</h3>
+    <p>All platform emails (invites, password reset, request-access notifications) are sent from:</p>
+    <p style="margin:10px 0;font-family:monospace;font-size:14px;color:var(--green-dark)">green.featherlite@deepwoodsgreen.com</p>
+    <p>SMTP credentials are configured in <code>backend/config.php</code> (gitignored — never committed). Verify the following keys are set:</p>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Config key</th><th>Required value</th></tr>
+        <tr><td><code>smtp.username</code></td><td><code>green.featherlite@deepwoodsgreen.com</code></td></tr>
+        <tr><td><code>smtp.from_email</code></td><td><code>green.featherlite@deepwoodsgreen.com</code></td></tr>
+        <tr><td><code>smtp.app_password</code></td><td>Gmail App Password — stored in team password manager only</td></tr>
+        <tr><td><code>admin_email</code></td><td>Deepwoods admin inbox for Request Access notifications</td></tr>
+        <tr><td><code>app_base_url</code></td><td><code>https://green-tiger-803731.hostingersite.com</code></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Pre-test browser checklist</h3>
+    <ul class="checklist">
+      <li>All 4 DB migrations applied.</li>
+      <li>All PHP backend files uploaded to Hostinger <code>public_html/backend/api/</code>.</li>
+      <li><code>ghg-proxy.php</code> uploaded to <code>public_html/</code> (separate from the app bundle).</li>
+      <li><code>backend/config.php</code> updated with correct SMTP + DB credentials on the server.</li>
+      <li>Browser localStorage cleared: DevTools → Application → Local Storage → Clear All.</li>
+      <li>Test client "ACME Manufacturing Test" created and activated (Steps A–D above).</li>
+      <li>Test user accounts created with temp passwords noted.</li>
+    </ul>
+  </div>
+</section>
 
 <!-- ─────────────────────────────────────────────────────────────────────── -->
 <!-- PART 1: PORTAL OVERVIEW                                                  -->
@@ -1447,6 +1792,7 @@
       <span><span class="badge badge-blue">Public</span></span>
     </div>
     <div class="test-case-body">
+      <div class="field"><div class="label">Account</div><strong>Public Tester</strong> — no account required. Use any name/email.</div>
       <div class="field"><div class="label">Precondition</div>No localStorage. Migration 003 (client_requests table) must be applied.</div>
       <div class="field"><div class="label">Steps</div>
         <ul class="checklist">
@@ -1459,6 +1805,12 @@
         </ul>
       </div>
       <div class="field"><div class="label">Pass criteria</div>Success state shown. Request visible in admin Engagements tab.</div>
+      <div class="field"><div class="label">Result</div>
+        <span style="margin-right:16px">☐ <strong>PASS</strong></span>
+        <span style="margin-right:16px">☐ <strong>FAIL</strong></span>
+        <span>☐ <strong>BLOCKED</strong></span>
+        <div style="margin-top:6px;font-size:12px;color:var(--gray-600)">Notes: _______________________________________________</div>
+      </div>
     </div>
   </div>
 
@@ -1469,6 +1821,7 @@
       <span><span class="badge badge-blue">Demo</span></span>
     </div>
     <div class="test-case-body">
+      <div class="field"><div class="label">Account</div><strong>Public Tester</strong> — no account required. Demo mode is unauthenticated.</div>
       <div class="field"><div class="label">Precondition</div>No localStorage. No account required.</div>
       <div class="field"><div class="label">Steps</div>
         <ul class="checklist">
@@ -1481,6 +1834,12 @@
         </ul>
       </div>
       <div class="field"><div class="label">Pass criteria</div>All pages load with mock data. No API errors. Logout clears localStorage.</div>
+      <div class="field"><div class="label">Result</div>
+        <span style="margin-right:16px">☐ <strong>PASS</strong></span>
+        <span style="margin-right:16px">☐ <strong>FAIL</strong></span>
+        <span>☐ <strong>BLOCKED</strong></span>
+        <div style="margin-top:6px;font-size:12px;color:var(--gray-600)">Notes: _______________________________________________</div>
+      </div>
     </div>
   </div>
 
@@ -1491,6 +1850,7 @@
       <span><span class="badge badge-amber">Client</span></span>
     </div>
     <div class="test-case-body">
+      <div class="field"><div class="label">Account</div><strong>ESG Manager</strong> — <code>test.esg@acme-test.example</code> / <code>sustainability_team</code>. Must have <code>must_change_password=1</code>.</div>
       <div class="field"><div class="label">Precondition</div>A user exists in DB with <code>must_change_password=1</code>. Clear localStorage. Client account must be active.</div>
       <div class="field"><div class="label">Steps</div>
         <ul class="checklist">
@@ -1504,6 +1864,12 @@
         </ul>
       </div>
       <div class="field"><div class="label">Pass criteria</div>Modal is undismissable. Validates old password. Clears flag after success.</div>
+      <div class="field"><div class="label">Result</div>
+        <span style="margin-right:16px">☐ <strong>PASS</strong></span>
+        <span style="margin-right:16px">☐ <strong>FAIL</strong></span>
+        <span>☐ <strong>BLOCKED</strong></span>
+        <div style="margin-top:6px;font-size:12px;color:var(--gray-600)">Notes: _______________________________________________</div>
+      </div>
     </div>
   </div>
 
@@ -1514,6 +1880,7 @@
       <span><span class="badge badge-amber">Client</span></span>
     </div>
     <div class="test-case-body">
+      <div class="field"><div class="label">Account</div><strong>ESG Manager</strong> — <code>test.esg@acme-test.example</code>. Password must already be changed (run TC-03 first). Reset <code>decarb_orientation_done</code> in localStorage before starting.</div>
       <div class="field"><div class="label">Precondition</div>Active client user. <code>decarb_orientation_done</code> absent. <code>setup_complete ≠ "true"</code>. Clear localStorage.</div>
       <div class="field"><div class="label">Steps</div>
         <ul class="checklist">
@@ -1529,6 +1896,12 @@
         </ul>
       </div>
       <div class="field"><div class="label">Pass criteria</div>Full onboarding flows without errors. Setup banner disappears after confirmation.</div>
+      <div class="field"><div class="label">Result</div>
+        <span style="margin-right:16px">☐ <strong>PASS</strong></span>
+        <span style="margin-right:16px">☐ <strong>FAIL</strong></span>
+        <span>☐ <strong>BLOCKED</strong></span>
+        <div style="margin-top:6px;font-size:12px;color:var(--gray-600)">Notes: _______________________________________________</div>
+      </div>
     </div>
   </div>
 
@@ -1539,6 +1912,7 @@
       <span><span class="badge badge-amber">Client</span></span>
     </div>
     <div class="test-case-body">
+      <div class="field"><div class="label">Account</div><strong>ESG Manager</strong> or <strong>Data Submitter</strong> — <code>test.esg@acme-test.example</code> (sustainability_team) or <code>test.uploader@acme-test.example</code> (client_uploader). Setup must be complete (run TC-04 first).</div>
       <div class="field"><div class="label">Precondition</div>sustainability_team or client_uploader user. Active account. Setup complete.</div>
       <div class="field"><div class="label">Steps</div>
         <ul class="checklist">
@@ -1554,6 +1928,12 @@
         </ul>
       </div>
       <div class="field"><div class="label">Pass criteria</div>Wizard completes without crash. Submission recorded in backend.</div>
+      <div class="field"><div class="label">Result</div>
+        <span style="margin-right:16px">☐ <strong>PASS</strong></span>
+        <span style="margin-right:16px">☐ <strong>FAIL</strong></span>
+        <span>☐ <strong>BLOCKED</strong></span>
+        <div style="margin-top:6px;font-size:12px;color:var(--gray-600)">Notes: _______________________________________________</div>
+      </div>
     </div>
   </div>
 
@@ -1564,19 +1944,27 @@
       <span><span class="badge badge-amber">Client</span></span>
     </div>
     <div class="test-case-body">
+      <div class="field"><div class="label">Account</div><strong>ESG Manager</strong> — <code>test.esg@acme-test.example</code> / <code>sustainability_team</code>. Setup must be complete. Invite target: <code>test.uploader@acme-test.example</code>.</div>
       <div class="field"><div class="label">Precondition</div>sustainability_team user. Active account. Setup complete. SMTP configured in backend config.</div>
       <div class="field"><div class="label">Steps</div>
         <ul class="checklist">
           <li>Navigate to <code>/team</code>. Verify member list loads.</li>
           <li>Click "Invite team member" button. Verify InviteUserModal opens.</li>
           <li>Select role "Data Submitter" (client_uploader). Enter valid email address.</li>
-          <li>Click "Send invite". Verify success toast appears.</li>
-          <li>Check that invite email is received at the specified address (if SMTP configured).</li>
+          <li>Click "Send invite". Verify success toast appears with temp password shown.</li>
+          <li>Verify the success modal shows a temp password (not the email address).</li>
+          <li>Check that invite email is received at the specified address. Sender must be <code>green.featherlite@deepwoodsgreen.com</code>.</li>
           <li>Log in with the temp credentials from the email. Verify must_change_password flow.</li>
           <li>After password change, verify new user has correct role and access.</li>
         </ul>
       </div>
-      <div class="field"><div class="label">Pass criteria</div>Invite modal works. Email received. New user can log in with temp credentials.</div>
+      <div class="field"><div class="label">Pass criteria</div>Invite modal shows temp password (not email). Email received from correct sender. New user can log in.</div>
+      <div class="field"><div class="label">Result</div>
+        <span style="margin-right:16px">☐ <strong>PASS</strong></span>
+        <span style="margin-right:16px">☐ <strong>FAIL</strong></span>
+        <span>☐ <strong>BLOCKED</strong></span>
+        <div style="margin-top:6px;font-size:12px;color:var(--gray-600)">Notes: _______________________________________________</div>
+      </div>
     </div>
   </div>
 
@@ -1587,6 +1975,7 @@
       <span><span class="badge badge-green">Admin</span></span>
     </div>
     <div class="test-case-body">
+      <div class="field"><div class="label">Account</div><strong>Deepwoods Admin</strong> — <code>test.admin@deepwoodsgreen.com</code> / <code>deepwoods_admin</code>. Also requires the ESG Manager account (<code>test.esg@acme-test.example</code>) to test client-side state.</div>
       <div class="field"><div class="label">Precondition</div>deepwoods_admin credentials. Migration 002 applied. An inactive client exists in DB.</div>
       <div class="field"><div class="label">Steps</div>
         <ul class="checklist">
@@ -1599,6 +1988,12 @@
         </ul>
       </div>
       <div class="field"><div class="label">Pass criteria</div>Activate/Deactivate toggle works. Client user sees correct state on login.</div>
+      <div class="field"><div class="label">Result</div>
+        <span style="margin-right:16px">☐ <strong>PASS</strong></span>
+        <span style="margin-right:16px">☐ <strong>FAIL</strong></span>
+        <span>☐ <strong>BLOCKED</strong></span>
+        <div style="margin-top:6px;font-size:12px;color:var(--gray-600)">Notes: _______________________________________________</div>
+      </div>
     </div>
   </div>
 
@@ -1609,6 +2004,7 @@
       <span><span class="badge badge-green">Admin</span></span>
     </div>
     <div class="test-case-body">
+      <div class="field"><div class="label">Account</div><strong>Deepwoods Admin</strong> — <code>test.admin@deepwoodsgreen.com</code> / <code>deepwoods_admin</code>.</div>
       <div class="field"><div class="label">Precondition</div>deepwoods_admin credentials. Logged in at <code>/admin</code>.</div>
       <div class="field"><div class="label">Steps</div>
         <ul class="checklist">
@@ -1622,6 +2018,12 @@
         </ul>
       </div>
       <div class="field"><div class="label">Pass criteria</div>Client created and visible in both Engagements and Activation tabs.</div>
+      <div class="field"><div class="label">Result</div>
+        <span style="margin-right:16px">☐ <strong>PASS</strong></span>
+        <span style="margin-right:16px">☐ <strong>FAIL</strong></span>
+        <span>☐ <strong>BLOCKED</strong></span>
+        <div style="margin-top:6px;font-size:12px;color:var(--gray-600)">Notes: _______________________________________________</div>
+      </div>
     </div>
   </div>
 
@@ -1632,19 +2034,26 @@
       <span><span class="badge badge-blue">Public</span></span>
     </div>
     <div class="test-case-body">
-      <div class="field"><div class="label">Precondition</div>A real user email address. SMTP configured. Clear localStorage.</div>
+      <div class="field"><div class="label">Account</div><strong>Public Tester</strong> — use any account whose inbox you control (e.g. <code>test.esg@acme-test.example</code> or your own test inbox). Reset email will arrive from <code>green.featherlite@deepwoodsgreen.com</code>.</div>
+      <div class="field"><div class="label">Precondition</div>A real user email address in DB. SMTP configured. Clear localStorage.</div>
       <div class="field"><div class="label">Steps</div>
         <ul class="checklist">
           <li>On login page, click "Forgot password?". Verify redirect to <code>/forgot-password</code>.</li>
           <li>Enter the user's email. Click "Send reset link".</li>
           <li>Verify success message shown on page.</li>
-          <li>Check email inbox. Open reset email. Click the reset link.</li>
+          <li>Check email inbox. Verify sender is <code>green.featherlite@deepwoodsgreen.com</code>. Open email. Click the reset link.</li>
           <li>Verify redirect to <code>/reset-password?token=...</code>. Verify token is present in URL.</li>
           <li>Enter new password + confirm. Click "Reset password".</li>
           <li>Verify success. Log in with new password at <code>/</code>.</li>
         </ul>
       </div>
-      <div class="field"><div class="label">Pass criteria</div>Email received. Token link works. New password accepted at login.</div>
+      <div class="field"><div class="label">Pass criteria</div>Email received from correct sender. Token link works. New password accepted at login.</div>
+      <div class="field"><div class="label">Result</div>
+        <span style="margin-right:16px">☐ <strong>PASS</strong></span>
+        <span style="margin-right:16px">☐ <strong>FAIL</strong></span>
+        <span>☐ <strong>BLOCKED</strong></span>
+        <div style="margin-top:6px;font-size:12px;color:var(--gray-600)">Notes: _______________________________________________</div>
+      </div>
     </div>
   </div>
 </section>
@@ -1670,26 +2079,30 @@
     <h3>Authentication boundary tests</h3>
     <div class="table-wrap">
       <table>
-        <tr><th>#</th><th>Test</th><th>Expected result</th></tr>
+        <tr><th>#</th><th>Test</th><th>Expected result</th><th>Result</th></tr>
         <tr>
           <td>S-01</td>
           <td>Navigate to <code>/workstreams</code> without any localStorage token.</td>
           <td>Redirect to <code>/</code> login page. No workspace content shown.</td>
+          <td>☐ PASS &nbsp; ☐ FAIL &nbsp; ☐ BLK</td>
         </tr>
         <tr>
           <td>S-02</td>
           <td>Set a fake/expired JWT in <code>fl_session_token</code> localStorage. Navigate to <code>/workstreams</code>.</td>
           <td><code>me.php</code> returns 401. User logged out automatically. Redirect to <code>/</code>.</td>
+          <td>☐ PASS &nbsp; ☐ FAIL &nbsp; ☐ BLK</td>
         </tr>
         <tr>
           <td>S-03</td>
           <td>Copy a valid token from one user's browser. Use it in another browser as a different user.</td>
           <td>The token is valid for the original user only. Data returned belongs to that user's client.</td>
+          <td>☐ PASS &nbsp; ☐ FAIL &nbsp; ☐ BLK</td>
         </tr>
         <tr>
           <td>S-04</td>
           <td>Manually set <code>fl_role=deepwoods_admin</code> in localStorage while using a client_leadership token. Navigate to <code>/admin</code>.</td>
           <td>The backend API still enforces role checks. Admin API calls should return 403. The frontend might show the admin UI but all data fetches should fail.</td>
+          <td>☐ PASS &nbsp; ☐ FAIL &nbsp; ☐ BLK</td>
         </tr>
       </table>
     </div>
@@ -1697,33 +2110,39 @@
 
   <div class="card">
     <h3>Role-based access tests</h3>
+    <p style="margin-bottom:10px;font-size:13px;color:var(--gray-600)">Use: <strong>Viewer</strong> (<code>test.viewer@acme-test.example</code> / client_leadership) or <strong>Data Submitter</strong> (<code>test.uploader@acme-test.example</code> / client_uploader) or <strong>ESG Manager</strong> as appropriate.</p>
     <div class="table-wrap">
       <table>
-        <tr><th>#</th><th>Test</th><th>Expected result</th></tr>
+        <tr><th>#</th><th>Test</th><th>Expected result</th><th>Result</th></tr>
         <tr>
           <td>S-05</td>
-          <td>Log in as <code>client_leadership</code>. Navigate to <code>/submissions</code>.</td>
+          <td>Log in as <code>client_leadership</code> (Viewer). Navigate to <code>/submissions</code>.</td>
           <td>LockedState shown. "You don't have permission to submit data." Wizard does not load.</td>
+          <td>☐ PASS &nbsp; ☐ FAIL &nbsp; ☐ BLK</td>
         </tr>
         <tr>
           <td>S-06</td>
-          <td>Log in as <code>client_uploader</code>. Navigate to <code>/team</code>.</td>
+          <td>Log in as <code>client_uploader</code> (Data Submitter). Navigate to <code>/team</code>.</td>
           <td>Route either redirects away or shows a restricted state. Team management not accessible.</td>
+          <td>☐ PASS &nbsp; ☐ FAIL &nbsp; ☐ BLK</td>
         </tr>
         <tr>
           <td>S-07</td>
-          <td>Log in as <code>sustainability_team</code>. Navigate to <code>/admin</code>.</td>
+          <td>Log in as <code>sustainability_team</code> (ESG Manager). Navigate to <code>/admin</code>.</td>
           <td>LockedState shown. "You don't have access to the admin panel."</td>
+          <td>☐ PASS &nbsp; ☐ FAIL &nbsp; ☐ BLK</td>
         </tr>
         <tr>
           <td>S-08</td>
-          <td>Log in as <code>client_leadership</code>. Navigate to <code>/vault</code>.</td>
+          <td>Log in as <code>client_leadership</code> (Viewer). Navigate to <code>/vault</code>.</td>
           <td>LockedState or redirect. Vault content not visible.</td>
+          <td>☐ PASS &nbsp; ☐ FAIL &nbsp; ☐ BLK</td>
         </tr>
         <tr>
           <td>S-09</td>
           <td>Log in as <code>deepwoods_coordinator</code>. Navigate to <code>/admin</code>.</td>
           <td>LockedState. Coordinator role does not have admin access.</td>
+          <td>☐ PASS &nbsp; ☐ FAIL &nbsp; ☐ BLK</td>
         </tr>
       </table>
     </div>
@@ -1731,23 +2150,27 @@
 
   <div class="card">
     <h3>Activation gate tests</h3>
+    <p style="margin-bottom:10px;font-size:13px;color:var(--gray-600)">Use: <strong>ESG Manager</strong> + <strong>Deepwoods Admin</strong> accounts. Deactivate ACME Test client before starting.</p>
     <div class="table-wrap">
       <table>
-        <tr><th>#</th><th>Test</th><th>Expected result</th></tr>
+        <tr><th>#</th><th>Test</th><th>Expected result</th><th>Result</th></tr>
         <tr>
           <td>S-10</td>
           <td>Log in as a client user whose account has <code>is_active=false</code> in DB.</td>
           <td>PendingActivation screen shown. Sidebar NOT visible. Sign Out only option.</td>
+          <td>☐ PASS &nbsp; ☐ FAIL &nbsp; ☐ BLK</td>
         </tr>
         <tr>
           <td>S-11</td>
           <td>Activate the client (via admin panel). Reload the client user's browser.</td>
           <td>ClientContext refreshes. Workspace becomes accessible. Orientation tour may appear.</td>
+          <td>☐ PASS &nbsp; ☐ FAIL &nbsp; ☐ BLK</td>
         </tr>
         <tr>
           <td>S-12</td>
           <td>Try to navigate to <code>/dashboard</code> directly while client is inactive.</td>
           <td>Still shows PendingActivation screen. Gate applies to all workspace routes.</td>
+          <td>☐ PASS &nbsp; ☐ FAIL &nbsp; ☐ BLK</td>
         </tr>
       </table>
     </div>
@@ -1755,23 +2178,27 @@
 
   <div class="card">
     <h3>Demo mode isolation tests</h3>
+    <p style="margin-bottom:10px;font-size:13px;color:var(--gray-600)">No account required. Use browser DevTools Network tab to verify no real API calls are made.</p>
     <div class="table-wrap">
       <table>
-        <tr><th>#</th><th>Test</th><th>Expected result</th></tr>
+        <tr><th>#</th><th>Test</th><th>Expected result</th><th>Result</th></tr>
         <tr>
           <td>S-13</td>
           <td>In demo mode, attempt to submit data via <code>/submissions</code> wizard.</td>
           <td>Wizard completes UI steps, but no real POST is made. Check Network tab in DevTools — submission endpoint should NOT be called.</td>
+          <td>☐ PASS &nbsp; ☐ FAIL &nbsp; ☐ BLK</td>
         </tr>
         <tr>
           <td>S-14</td>
           <td>In demo mode, navigate to <code>/team</code> and invite a user.</td>
           <td>UI may complete, but no real invite is sent. Network tab shows no real API call.</td>
+          <td>☐ PASS &nbsp; ☐ FAIL &nbsp; ☐ BLK</td>
         </tr>
         <tr>
           <td>S-15</td>
           <td>Manually set <code>fl_demo_mode=1</code> in localStorage while having a real valid token.</td>
           <td>All API calls are intercepted by mock. Real data is not shown. This is intentional behaviour.</td>
+          <td>☐ PASS &nbsp; ☐ FAIL &nbsp; ☐ BLK</td>
         </tr>
       </table>
     </div>

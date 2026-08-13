@@ -9,23 +9,10 @@ header('Access-Control-Allow-Headers: Authorization, Content-Type');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit(0); }
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
-function require_auth(): string {
-    $h = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-    if (!preg_match('/^Bearer\s+(.+)$/i', $h, $m)) {
-        http_response_code(401); die(json_encode(['error' => 'Unauthenticated']));
-    }
-    $token = $m[1];
-    $pdo   = dolphin_db();
-    $row   = $pdo->prepare("SELECT u.email FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires_at > NOW()");
-    $row->execute([$token]);
-    $user  = $row->fetch(PDO::FETCH_ASSOC);
-    if (!$user) { http_response_code(401); die(json_encode(['error' => 'Invalid or expired session'])); }
-    return $user['email'];
-}
-
-$email = require_auth();
-$pdo   = dolphin_db();
+$authUser = dolphin_require_auth();
+dolphin_require_active_client($authUser);
+$email    = $authUser['email'];
+$pdo      = dolphin_db();
 
 // ── GET: return current prefs (create row if first visit) ─────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {

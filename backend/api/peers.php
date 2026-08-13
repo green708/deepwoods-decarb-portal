@@ -9,7 +9,9 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Headers: Authorization, Content-Type');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
-$user      = requireAuth();
+$user      = dolphin_require_auth();
+dolphin_require_active_client($user);
+dolphin_require_payment($user);
 $client_id = (int)$user['client_id'];
 
 $stmt = $pdo->prepare(

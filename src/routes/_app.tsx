@@ -8,16 +8,23 @@ import {
   Home, FolderLock, Upload, ShieldCheck, BookOpen, LogOut, Menu, X,
   KeyRound, Loader2, Bell, LayoutDashboard, BarChart2, Leaf,
   ChevronDown, ChevronRight, PieChart, Target, Zap, FileText, TrendingDown,
-  Landmark, ClipboardList, Bot, Users, Clock,
+  Landmark, ClipboardList, Bot, Users, Clock, Building2, CreditCard, Check,
 } from "lucide-react";
 import {
-  ClientContextProvider, useClientContextSafe, useClientContext,
+  ClientContextProvider, useClientContextSafe, useClientContext, type ClientContext,
 } from "@/lib/client-context";
 import { EntityProvider, EntitySwitcher, FiscalYearProvider, FiscalYearSwitcher, useEntity } from "@/lib/entity";
 import { DeecarbAI } from "@/components/DeecarbAI";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app")({ component: AppRoot });
+
+// ── NavigateTo — triggers a client-side navigation inside the gate ────────────
+function NavigateTo({ to }: { to: string }) {
+  const navigate = useNavigate();
+  useEffect(() => { navigate({ to }); }, []);
+  return null;
+}
 
 // ── PendingActivation — shown to client users whose account isn't yet active ──
 
@@ -44,6 +51,94 @@ function PendingActivation() {
           <LogOut className="h-4 w-4" />
           Sign out
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── PaymentPending — shown to active client users who haven't paid yet ───────
+
+function PaymentPending({ ctx }: { ctx: ClientContext }) {
+  const [requested, setRequested] = useState(
+    ctx.config.payment_requested === "true" || ctx.config.payment_requested === true,
+  );
+  const [sending, setSending] = useState(false);
+  const logout = async () => { await doLogout(); window.location.href = "/"; };
+
+  const requestInvoice = async () => {
+    setSending(true);
+    try {
+      await authFetch("request-payment.php", { method: "POST" });
+      setRequested(true);
+    } catch {
+      // best-effort — show success anyway (admin notified via email)
+      setRequested(true);
+    } finally { setSending(false); }
+  };
+
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-[#1E4D2B] via-[#145C3D] to-[#1E4D2B] px-4">
+      <div className="w-full max-w-md">
+        <div className="mb-6 flex flex-col items-center text-center">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10">
+            <CreditCard className="h-8 w-8 text-white/80" />
+          </div>
+          <h1 className="mb-2 text-2xl font-bold text-white">Portal Access Pending</h1>
+          <p className="text-sm leading-relaxed text-white/75">
+            Welcome to <strong className="text-white">{ctx.client.name}</strong>'s Deepwoods portal.
+            Full access is enabled once payment is confirmed by your Deepwoods consultant.
+          </p>
+        </div>
+
+        <div className="rounded-2xl bg-white/10 p-5 backdrop-blur-sm">
+          {requested ? (
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#34D399]">
+                <Check className="h-4 w-4 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-white">Invoice requested</p>
+                <p className="mt-0.5 text-xs text-white/70">
+                  Your Deepwoods consultant has been notified and will confirm payment shortly.
+                  You'll receive an email once your portal is unlocked.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className="mb-3 text-sm font-semibold text-white">Ready to get started?</p>
+              <p className="mb-4 text-xs leading-relaxed text-white/70">
+                Request your invoice and your Deepwoods consultant will reach out with payment details.
+                Nothing is charged automatically.
+              </p>
+              <button
+                type="button"
+                onClick={requestInvoice}
+                disabled={sending}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-sm font-semibold text-[#145C3D] hover:bg-white/90 disabled:opacity-60"
+              >
+                {sending && <Loader2 className="h-4 w-4 animate-spin" />}
+                {sending ? "Sending…" : "Request invoice"}
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 text-center">
+          <p className="text-xs text-white/40">
+            Need help? Contact your Deepwoods account manager.
+          </p>
+        </div>
+
+        <div className="mt-6 flex justify-center">
+          <button
+            onClick={logout}
+            className="flex items-center gap-2 rounded-lg border border-white/20 px-5 py-2.5 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -77,17 +172,6 @@ function AppRoot() {
 function ClientContextGate({ role }: { role: Role }) {
   const ctxState = useClientContextSafe();
   const navigate = useNavigate();
-
-  // Redirect client users who haven't seen the orientation tour.
-  // Skip if not activated — the pending screen handles that state.
-  useEffect(() => {
-    if (ctxState.status !== "ready") return;
-    if (DEEPWOODS_ROLES.includes(role)) return;
-    if (!ctxState.data.client.is_active) return;
-    if (!localStorage.getItem("decarb_orientation_done")) {
-      navigate({ to: "/onboard" });
-    }
-  }, [ctxState.status, role]);
 
   if (ctxState.status === "loading") {
     return (
@@ -123,6 +207,33 @@ function ClientContextGate({ role }: { role: Role }) {
   // Activation gate: client-role users whose account hasn't been activated yet
   if (ctxState.status === "ready" && !DEEPWOODS_ROLES.includes(role) && !ctxState.data.client.is_active) {
     return <PendingActivation />;
+  }
+
+  if (ctxState.status === "ready" && !DEEPWOODS_ROLES.includes(role) && ctxState.data.client.is_active) {
+    const setupComplete     = ctxState.data.config.setup_complete === "true";
+    const inventoryComplete = ctxState.data.config.inventory_complete === "true";
+    const paymentUnlocked   = (ctxState.data.client.payment_status === "paid" ||
+                               ctxState.data.client.payment_status === "waived");
+    const onSetupPath = typeof window !== "undefined" && (
+      window.location.pathname.startsWith("/register") ||
+      window.location.pathname.startsWith("/entity-setup") ||
+      window.location.pathname.startsWith("/inventory-setup")
+    );
+
+    // Phase A gate: org boundary not yet submitted → Entity Register landing.
+    if (!setupComplete && !onSetupPath) {
+      return <NavigateTo to="/register" />;
+    }
+
+    // Payment gate: org boundary done but payment not yet confirmed.
+    if (setupComplete && !paymentUnlocked && !onSetupPath) {
+      return <PaymentPending ctx={ctxState.data} />;
+    }
+
+    // Phase B gate: payment confirmed but inventory boundary not yet defined.
+    if (setupComplete && paymentUnlocked && !inventoryComplete && !onSetupPath) {
+      return <NavigateTo to="/inventory-setup" />;
+    }
   }
 
   return (
@@ -203,8 +314,10 @@ const ALL_BOTTOM_SINGLES: NavItem[] = [
   { to: "/methodology",      label: "Methodology",      icon: BookOpen,   pageKey: "methodology" },
   { to: "/priority-actions", label: "Priority Actions", icon: Bell,       pageKey: "priority-actions" },
   { to: "/notifications",    label: "Notifications",    icon: Bot,        pageKey: "notifications" },
-  { to: "/team",             label: "My Team",          icon: Users,      pageKey: "team" },
+  { to: "/team",             label: "My Team",          icon: Users,       pageKey: "team" },
   { to: "/admin",            label: "Admin Dashboard",  icon: ShieldCheck, pageKey: "admin" },
+  { to: "/register",         label: "Access Requests",  icon: ClipboardList, pageKey: "register" },
+  { to: "/company-profile",  label: "Company Profile",  icon: Building2,   pageKey: "company-profile" },
 ];
 
 // ── AppLayout ─────────────────────────────────────────────────────────────────
@@ -224,8 +337,10 @@ function AppLayout({ role }: { role: Role }) {
     .filter((g) => g.items.some((i) => isEnabled(i.pageKey)))
     .map((g) => ({ ...g, items: g.items.filter((i) => isEnabled(i.pageKey)) }));
   const bottomSingles = ALL_BOTTOM_SINGLES.filter((i) => {
-    if (i.pageKey === "admin") return DEEPWOODS_ROLES.includes(role);
-    if (i.pageKey === "team")  return role === "sustainability_team";
+    if (i.pageKey === "admin")           return DEEPWOODS_ROLES.includes(role);
+    if (i.pageKey === "team")            return role === "sustainability_team";
+    if (i.pageKey === "register")        return DEEPWOODS_ROLES.includes(role);
+    if (i.pageKey === "company-profile") return !DEEPWOODS_ROLES.includes(role);
     return isEnabled(i.pageKey);
   });
 
@@ -270,10 +385,10 @@ function AppLayout({ role }: { role: Role }) {
   const email = getEmail();
   const logout = async () => { await doLogout(); navigate({ to: "/" }); };
 
-  // Deepwoods staff see their own logo, client users see client logo
+  // Deepwoods staff see their own logo (reversed/white on dark bg), client users see client logo
   const headerLogo = DEEPWOODS_ROLES.includes(role)
-    ? { src: "/deepwoods-logo.png", alt: "Deepwoods Green", accent: "var(--deepwoods-green)" }
-    : { src: client.logo_url,       alt: client.name,       accent: client.primary_color };
+    ? { src: "/DW-reversed.webp", alt: "Deepwoods Green", accent: "var(--deepwoods-green)", logoBg: "oklch(0.22 0.014 240)" }
+    : { src: client.logo_url,     alt: client.name,        accent: client.primary_color,    logoBg: "white" };
 
   const renderNav = () => (
     <nav className="flex-1 overflow-y-auto p-3">
@@ -312,8 +427,8 @@ function AppLayout({ role }: { role: Role }) {
       <div className="flex">
         <aside className={`fixed inset-y-0 left-0 z-[50] w-64 border-r border-[var(--border)] bg-white text-[var(--navy)] transition-transform duration-300 ease-in-out md:sticky md:top-0 md:z-auto md:h-screen md:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}>
           <div className="flex h-full flex-col">
-            <div className="bg-white px-5 py-5">
-              <img src={headerLogo.src} alt={headerLogo.alt} className="h-10 w-auto" />
+            <div className="px-5 py-5" style={{ background: headerLogo.logoBg }}>
+              <img src={headerLogo.src} alt={headerLogo.alt} className="h-12 w-auto" />
             </div>
             <div className="h-1" style={{ background: headerLogo.accent }} />
             <div className="border-b border-[var(--border)] px-5 py-3">

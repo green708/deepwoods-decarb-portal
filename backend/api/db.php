@@ -105,6 +105,71 @@ function dolphin_require_active_client(array $authUser): void {
     }
 }
 
+/**
+ * Feature-access gate: requires payment_status = 'paid' or 'waived'.
+ * Apply to every endpoint that serves paid GHG content (inventory, S1/S2/S3,
+ * intensity, facilities, vault, submissions, decarb, credits, peers, reports).
+ * Deepwoods staff bypass this check so they can always inspect client data.
+ */
+function dolphin_require_payment(array $authUser): void {
+    static $deepwoodsRoles = ['deepwoods_admin', 'deepwoods_coordinator'];
+    if (in_array($authUser['role'], $deepwoodsRoles, true)) return;
+
+    $clientId = (int)($authUser['client_id'] ?? 0);
+    if (!$clientId) return;
+
+    $pdo  = dolphin_db();
+    $stmt = $pdo->prepare('SELECT payment_status FROM clients WHERE id = ?');
+    $stmt->execute([$clientId]);
+    $row  = $stmt->fetch();
+
+    if (!$row || !in_array($row['payment_status'] ?? 'pending', ['paid', 'waived'], true)) {
+        dolphin_send_json([
+            'error'   => 'payment_required',
+            'message' => 'This feature is available once your annual access payment is confirmed.',
+        ], 402);
+    }
+}
+
+/**
+ * Entity-scope gate: validates that $requestedEntity belongs to the user's client
+ * and enforces entity_scope for scoped users.
+ *
+ * Returns the validated, canonical entity code to use in the query.
+ * Dies 403 if the entity does not belong to this client.
+ *
+ * Deepwoods staff pass through without entity validation because they operate
+ * across clients through explicit client context.
+ */
+function dolphin_validate_entity(array $authUser, string $requestedEntity): string {
+    static $deepwoodsRoles = ['deepwoods_admin', 'deepwoods_coordinator'];
+
+    // Scoped users are always locked to their assigned entity regardless of what was requested
+    if (!empty($authUser['entity_scope'])) {
+        return (string)$authUser['entity_scope'];
+    }
+
+    // Deepwoods staff: pass through without entity membership check
+    if (in_array($authUser['role'], $deepwoodsRoles, true)) {
+        return $requestedEntity;
+    }
+
+    // Client users: verify the requested entity actually belongs to their client
+    $clientId = (int)($authUser['client_id'] ?? 0);
+    if (!$clientId || $requestedEntity === '') return $requestedEntity;
+
+    $pdo  = dolphin_db();
+    $stmt = $pdo->prepare('SELECT code FROM client_entities WHERE client_id = ? AND code = ?');
+    $stmt->execute([$clientId, $requestedEntity]);
+    if (!$stmt->fetch()) {
+        dolphin_send_json([
+            'error'   => 'entity_forbidden',
+            'message' => 'You do not have access to the requested entity.',
+        ], 403);
+    }
+    return $requestedEntity;
+}
+
 // CORS + preflight — the static site and this API sit on the same domain in
 // production, but this makes local frontend dev against the live API painless.
 header('Access-Control-Allow-Origin: *');

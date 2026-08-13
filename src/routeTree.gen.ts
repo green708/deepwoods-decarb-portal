@@ -18,18 +18,22 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AppActionPlanRouteImport } from './routes/_app.action-plan'
 import { Route as AppAdminRouteImport } from './routes/_app.admin'
+import { Route as AppCompanyProfileRouteImport } from './routes/_app.company-profile'
 import { Route as AppCreditsRouteImport } from './routes/_app.credits'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
+import { Route as AppEntitySetupRouteImport } from './routes/_app.entity-setup'
 import { Route as AppGreenFinanceRouteImport } from './routes/_app.green-finance'
 import { Route as AppHotspotsRouteImport } from './routes/_app.hotspots'
 import { Route as AppInteractiveInventoryRouteImport } from './routes/_app.interactive-inventory'
 import { Route as AppInventoryRouteImport } from './routes/_app.inventory'
+import { Route as AppInventorySetupRouteImport } from './routes/_app.inventory-setup'
 import { Route as AppMethodologyRouteImport } from './routes/_app.methodology'
 import { Route as AppNotificationsRouteImport } from './routes/_app.notifications'
 import { Route as AppOverviewRouteImport } from './routes/_app.overview'
 import { Route as AppPeerRouteImport } from './routes/_app.peer'
 import { Route as AppPriorityActionsRouteImport } from './routes/_app.priority-actions'
 import { Route as AppProgressRouteImport } from './routes/_app.progress'
+import { Route as AppRegisterRouteImport } from './routes/_app.register'
 import { Route as AppReportingRouteImport } from './routes/_app.reporting'
 import { Route as AppReportsRouteImport } from './routes/_app.reports'
 import { Route as AppSubmissionsRouteImport } from './routes/_app.submissions'
@@ -82,6 +86,11 @@ const AppAdminRoute = AppAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCompanyProfileRoute = AppCompanyProfileRouteImport.update({
+  id: '/company-profile',
+  path: '/company-profile',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppCreditsRoute = AppCreditsRouteImport.update({
   id: '/credits',
   path: '/credits',
@@ -90,6 +99,11 @@ const AppCreditsRoute = AppCreditsRouteImport.update({
 const AppDashboardRoute = AppDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppEntitySetupRoute = AppEntitySetupRouteImport.update({
+  id: '/entity-setup',
+  path: '/entity-setup',
   getParentRoute: () => AppRoute,
 } as any)
 const AppGreenFinanceRoute = AppGreenFinanceRouteImport.update({
@@ -110,6 +124,11 @@ const AppInteractiveInventoryRoute = AppInteractiveInventoryRouteImport.update({
 const AppInventoryRoute = AppInventoryRouteImport.update({
   id: '/inventory',
   path: '/inventory',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppInventorySetupRoute = AppInventorySetupRouteImport.update({
+  id: '/inventory-setup',
+  path: '/inventory-setup',
   getParentRoute: () => AppRoute,
 } as any)
 const AppMethodologyRoute = AppMethodologyRouteImport.update({
@@ -140,6 +159,11 @@ const AppPriorityActionsRoute = AppPriorityActionsRouteImport.update({
 const AppProgressRoute = AppProgressRouteImport.update({
   id: '/progress',
   path: '/progress',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRegisterRoute = AppRegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
   getParentRoute: () => AppRoute,
 } as any)
 const AppReportingRoute = AppReportingRouteImport.update({
@@ -187,18 +211,22 @@ export interface FileRoutesByFullPath {
   '/setup': typeof SetupRoute
   '/action-plan': typeof AppActionPlanRoute
   '/admin': typeof AppAdminRoute
+  '/company-profile': typeof AppCompanyProfileRoute
   '/credits': typeof AppCreditsRoute
   '/dashboard': typeof AppDashboardRoute
+  '/entity-setup': typeof AppEntitySetupRoute
   '/green-finance': typeof AppGreenFinanceRoute
   '/hotspots': typeof AppHotspotsRoute
   '/interactive-inventory': typeof AppInteractiveInventoryRoute
   '/inventory': typeof AppInventoryRoute
+  '/inventory-setup': typeof AppInventorySetupRoute
   '/methodology': typeof AppMethodologyRoute
   '/notifications': typeof AppNotificationsRoute
   '/overview': typeof AppOverviewRoute
   '/peer': typeof AppPeerRoute
   '/priority-actions': typeof AppPriorityActionsRoute
   '/progress': typeof AppProgressRoute
+  '/register': typeof AppRegisterRoute
   '/reporting': typeof AppReportingRoute
   '/reports': typeof AppReportsRoute
   '/submissions': typeof AppSubmissionsRoute
@@ -216,18 +244,22 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupRoute
   '/action-plan': typeof AppActionPlanRoute
   '/admin': typeof AppAdminRoute
+  '/company-profile': typeof AppCompanyProfileRoute
   '/credits': typeof AppCreditsRoute
   '/dashboard': typeof AppDashboardRoute
+  '/entity-setup': typeof AppEntitySetupRoute
   '/green-finance': typeof AppGreenFinanceRoute
   '/hotspots': typeof AppHotspotsRoute
   '/interactive-inventory': typeof AppInteractiveInventoryRoute
   '/inventory': typeof AppInventoryRoute
+  '/inventory-setup': typeof AppInventorySetupRoute
   '/methodology': typeof AppMethodologyRoute
   '/notifications': typeof AppNotificationsRoute
   '/overview': typeof AppOverviewRoute
   '/peer': typeof AppPeerRoute
   '/priority-actions': typeof AppPriorityActionsRoute
   '/progress': typeof AppProgressRoute
+  '/register': typeof AppRegisterRoute
   '/reporting': typeof AppReportingRoute
   '/reports': typeof AppReportsRoute
   '/submissions': typeof AppSubmissionsRoute
@@ -247,18 +279,22 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/_app/action-plan': typeof AppActionPlanRoute
   '/_app/admin': typeof AppAdminRoute
+  '/_app/company-profile': typeof AppCompanyProfileRoute
   '/_app/credits': typeof AppCreditsRoute
   '/_app/dashboard': typeof AppDashboardRoute
+  '/_app/entity-setup': typeof AppEntitySetupRoute
   '/_app/green-finance': typeof AppGreenFinanceRoute
   '/_app/hotspots': typeof AppHotspotsRoute
   '/_app/interactive-inventory': typeof AppInteractiveInventoryRoute
   '/_app/inventory': typeof AppInventoryRoute
+  '/_app/inventory-setup': typeof AppInventorySetupRoute
   '/_app/methodology': typeof AppMethodologyRoute
   '/_app/notifications': typeof AppNotificationsRoute
   '/_app/overview': typeof AppOverviewRoute
   '/_app/peer': typeof AppPeerRoute
   '/_app/priority-actions': typeof AppPriorityActionsRoute
   '/_app/progress': typeof AppProgressRoute
+  '/_app/register': typeof AppRegisterRoute
   '/_app/reporting': typeof AppReportingRoute
   '/_app/reports': typeof AppReportsRoute
   '/_app/submissions': typeof AppSubmissionsRoute
@@ -278,18 +314,22 @@ export interface FileRouteTypes {
     | '/setup'
     | '/action-plan'
     | '/admin'
+    | '/company-profile'
     | '/credits'
     | '/dashboard'
+    | '/entity-setup'
     | '/green-finance'
     | '/hotspots'
     | '/interactive-inventory'
     | '/inventory'
+    | '/inventory-setup'
     | '/methodology'
     | '/notifications'
     | '/overview'
     | '/peer'
     | '/priority-actions'
     | '/progress'
+    | '/register'
     | '/reporting'
     | '/reports'
     | '/submissions'
@@ -307,18 +347,22 @@ export interface FileRouteTypes {
     | '/setup'
     | '/action-plan'
     | '/admin'
+    | '/company-profile'
     | '/credits'
     | '/dashboard'
+    | '/entity-setup'
     | '/green-finance'
     | '/hotspots'
     | '/interactive-inventory'
     | '/inventory'
+    | '/inventory-setup'
     | '/methodology'
     | '/notifications'
     | '/overview'
     | '/peer'
     | '/priority-actions'
     | '/progress'
+    | '/register'
     | '/reporting'
     | '/reports'
     | '/submissions'
@@ -337,18 +381,22 @@ export interface FileRouteTypes {
     | '/setup'
     | '/_app/action-plan'
     | '/_app/admin'
+    | '/_app/company-profile'
     | '/_app/credits'
     | '/_app/dashboard'
+    | '/_app/entity-setup'
     | '/_app/green-finance'
     | '/_app/hotspots'
     | '/_app/interactive-inventory'
     | '/_app/inventory'
+    | '/_app/inventory-setup'
     | '/_app/methodology'
     | '/_app/notifications'
     | '/_app/overview'
     | '/_app/peer'
     | '/_app/priority-actions'
     | '/_app/progress'
+    | '/_app/register'
     | '/_app/reporting'
     | '/_app/reports'
     | '/_app/submissions'
@@ -433,6 +481,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/company-profile': {
+      id: '/_app/company-profile'
+      path: '/company-profile'
+      fullPath: '/company-profile'
+      preLoaderRoute: typeof AppCompanyProfileRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/credits': {
       id: '/_app/credits'
       path: '/credits'
@@ -445,6 +500,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AppDashboardRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/entity-setup': {
+      id: '/_app/entity-setup'
+      path: '/entity-setup'
+      fullPath: '/entity-setup'
+      preLoaderRoute: typeof AppEntitySetupRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/green-finance': {
@@ -473,6 +535,13 @@ declare module '@tanstack/react-router' {
       path: '/inventory'
       fullPath: '/inventory'
       preLoaderRoute: typeof AppInventoryRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/inventory-setup': {
+      id: '/_app/inventory-setup'
+      path: '/inventory-setup'
+      fullPath: '/inventory-setup'
+      preLoaderRoute: typeof AppInventorySetupRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/methodology': {
@@ -515,6 +584,13 @@ declare module '@tanstack/react-router' {
       path: '/progress'
       fullPath: '/progress'
       preLoaderRoute: typeof AppProgressRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/register': {
+      id: '/_app/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof AppRegisterRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/reporting': {
@@ -572,18 +648,22 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppActionPlanRoute: typeof AppActionPlanRoute
   AppAdminRoute: typeof AppAdminRoute
+  AppCompanyProfileRoute: typeof AppCompanyProfileRoute
   AppCreditsRoute: typeof AppCreditsRoute
   AppDashboardRoute: typeof AppDashboardRoute
+  AppEntitySetupRoute: typeof AppEntitySetupRoute
   AppGreenFinanceRoute: typeof AppGreenFinanceRoute
   AppHotspotsRoute: typeof AppHotspotsRoute
   AppInteractiveInventoryRoute: typeof AppInteractiveInventoryRoute
   AppInventoryRoute: typeof AppInventoryRoute
+  AppInventorySetupRoute: typeof AppInventorySetupRoute
   AppMethodologyRoute: typeof AppMethodologyRoute
   AppNotificationsRoute: typeof AppNotificationsRoute
   AppOverviewRoute: typeof AppOverviewRoute
   AppPeerRoute: typeof AppPeerRoute
   AppPriorityActionsRoute: typeof AppPriorityActionsRoute
   AppProgressRoute: typeof AppProgressRoute
+  AppRegisterRoute: typeof AppRegisterRoute
   AppReportingRoute: typeof AppReportingRoute
   AppReportsRoute: typeof AppReportsRoute
   AppSubmissionsRoute: typeof AppSubmissionsRoute
@@ -596,18 +676,22 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppActionPlanRoute: AppActionPlanRoute,
   AppAdminRoute: AppAdminRoute,
+  AppCompanyProfileRoute: AppCompanyProfileRoute,
   AppCreditsRoute: AppCreditsRoute,
   AppDashboardRoute: AppDashboardRoute,
+  AppEntitySetupRoute: AppEntitySetupRoute,
   AppGreenFinanceRoute: AppGreenFinanceRoute,
   AppHotspotsRoute: AppHotspotsRoute,
   AppInteractiveInventoryRoute: AppInteractiveInventoryRoute,
   AppInventoryRoute: AppInventoryRoute,
+  AppInventorySetupRoute: AppInventorySetupRoute,
   AppMethodologyRoute: AppMethodologyRoute,
   AppNotificationsRoute: AppNotificationsRoute,
   AppOverviewRoute: AppOverviewRoute,
   AppPeerRoute: AppPeerRoute,
   AppPriorityActionsRoute: AppPriorityActionsRoute,
   AppProgressRoute: AppProgressRoute,
+  AppRegisterRoute: AppRegisterRoute,
   AppReportingRoute: AppReportingRoute,
   AppReportsRoute: AppReportsRoute,
   AppSubmissionsRoute: AppSubmissionsRoute,

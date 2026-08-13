@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap');
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
@@ -46,10 +47,17 @@
   --color-active-bg: var(--active-bg);
   --color-active-text: var(--active-text);
   --color-disabled-bg: var(--disabled-bg);
-  /* Inter — clean, neutral, highly readable. Primary font per GHG Portal font book. */
+  /* Typography — Manrope primary, Instrument Serif for auth display headings */
   --font-serif: "Inter", "Helvetica Neue", Arial, sans-serif;
-  --font-sans: "Inter", "Helvetica Neue", Arial, sans-serif;
+  --font-sans: "Manrope", "Inter", "Helvetica Neue", Arial, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
+  /* Auth / dark-panel tokens */
+  --color-carbon: var(--carbon);
+  --color-carbon-soft: var(--carbon-soft);
+  --color-primary-deep: var(--primary-deep);
+  --color-border-strong: var(--border-strong);
+  --color-signal: var(--signal);
 }
 
 /* GHG Portal / Dashboard — Color System
@@ -127,6 +135,14 @@
 
   /* ── Navigation active state (tinted from --primary, multi-tenant) ─────────── */
   --nav-active-bg: color-mix(in oklab, var(--primary) 10%, white);
+
+  /* ── Auth / Lovable design tokens ───────────────────────────────────────────── */
+  --carbon: oklch(0.22 0.014 240);
+  --carbon-soft: oklch(0.32 0.018 230);
+  --primary-deep: oklch(0.5 0.115 145);
+  --border-strong: oklch(0.82 0.012 130);
+  --signal: oklch(0.86 0.16 105);
+  --shadow-cta: 0 1px 1px oklch(0.2 0.05 145 / 0.2), 0 8px 20px -10px oklch(0.45 0.13 145 / 0.5);
 
   /* ── Carbon-compass aliases (used by decarb pages) ──────────────────────────── */
   --scope1: #1E6F5C;
@@ -220,6 +236,35 @@
   /* .font-serif kept for backward compat — renders as Inter (display weight) */
   .font-serif { font-family: var(--font-sans); font-weight: 700; }
   .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+}
+
+/* ── Auth animations (used by DecarbonisationVisual and auth components) ─────── */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes plume-drift {
+  0%   { opacity: 0; transform: translateY(0) scale(1); }
+  20%  { opacity: 1; }
+  80%  { opacity: 0.6; }
+  100% { opacity: 0; transform: translateY(-160px) scale(1.8); }
+}
+@keyframes flow-dash {
+  to { stroke-dashoffset: -160; }
+}
+@keyframes turbine-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes soft-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%       { opacity: 1; }
+}
+
+@utility animate-rise {
+  animation: rise-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@utility font-display {
+  font-family: var(--font-display);
 }
 
 @utility report-table {

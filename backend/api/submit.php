@@ -9,12 +9,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $authUser = dolphin_require_auth();
 dolphin_require_active_client($authUser);
+dolphin_require_payment($authUser);
 
 $pdo    = dolphin_db();
 $config = dolphin_config();
 
-$clientId    = $authUser['client_id']; // from the session — never caller-supplied
-$entity      = strtoupper($_POST['entity'] ?? '');
+$clientId    = (int)$authUser['client_id']; // from the session — never caller-supplied
 $version     = $_POST['version'] ?? 'V1';
 $datasetId   = $_POST['dataset_id'] ?? '';
 $datasetName = $_POST['dataset_name'] ?? '';
@@ -28,6 +28,9 @@ if ($datasetId === '' || $year === '') {
     dolphin_send_json(['error' => 'dataset_id and year are required'], 400);
 }
 
+// Entity: enforce entity_scope first, then verify ownership.
+// This prevents a scoped user (entity_scope=FP) from submitting as another entity.
+$entity = dolphin_validate_entity($authUser, strtoupper($_POST['entity'] ?? ''));
 if ($entity === '') {
     dolphin_send_json(['error' => 'entity is required'], 400);
 }
@@ -62,61 +65,81 @@ $stmt = $pdo->prepare(
 $stmt->execute([$clientId, $entity, $version, $datasetId, $datasetName, $tag, $year, $unit, $notes, $submittedBy]);
 $submissionId = (int) $pdo->lastInsertId();
 
-try {
-    $drive = new GoogleDrive(
-        $config['drive']['oauth_client_id'],
-        $config['drive']['oauth_client_secret'],
-        $config['drive']['token_path']
-    );
+$fileRows = [];
 
-    // Mirror structure: <client root>/<entity>/<year>/Portal Uploads/<dataset name>/
-    $entityFolder = $drive->findOrCreateFolder($clientRow['drive_root_folder_id'], $entity);
-    $yearFolder = $drive->findOrCreateFolder($entityFolder, $year);
-    $portalFolder = $drive->findOrCreateFolder($yearFolder, 'Portal Uploads');
-    $datasetFolder = $drive->findOrCreateFolder($portalFolder, $datasetName !== '' ? $datasetName : $datasetId);
+// Drive upload is optional — skip if credentials are not configured.
+$driveClientId = $config['drive']['oauth_client_id'] ?? '';
+if ($driveClientId !== '') {
+    try {
+        $drive = new GoogleDrive(
+            $config['drive']['oauth_client_id'],
+            $config['drive']['oauth_client_secret'],
+            $config['drive']['token_path']
+        );
 
-    $fileRows = [];
+        // Mirror structure: <client root>/<entity>/<year>/Portal Uploads/<dataset name>/
+        $entityFolder = $drive->findOrCreateFolder($clientRow['drive_root_folder_id'], $entity);
+        $yearFolder   = $drive->findOrCreateFolder($entityFolder, $year);
+        $portalFolder = $drive->findOrCreateFolder($yearFolder, 'Portal Uploads');
+        $datasetFolder = $drive->findOrCreateFolder($portalFolder, $datasetName !== '' ? $datasetName : $datasetId);
 
-    $insertFile = $pdo->prepare(
-        'INSERT INTO submission_files (submission_id, original_name, drive_file_id, drive_file_link, kind) VALUES (?, ?, ?, ?, ?)'
-    );
+        $insertFile = $pdo->prepare(
+            'INSERT INTO submission_files (submission_id, original_name, drive_file_id, drive_file_link, kind) VALUES (?, ?, ?, ?, ?)'
+        );
 
-    // Main data file — sent as $_FILES['dataFile'] (single file field)
-    if (!empty($_FILES['dataFile']['tmp_name'])) {
-        $f = $_FILES['dataFile'];
-        $uploaded = $drive->uploadFile($datasetFolder, $f['tmp_name'], $f['name'], $f['type'] ?: 'application/octet-stream');
-        $insertFile->execute([$submissionId, $f['name'], $uploaded['id'], $uploaded['webViewLink'], 'data']);
-        $fileRows[] = ['name' => $f['name'], 'driveLink' => $uploaded['webViewLink'], 'kind' => 'data'];
-    }
-
-    // Supporting documents — sent as $_FILES['documents'][] (multiple file field)
-    if (!empty($_FILES['documents']['tmp_name']) && is_array($_FILES['documents']['tmp_name'])) {
-        foreach ($_FILES['documents']['tmp_name'] as $i => $tmpName) {
-            if ($tmpName === '') continue;
-            $name = $_FILES['documents']['name'][$i];
-            $type = $_FILES['documents']['type'][$i] ?: 'application/octet-stream';
-            $uploaded = $drive->uploadFile($datasetFolder, $tmpName, $name, $type);
-            $insertFile->execute([$submissionId, $name, $uploaded['id'], $uploaded['webViewLink'], 'document']);
-            $fileRows[] = ['name' => $name, 'driveLink' => $uploaded['webViewLink'], 'kind' => 'document'];
+        // Main data file — sent as $_FILES['dataFile'] (single file field)
+        if (!empty($_FILES['dataFile']['tmp_name'])) {
+            $f = $_FILES['dataFile'];
+            $uploaded = $drive->uploadFile($datasetFolder, $f['tmp_name'], $f['name'], $f['type'] ?: 'application/octet-stream');
+            $insertFile->execute([$submissionId, $f['name'], $uploaded['id'], $uploaded['webViewLink'], 'data']);
+            $fileRows[] = ['name' => $f['name'], 'driveLink' => $uploaded['webViewLink'], 'kind' => 'data'];
         }
-    }
 
-    dolphin_send_json([
-        'id' => $submissionId,
-        'entity' => $entity,
-        'version' => $version,
-        'datasetId' => $datasetId,
-        'datasetName' => $datasetName,
-        'tag' => $tag,
-        'year' => $year,
-        'unit' => $unit,
-        'notes' => $notes,
-        'status' => 'Pending',
-        'submittedBy' => $submittedBy,
-        'files' => $fileRows,
-    ]);
-} catch (Throwable $e) {
-    // The submission row exists but file upload failed — surface the error
-    // clearly rather than silently losing the failure.
-    dolphin_send_json(['error' => 'File upload to Drive failed: ' . $e->getMessage(), 'submissionId' => $submissionId], 500);
+        // Supporting documents — sent as $_FILES['documents'][] (multiple file field)
+        if (!empty($_FILES['documents']['tmp_name']) && is_array($_FILES['documents']['tmp_name'])) {
+            foreach ($_FILES['documents']['tmp_name'] as $i => $tmpName) {
+                if ($tmpName === '') continue;
+                $name = $_FILES['documents']['name'][$i];
+                $type = $_FILES['documents']['type'][$i] ?: 'application/octet-stream';
+                $uploaded = $drive->uploadFile($datasetFolder, $tmpName, $name, $type);
+                $insertFile->execute([$submissionId, $name, $uploaded['id'], $uploaded['webViewLink'], 'document']);
+                $fileRows[] = ['name' => $name, 'driveLink' => $uploaded['webViewLink'], 'kind' => 'document'];
+            }
+        }
+    } catch (Throwable $e) {
+        // Submission record is safe in the DB — only Drive upload failed.
+        // Return 200 with a drive_warning so the frontend can show a soft alert
+        // rather than treating the whole submission as failed.
+        error_log('submit.php Drive upload failed for submission #' . $submissionId . ': ' . $e->getMessage());
+        dolphin_send_json([
+            'id'           => $submissionId,
+            'entity'       => $entity,
+            'version'      => $version,
+            'datasetId'    => $datasetId,
+            'datasetName'  => $datasetName,
+            'tag'          => $tag,
+            'year'         => $year,
+            'unit'         => $unit,
+            'notes'        => $notes,
+            'status'       => 'Pending',
+            'submittedBy'  => $submittedBy,
+            'files'        => [],
+            'drive_warning' => 'File upload to Drive failed — submission recorded, files will need to be uploaded manually.',
+        ]);
+    }
 }
+
+dolphin_send_json([
+    'id'          => $submissionId,
+    'entity'      => $entity,
+    'version'     => $version,
+    'datasetId'   => $datasetId,
+    'datasetName' => $datasetName,
+    'tag'         => $tag,
+    'year'        => $year,
+    'unit'        => $unit,
+    'notes'       => $notes,
+    'status'      => 'Pending',
+    'submittedBy' => $submittedBy,
+    'files'       => $fileRows,
+]);

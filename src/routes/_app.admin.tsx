@@ -2,10 +2,10 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { PageBody, PageHeader, LockedState } from "@/components/portal";
 import { getRole, ROLE_META, authFetch } from "@/lib/auth";
-import { CheckCircle2, XCircle, RefreshCw, ListChecks, ScrollText, Users, Lock, Unlock, ChevronDown, ChevronRight, Building2, Clock, FileCheck, AlertCircle, Loader2, Search, Zap, Plus, X, Workflow, UserPlus, FileText } from "lucide-react";
+import { CheckCircle2, XCircle, RefreshCw, ListChecks, ScrollText, Users, Lock, Unlock, ChevronDown, ChevronRight, Building2, Clock, FileCheck, AlertCircle, Loader2, Search, Zap, Plus, X, Workflow, UserPlus, FileText, ClipboardList, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import { useActivationClients, useUpdateClientInvoice, useClients, type ApiClient, type ActivationClient } from "@/lib/api";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 
 export const Route = createFileRoute("/_app/admin")({ component: Admin });
 
@@ -361,14 +361,22 @@ function InvoiceModal({ client, open, onClose }: {
   const handleSave = async () => {
     if (!client) return;
     try {
-      await updateInvoice.mutateAsync({
+      const result = await updateInvoice.mutateAsync({
         client_id:      client.id,
         invoice_ref:    form.invoice_ref    || null,
         payment_status: form.payment_status,
         payment_date:   form.payment_date   || null,
         payment_notes:  form.payment_notes  || null,
       });
-      toast.success("Invoice details saved");
+      if (result?.was_activation) {
+        if (result.email_sent) {
+          toast.success("Payment approved. Access activation email sent.");
+        } else {
+          toast.warning("Payment approved, but the access activation email could not be delivered.");
+        }
+      } else {
+        toast.success("Invoice details saved");
+      }
       onClose();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Save failed");
@@ -452,7 +460,391 @@ function InvoiceModal({ client, open, onClose }: {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-type AdminTab = "activation" | "clients" | "queue" | "screening" | "log";
+type AdminTab = "activation" | "clients" | "queue" | "screening" | "log" | "requests";
+
+// ── Access Requests tab ───────────────────────────────────────────────────────
+
+type ReqStatus = "new" | "contacted" | "converted" | "rejected";
+interface ClientReq {
+  id: number; name: string; company: string; email: string;
+  phone: string; employees: string; message: string;
+  status: ReqStatus; created_at: string; updated_at: string;
+}
+interface ConvResult { slug: string; inviteEmail: string; tempPassword: string | null; emailSent: boolean; smtpDiag: string | null; }
+
+const REQ_STATUS: Record<ReqStatus, { label: string; cls: string }> = {
+  new:       { label: "New",       cls: "bg-amber-100 text-amber-700 border border-amber-200" },
+  contacted: { label: "Contacted", cls: "bg-blue-100 text-blue-700 border border-blue-200" },
+  converted: { label: "Converted", cls: "bg-[#E6F4EF] text-[#1E6F5C] border border-[#C5E4D0]" },
+  rejected:  { label: "Rejected",  cls: "bg-slate-100 text-slate-500 border border-slate-200" },
+};
+
+function slugify(s: string) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function RequestsTab() {
+  const role = getRole();
+  const isAdmin = role === "deepwoods_admin";
+  const qc = useQueryClient();
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [convertTarget, setConvertTarget] = useState<ClientReq | null>(null);
+  const [convertResult, setConvertResult] = useState<ConvResult | null>(null);
+  const [emailResults, setEmailResults] = useState<Map<number, boolean>>(new Map());
+
+  const { data: requests = [], isLoading, error } = useQuery<ClientReq[]>({
+    queryKey: ["client-requests"],
+    queryFn: () => authFetch("client-requests.php"),
+  });
+
+  const patchStatus = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: "contacted" | "rejected" }) =>
+      authFetch("client-requests.php", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["client-requests"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const toggleExpand = (id: number) =>
+    setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  return (
+    <div className="max-w-4xl space-y-4">
+      {isLoading && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading requests…
+        </div>
+      )}
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {(error as Error).message}
+        </div>
+      )}
+      {!isLoading && !error && requests.length === 0 && (
+        <div className="rounded-xl border border-[var(--border)] bg-white p-10 text-center text-sm text-muted-foreground">
+          No access requests yet. When companies submit a request via the portal, they appear here.
+        </div>
+      )}
+      {requests.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-card shadow-sm">
+          {requests.map((req, idx) => {
+            const isOpen = expanded.has(req.id);
+            const sc = REQ_STATUS[req.status];
+            const canAct = req.status !== "converted" && req.status !== "rejected";
+            return (
+              <div key={req.id} className={idx > 0 ? "border-t border-[var(--border)]" : ""}>
+                <button
+                  type="button"
+                  onClick={() => toggleExpand(req.id)}
+                  className="flex w-full items-center gap-4 px-5 py-4 text-left hover:bg-[#F9FAFB] transition-colors"
+                >
+                  {isOpen
+                    ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-[var(--navy)]">{req.company}</span>
+                      <span className="text-xs text-muted-foreground">·</span>
+                      <span className="text-xs text-muted-foreground">{req.name}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">{req.email}</div>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${sc.cls}`}>{sc.label}</span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground hidden sm:block">
+                    {new Date(req.created_at).toLocaleDateString()}
+                  </span>
+                </button>
+
+                {isOpen && (
+                  <div className="border-t border-[var(--border)] bg-[#FAFAFA] px-6 py-5">
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-3 text-sm mb-5">
+                      {[["Company", req.company], ["Contact", req.name], ["Email", req.email],
+                        ["Phone", req.phone || "—"], ["Submitted", new Date(req.created_at).toLocaleString()]]
+                        .map(([label, value]) => (
+                          <div key={label}>
+                            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">{label}</div>
+                            <div className="text-sm text-[var(--navy)]">{value}</div>
+                          </div>
+                        ))}
+                      {req.message && (
+                        <div className="col-span-full">
+                          <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Message</div>
+                          <p className="text-sm text-[var(--navy)] leading-relaxed whitespace-pre-wrap">{req.message}</p>
+                        </div>
+                      )}
+                    </div>
+                    {canAct && (
+                      <div className="flex flex-wrap gap-2">
+                        {req.status === "new" && (
+                          <button
+                            type="button"
+                            onClick={() => patchStatus.mutate({ id: req.id, status: "contacted" })}
+                            disabled={patchStatus.isPending}
+                            className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                          >
+                            <Check className="h-3.5 w-3.5" /> Mark contacted
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => patchStatus.mutate({ id: req.id, status: "rejected" })}
+                          disabled={patchStatus.isPending}
+                          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                        >
+                          <X className="h-3.5 w-3.5" /> Reject
+                        </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => setConvertTarget(req)}
+                            className="ml-auto flex items-center gap-1.5 rounded-lg bg-[#1E6F5C] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110"
+                          >
+                            <UserPlus className="h-3.5 w-3.5" /> Approve & Invite
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {req.status === "rejected" && (
+                      <p className="text-xs text-muted-foreground">Rejection email sent. No account was created.</p>
+                    )}
+                    {req.status === "converted" && (
+                      <p className="text-xs font-medium" style={{
+                        color: !emailResults.has(req.id)
+                          ? "#6B7280"
+                          : emailResults.get(req.id) ? "#1E6F5C" : "#B45309",
+                      }}>
+                        {!emailResults.has(req.id)
+                          ? "Email delivery status unavailable."
+                          : emailResults.get(req.id)
+                            ? "Invitation email sent successfully."
+                            : "Invitation email could not be sent."}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {convertTarget && (
+        <AcceptModal
+          request={convertTarget}
+          onClose={() => setConvertTarget(null)}
+          onSuccess={(result) => {
+            const reqId = convertTarget!.id;
+            setConvertTarget(null);
+            setConvertResult(result);
+            setEmailResults(prev => new Map(prev).set(reqId, result.emailSent));
+            qc.invalidateQueries({ queryKey: ["client-requests"] });
+          }}
+        />
+      )}
+      {convertResult && (
+        <AcceptSuccessModal result={convertResult} onClose={() => setConvertResult(null)} />
+      )}
+    </div>
+  );
+}
+
+function AcceptModal({ request, onClose, onSuccess }: {
+  request: ClientReq;
+  onClose: () => void;
+  onSuccess: (r: ConvResult) => void;
+}) {
+  const [name, setName]   = useState(request.company);
+  const [slug, setSlug]   = useState(slugify(request.company));
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Auto-update slug when name changes (only while user hasn't manually edited slug)
+  const [slugTouched, setSlugTouched] = useState(false);
+  const handleNameChange = (v: string) => {
+    setName(v);
+    if (!slugTouched) setSlug(slugify(v));
+  };
+
+  const inp = "w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--navy)] focus:border-[#1E6F5C] focus:outline-none";
+  const lbl = "mb-1 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground";
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await authFetch("client-requests.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "convert",
+          id: request.id,
+          name,
+          slug,
+          // Primary user auto-created from request contact email, sustainability_team role
+          invite_email: request.email,
+          invite_role: "sustainability_team",
+        }),
+      });
+      onSuccess({
+        slug: res.slug,
+        inviteEmail: res.invite_email ?? request.email,
+        tempPassword: res.temp_password ?? null,
+        emailSent: !!res.email_sent,
+        smtpDiag: res.smtp_diag ?? null,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Approval failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-xl bg-card p-6 shadow-2xl">
+        <div className="mb-4 flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-[var(--navy)]">Approve & Invite</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Creates the account and sends login credentials to <strong>{request.email}</strong> in one step.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded p-1 hover:bg-slate-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* What happens summary */}
+        <div className="mb-4 rounded-lg border border-[#C5E4D0] bg-[#F0FAF5] px-3 py-2.5 text-xs text-[#1E6F5C] space-y-1">
+          <p className="font-semibold">This will automatically:</p>
+          <p>1. Create the client account</p>
+          <p>2. Create login for <strong>{request.email}</strong> (Sustainability Team role)</p>
+          <p>3. Generate a temporary password and send credentials by email</p>
+          <p>4. Mark this request as accepted</p>
+        </div>
+
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
+        )}
+
+        <form onSubmit={submit} className="space-y-3">
+          <div>
+            <label className={lbl}>Client name *</label>
+            <input value={name} onChange={e => handleNameChange(e.target.value)} required className={inp} />
+          </div>
+          <div>
+            <label className={lbl}>Slug * <span className="normal-case font-normal text-muted-foreground">(URL identifier)</span></label>
+            <input
+              value={slug}
+              onChange={e => { setSlugTouched(true); setSlug(e.target.value); }}
+              required pattern="[-a-z0-9]+"
+              className={inp}
+            />
+            <p className="mt-0.5 text-[10px] text-muted-foreground">Lowercase letters, numbers and hyphens only</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50">Cancel</button>
+            <button type="submit" disabled={loading || !name.trim() || !slug}
+              className="flex items-center gap-2 rounded-lg bg-[#1E6F5C] px-5 py-2 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-50">
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {loading ? "Approving…" : "Approve & Invite"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+const SMTP_DIAG_LABELS: Record<string, string> = {
+  smtp_accepted:              "SMTP accepted the message for delivery.",
+  smtp_connection_failed:     "SMTP connection failed — server unreachable on port 587.",
+  smtp_starttls_failed:       "STARTTLS negotiation failed — TLS upgrade rejected.",
+  smtp_auth_failed:           "SMTP authentication failed — App Password may be invalid.",
+  smtp_recipient_rejected:    "SMTP recipient rejected — server refused the To address.",
+  smtp_message_rejected:      "SMTP message rejected — server refused the message (policy or content).",
+  smtp_config_missing:        "SMTP configuration missing — check config.php smtp keys.",
+  email_skipped_user_exists:  "User account already existed — email was not attempted.",
+  smtp_error:                 "Unclassified SMTP error — check PHP error log for details.",
+};
+
+function AcceptSuccessModal({ result, onClose }: { result: ConvResult; onClose: () => void }) {
+  const diagLabel = result.smtpDiag ? (SMTP_DIAG_LABELS[result.smtpDiag] ?? result.smtpDiag) : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-sm rounded-xl bg-card p-6 shadow-2xl text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#E6F4EF]">
+          <Check className="h-6 w-6 text-[#1E6F5C]" />
+        </div>
+        <h3 className="mb-1 text-base font-bold text-[var(--navy)]">Client account created!</h3>
+        <p className="mb-4 text-xs text-muted-foreground">
+          Workspace <code className="font-mono font-semibold">{result.slug}</code> is live.
+        </p>
+
+        {result.emailSent ? (
+          <div className="rounded-xl border border-[#C5E4D0] bg-[#F0FAF5] px-4 py-3 text-left mb-4 space-y-1">
+            <p className="text-xs font-semibold text-[#1E6F5C]">EMAIL SENT</p>
+            <p className="text-xs text-[#1E6F5C]">
+              Client account created and invitation email accepted by SMTP.
+            </p>
+            <p className="text-[11px] text-[#1E6F5C]/70">Sent to: <strong>{result.inviteEmail}</strong></p>
+            {diagLabel && (
+              <p className="text-[11px] text-[#1E6F5C]/60 font-mono">{diagLabel}</p>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left mb-4 space-y-2">
+            <p className="text-xs font-semibold text-amber-800">
+              {result.smtpDiag === 'email_skipped_user_exists'
+                ? "EMAIL NOT ATTEMPTED"
+                : result.smtpDiag
+                  ? "EMAIL FAILED"
+                  : "EMAIL STATUS UNAVAILABLE"}
+            </p>
+            <p className="text-xs text-amber-700">
+              {result.smtpDiag === 'email_skipped_user_exists'
+                ? "Client account created, but the user already existed — invitation email was not sent."
+                : result.smtpDiag
+                  ? "Client account created, but the invitation email could not be sent."
+                  : "Email delivery status unavailable."}
+            </p>
+            {diagLabel && (
+              <p className="text-[11px] font-mono text-amber-600">{diagLabel}</p>
+            )}
+            {result.tempPassword && (
+              <>
+                <p className="text-[11px] text-amber-700 pt-1">Share these credentials manually:</p>
+                <p className="text-[11px] text-amber-700">Email: <strong>{result.inviteEmail}</strong></p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 rounded bg-amber-100 px-2 py-1 text-sm font-mono font-semibold text-amber-900 break-all">
+                    {result.tempPassword}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => { navigator.clipboard.writeText(result.tempPassword!); toast.success("Copied"); }}
+                    className="shrink-0 rounded p-1 text-amber-600 hover:bg-amber-200"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        <button type="button" onClick={onClose}
+          className="w-full rounded-lg bg-[#1E6F5C] px-4 py-2 text-sm font-semibold text-white hover:brightness-110">
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ── Activation tab component ──────────────────────────────────────────────────
 
@@ -744,6 +1136,7 @@ function Admin() {
   };
 
   const TABS: {id:AdminTab;label:string;icon:React.ReactNode}[] = [
+    {id:"requests",  label:"Access Requests",     icon:<ClipboardList className="w-4 h-4"/>},
     {id:"activation",label:"Client Activation",  icon:<Zap className="w-4 h-4"/>},
     {id:"clients",   label:"Engagements",         icon:<Users className="w-4 h-4"/>},
     {id:"queue",     label:"Submissions Queue",   icon:<ListChecks className="w-4 h-4"/>},
@@ -797,6 +1190,9 @@ function Admin() {
       </div>
 
       <PageBody>
+        {/* ── Access Requests tab ── */}
+        {tab==="requests" && <RequestsTab />}
+
         {/* ── Activation tab ── */}
         {tab==="activation" && <ActivationTab />}
 

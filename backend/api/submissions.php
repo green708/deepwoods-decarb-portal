@@ -7,14 +7,16 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 }
 
 $authUser = dolphin_require_auth();
+dolphin_require_active_client($authUser);
+dolphin_require_payment($authUser);
 
 $pdo      = dolphin_db();
-$clientId = $authUser['client_id'];
-$status   = $_GET['status'] ?? null;
-$entity   = isset($_GET['entity']) ? strtoupper($_GET['entity']) : null;
+$clientId = (int)($authUser['client_id'] ?? 0);
+if (!$clientId) { dolphin_send_json([]); }
 
-// entity_scope restricts scoped users (e.g. client_uploader) to their own entity.
-$scopedEntity = $authUser['entity_scope'] ?: $entity;
+$status = $_GET['status'] ?? null;
+// dolphin_validate_entity enforces scope and verifies entity belongs to this client
+$scopedEntity = dolphin_validate_entity($authUser, isset($_GET['entity']) ? strtoupper($_GET['entity']) : '') ?: null;
 
 $sql    = 'SELECT s.* FROM submissions s WHERE s.client_id = ?';
 $params = [$clientId];

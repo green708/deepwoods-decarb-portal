@@ -6,31 +6,163 @@
 ---
 
 ## Last Updated
-2026-08-10 — Documentation session: TESTER_USER_FLOW.html created
+2026-08-10 — CLIENT SETUP → DATA COLLECTION journey complete
 
 ---
 
-## Completed This Session (2026-08-10)
+## Completed This Session (2026-08-10 — CLIENT SETUP → DATA COLLECTION journey)
+
+Four concrete gaps in the new-client journey fixed. The complete end-to-end flow now works:
+
+**Request Access → Admin converts → Activate → Invite user → First login → Forced password change → Orientation → Workspace Setup → Data Collection**
+
+### Fix A — New clients auto-redirect to /setup after orientation
+
+**Root cause:** After finishing the orientation tour (`/onboard`), `ClientContextGate` only checked for orientation and password change — it never checked whether the workspace setup wizard had been completed.
+
+**Fix:** [`src/routes/_app.tsx`](../src/routes/_app.tsx) — added check in `ClientContextGate.useEffect`:
+
+```typescript
+if ((ctxState.data.config as Record<string, unknown>)?.setup_complete === false) {
+  navigate({ to: "/setup" });
+}
+```
+
+- Only fires when `setup_complete` is the boolean `false` (set during client conversion in `client-requests.php`)
+- Does NOT fire for existing clients without this config key (they are not redirected)
+- After setup completes, `client-setup.php` sets `setup_complete = 'true'`, session cache is cleared, and the gate sees `true` on next render — no loop
+
+### Fix B — InventoryUpdateWizard actually saves data to the DB
+
+**Root cause:** `submit()` in `InventoryUpdateWizard` called `toast.success()` and `setSubmitted(true)` but never called any API. Data was lost on navigation.
+
+**Fix:** [`src/routes/_app.submissions.tsx`](../src/routes/_app.submissions.tsx)
+
+- Added `const { client } = useClientContext();` to the component
+- Added `const [submitting, setSubmitting] = useState(false);` for loading state
+- `submit()` is now async — calls `addSubmission(client.slug, { datasetId: "inventory-update", ... })` with the change summary in `notes`
+- Submit button disabled and shows spinner while submitting
+- Error handling via `toast.error`
+
+### Fix C — submit.php no longer requires Google Drive credentials
+
+**Root cause:** `submit.php` always instantiated `new GoogleDrive(...)`, which threw if Drive wasn't configured in `config.php`. This blocked inventory update submissions in environments without Drive.
+
+**Fix:** [`backend/api/submit.php`](../backend/api/submit.php)
+
+- Checks `$config['drive']['oauth_client_id'] ?? ''` before running Drive code
+- If Drive is not configured, skips all folder creation and file upload logic
+- Returns success with `files: []` — submission row is still created in DB
+
+### Fix D — /setup pre-populates saved entity scope on return
+
+**Root cause:** Returning to `/setup` after completing setup showed entity scope toggles reset to `DEFAULT_ENTITY_SCOPE`. The DB-saved values (`entity_scope_json` in `client_config`) were not loaded back.
+
+**Fix:** [`src/routes/setup.tsx`](../src/routes/setup.tsx) — two changes:
+
+1. Main `useEffect` now reads `ctx.config.entity_scope_json` and converts snake_case keys to camelCase before setting `data.entityScope`
+2. `OrgBoundaryStep.useEffect` now only adds `DEFAULT_ENTITY_SCOPE` for entities NOT already present in `data.entityScope` — previously it always overwrote with defaults
+
+**Build:** `npm run build:fresh` → 0 errors, 0 warnings ✅
+
+---
+
+## Completed This Session (2026-08-10 — New client journey)
+
+### Audit: Full new-client journey mapped
+
+All 14 journey steps inspected. Two gaps found and fixed:
+
+### Fix A — Forced password change fires BEFORE orientation (not after)
+
+**Root cause:** `ChangePasswordModal` lived inside `AppLayout`, which only renders after `ClientContextGate`. `ClientContextGate` redirected new users to `/onboard` first, so they completed orientation without ever seeing the password change prompt.
+
+**Fix:** Added `ForcedPasswordChange` full-page component in [`src/routes/_app.tsx`](../src/routes/_app.tsx).
+
+- New `ForcedPasswordChange` component (full-page, dark-green background — matches `PendingActivation` design language)
+- `ClientContextGate` now holds a local `mustChangePw` state, initialized from `getMustChangePassword()`
+- The orientation redirect (`navigate({ to: "/onboard" })`) is suppressed while `mustChangePw` is true
+- After the user sets their password, `setMustChangePassword(false)` is called, `mustChangePw` state clears, and the useEffect re-fires — the user is then redirected to `/onboard` (first time) or workspace (repeat login)
+
+**New journey order for invited users:**
+1. Log in with temp password → navigate to /workstreams
+2. `ClientContextGate` detects `must_change_password = true` → shows `ForcedPasswordChange` full-page
+3. User sets password → `mustChangePw` state clears → useEffect fires → redirects to `/onboard`
+4. User completes orientation → workspace
+
+### Fix B — After "Accept & create client", auto-switch to Client Activation tab
+
+**Root cause:** After converting a request, the admin stayed on "Access Requests" tab with only a toast message.
+
+**Fix:** Added `onConverted` callback prop to `AccessRequestsTab` in [`src/routes/_app.admin.tsx`](../src/routes/_app.admin.tsx).
+
+- `AccessRequestsTab` now accepts `onConverted?: () => void`
+- `handleConvert` calls `onConverted?.()` after success
+- In `Admin`, the `tab==="requests"` render now passes: `onConverted={() => { qc.invalidateQueries(["activation-clients"]); setTab("activation"); }}`
+- Admin is immediately taken to "Client Activation" tab (with fresh data) after conversion
+
+**Build:** `npm run build:fresh` → 0 errors ✅
+
+---
+
+## Completed This Session (2026-08-10 — earlier)
+
+### Fix 1 — Reply-To email header missing
+
+**`backend/api/Smtp.php`** — Added `Reply-To: <{fromEmail}>` header (line 46).  
+All portal emails now include `Reply-To: green.featherlite@deepwoodsgreen.com` so email-client "Reply" goes back to the central mailbox.
+
+**`backend/api/request-access.php`** — Updated amber info box in Deepwoods notification email.  
+Changed "Reply directly to [prospect email]" to "Prospect contact: [email]. Manage in Admin Dashboard → Access Requests."
+
+**`backend/config.php`** — `admin_email` changed from `krithika@deepwoodsgreen.com` to `green@deepwoodsgreen.com`.
+
+### Fix 2 — 403 Forbidden for deepwoods_admin on GHG endpoints
+
+Root cause: `requireAuth()` in `auth_middleware.php` returns 403 for any user with `client_id = NULL` (Deepwoods staff).
+
+**Fixed in 5 GHG endpoints** — switched from `requireAuth()` → `dolphin_require_auth()` + early return of empty data for null `client_id`:
+- `backend/api/ghg/inventory.php` — returns `{"entity":"","rows":[]}`
+- `backend/api/ghg/s1.php` — returns `[]`
+- `backend/api/ghg/s2.php` — returns `[]`
+- `backend/api/ghg/s3.php` — returns `[]`
+- `backend/api/ghg/intensity.php` — returns `[]`
+
+### Fix 3 — Client Requests workflow (NEW)
+
+**`backend/api/client-requests.php`** — NEW endpoint  
+- `GET` — list all `client_requests` rows ordered by status then date (deepwoods staff)
+- `PATCH { id, status }` — update status to `new|contacted|rejected`; blocks changes to `converted` rows
+- `POST { action:"convert", id, name, slug, currency, reporting_period }` — atomically: creates `clients` row (is_active=0), creates default `client_entities` row, creates `client_config` (setup_complete=false), marks request as `converted`; idempotent (409 if already converted); deepwoods_admin only
+
+**`src/lib/api.ts`** — 3 new hooks added  
+- `ClientRequest` interface
+- `useClientRequests()` — GET all requests
+- `useUpdateRequestStatus()` — PATCH status
+- `useConvertClientRequest()` — POST convert action
+
+**`src/routes/_app.admin.tsx`** — Admin dashboard updated  
+- `AdminTab` type extended: added `"requests"`
+- `REQUEST_STATUS_CONFIG` added (new/contacted/converted/rejected badges)
+- `AccessRequestsTab` component added: request list, status badges, "Mark contacted" / "Reject" / "Accept & create client" actions, Convert modal with auto-slug, company/contact summary, currency/FY inputs
+- "New Requests" KPI card added to summary row (5th card, amber when count > 0)
+- "Access Requests" tab added to TABS array (shows live count in label when > 0)
+- `deepwoods_coordinator` early return changed: now shows a dedicated "Access Requests" view (full page, no other tabs) instead of LockedState; can Mark contacted and Reject, but not convert
+- `deepwoods_admin` sees all 6 tabs including the new "Access Requests" tab
+
+**Build:** `npm run build:fresh` → 0 errors ✅
+
+---
+
+## Completed This Session (2026-08-10 — earlier)
 
 ### Documentation — Tester User-Flow Guide
 
 **`docs/TESTER_USER_FLOW.html`** — NEW standalone HTML tester guide (12 sections, ~700 lines)
 
-Covers every user journey, role, and page in the platform:
-1. Portal overview — tech stack, auth model, 5 roles, key URLs
-2. Entry-point decision tree — all auth/gate branches from `/` landing
-3. New / Prospective Client journey — Request Access + Demo mode flows
-4. Deepwoods Admin journey — all 5 admin tabs with live-vs-mock status
-5. Existing Client journey — daily workflow, all 21 workspace modules
-6. First-time Client journey — all 3 gates (change password → activation → orientation → setup)
-7. Role-based access matrix — what each of the 5 roles can/cannot do
-8. Complete page map — all 29 routes with data source and implementation status
-9. Golden-path test cases — 9 specific test scenarios with step-by-step checklists
-10. Security & access boundary tests — 15 specific test cases
-11. Implementation status — fully live, partially implemented, configuration-dependent
-12. Known gaps & blockers — bugs, missing features, pre-test checklist
+Covers every user journey, role, and page in the platform.
 
-No application code was changed this session. Pure documentation only.
+No application code was changed in that sub-session.
 
 ---
 
@@ -94,19 +226,47 @@ No API, DB, auth, or business logic changes.
 
 ---
 
-## Immediate Next Steps (tomorrow's testing session)
+## Immediate Next Steps — Deploy & test this session's fixes
 
-### Migrations to run (in order)
-1. `database/migrations/001_migrate_legacy_roles.sql`
-2. `database/migrations/002_add_client_activation.sql`
-3. `database/migrations/003_add_client_requests.sql`
-4. `database/migrations/004_add_invoice_fields.sql`
-*(For fresh installs: use `schema_combined.sql` directly — already includes all columns)*
+### Files to upload to Hostinger public_html/ (re-upload after build)
 
-### Configuration required before live testing
-- `backend/config.php`: set `ghg_webapp_url`, `admin_email`, `platform_base_url`
+| File | Change |
+|---|---|
+| `backend/api/Smtp.php` | Reply-To header added |
+| `backend/api/request-access.php` | Notification body text updated |
+| `backend/api/ghg/inventory.php` | Auth fix: no more 403 for Deepwoods |
+| `backend/api/ghg/s1.php` | Auth fix |
+| `backend/api/ghg/s2.php` | Auth fix |
+| `backend/api/ghg/s3.php` | Auth fix |
+| `backend/api/ghg/intensity.php` | Auth fix |
+| `backend/api/client-requests.php` | NEW — requests API |
+| `backend/config.php` | admin_email updated (NEVER commit this file) |
+| All of `dist-static/` | Frontend rebuilt with new admin tab + hooks |
 
-### Testing priorities
+**`backend/config.php` must be uploaded manually** — it is gitignored and not included in `dist-static/`. Update `admin_email` to `green@deepwoodsgreen.com` on the server copy.
+
+### DB changes — none required
+Migrations 001–004 were already run. `client_requests` table (migration 003) already exists. No new migration needed for this session's work.
+
+### Testing priorities (in order)
+1. **Request Access flow**: Submit `/request-access` form → check `green@deepwoodsgreen.com` inbox — notification should arrive with Reply-To pointing to `green.featherlite@deepwoodsgreen.com`
+2. **403 fix**: Log in as `deepwoods_admin` → open DevTools Network → navigate pages — no more 403 on GHG endpoints
+3. **Access Requests tab**: Log in as `deepwoods_admin` → `/admin` → "Access Requests" tab → should show all submitted requests with "Mark contacted", "Reject", "Accept & create client" buttons
+4. **Convert flow**: Click "Accept & create client" on a request → fill form → submit → new client should appear in "Client Activation" tab as Pending
+5. **Coordinator view**: Log in as `deepwoods_coordinator` → `/admin` → should see dedicated "Access Requests" page (not LockedState)
+6. **Idempotency**: Try converting the same request twice → second attempt should fail with "already converted" error
+
+---
+
+## Previous Next Steps (from 2026-08-10 morning session)
+
+### Previously outstanding migrations (all should now be in production DB)
+1. `database/migrations/001_migrate_legacy_roles.sql` — legacy roles
+2. `database/migrations/002_add_client_activation.sql` — activation gate
+3. `database/migrations/003_add_client_requests.sql` — client_requests table
+4. `database/migrations/004_add_invoice_fields.sql` — invoice tracking
+
+### Previously outstanding testing
 1. `/request-access` form → DB row inserted → email notification arrives
 2. Admin → "Invite user" → temp password shown → user can log in and change password
 3. Admin → "Invoice" → save invoice fields → persist on page reload

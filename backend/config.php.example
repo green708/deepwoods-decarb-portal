@@ -20,18 +20,23 @@ return [
         'token_path' => __DIR__ . '/drive-token.json', // created automatically by oauth-callback.php
         'root_folder_id' => '1SRz-lmrdK4a4zjGt36xQe5UVi16uUTes',
     ],
+    // ALL platform emails (invites, password resets, request-access notifications)
+    // must send from ONE central sender account: green.featherlite@deepwoodsgreen.com
+    // Generate a Gmail App Password at https://myaccount.google.com/apppasswords
+    // (Google Account → Security → 2-Step Verification → App passwords)
     'smtp' => [
         'host' => 'smtp.gmail.com',
         'port' => 587,
-        'username' => 'REPLACE_WITH_GMAIL_ADDRESS',
-        'app_password' => 'REPLACE_WITH_GMAIL_APP_PASSWORD', // no spaces
-        'from_email' => 'REPLACE_WITH_GMAIL_ADDRESS',
-        'from_name' => 'YOUR_PLATFORM_NAME GHG Portal',
+        'username' => 'green.featherlite@deepwoodsgreen.com',
+        'app_password' => 'REPLACE_WITH_GMAIL_APP_PASSWORD', // no spaces — never commit
+        'from_email' => 'green.featherlite@deepwoodsgreen.com',
+        'from_name' => 'Deepwoods GHG Portal',
     ],
     'app_base_url' => 'https://yourdomain.com',
     // Human-readable platform name used in email subjects and bodies.
     'platform_name' => 'Deepwoods GHG Portal',
     // Email address that receives Request Access notifications from the public form.
+    // Typically the Deepwoods admin inbox.
     'admin_email' => 'REPLACE_WITH_DEEPWOODS_ADMIN_EMAIL',
     // Legacy shared-secret gate — real per-user auth (sessions table) now
     // handles most endpoints; this only still guards a couple of edge cases.

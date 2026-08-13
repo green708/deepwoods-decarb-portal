@@ -25,6 +25,12 @@ if (!$clientId) {
     dolphin_send_json(['error' => 'User is not associated with a client'], 403);
 }
 
+// Only the primary client role (sustainability_team / ESG Manager) may
+// configure the workspace. Uploaders and leadership must not overwrite setup.
+if ($user['role'] !== 'sustainability_team') {
+    dolphin_send_json(['error' => 'Only ESG Managers (sustainability_team) may configure the workspace'], 403);
+}
+
 $body = dolphin_json_body();
 
 $pdo = dolphin_db();
@@ -72,6 +78,12 @@ try {
         'setup_complete'          => 'true',
     ];
 
+    // reporting_model (consolidated / separate / mixed)
+    $reporting_model_input = $body['reporting_model'] ?? null;
+    if ($reporting_model_input !== null && in_array($reporting_model_input, ['consolidated', 'separate', 'mixed'], true)) {
+        $configKeys['reporting_model'] = $reporting_model_input;
+    }
+
     $upsertConfig = $pdo->prepare(
         'INSERT INTO client_config (client_id, config_key, config_value)
          VALUES (?, ?, ?)
@@ -108,6 +120,60 @@ try {
             $insertEntity->execute([
                 $clientId, $code, $name, $short, $isConsolidated, $maxOrder + $i + 1
             ]);
+        }
+    }
+
+    // ── 4. Update legal entity detail columns (nullable additions from migration 002) ──
+    $legal_entities = $body['legal_entities'] ?? [];
+    if (is_array($legal_entities) && count($legal_entities) > 0) {
+        try {
+            $updateLegal = $pdo->prepare(
+                'UPDATE client_entities
+                 SET country = ?, registration_no = ?, tax_id = ?, org_type = ?, legal_address = ?
+                 WHERE client_id = ? AND code = ?'
+            );
+            foreach ($legal_entities as $le) {
+                $code = strtoupper(trim($le['code'] ?? ''));
+                if ($code === '') continue;
+                $updateLegal->execute([
+                    $le['country']         ?? null,
+                    $le['registration_no'] ?? null,
+                    $le['tax_id']          ?? null,
+                    $le['org_type']        ?? null,
+                    $le['legal_address']   ?? null,
+                    $clientId,
+                    $code,
+                ]);
+            }
+        } catch (PDOException $e) {
+            // Migration 002 not yet applied — skip silently
+        }
+    }
+
+    // ── 5. Replace reporting_engagements ──────────────────────────────────────
+    $engagements = $body['reporting_engagements'] ?? [];
+    if (is_array($engagements) && count($engagements) > 0) {
+        try {
+            $pdo->prepare('DELETE FROM reporting_engagements WHERE client_id = ?')
+                ->execute([$clientId]);
+
+            $insertRE = $pdo->prepare(
+                'INSERT INTO reporting_engagements
+                 (client_id, name, report_type, legal_entity_codes, reporting_entity_code, sort_order)
+                 VALUES (?, ?, ?, ?, ?, ?)'
+            );
+            foreach ($engagements as $i => $re) {
+                $name       = trim($re['name'] ?? '');
+                $reportType = in_array($re['report_type'] ?? '', ['consolidated', 'standalone'], true)
+                              ? $re['report_type'] : 'consolidated';
+                $legalCodes = isset($re['legal_entity_codes']) && is_array($re['legal_entity_codes'])
+                              ? json_encode($re['legal_entity_codes']) : null;
+                $entityCode = strtoupper(trim($re['reporting_entity_code'] ?? ''));
+                if ($name === '' || $entityCode === '') continue;
+                $insertRE->execute([$clientId, $name, $reportType, $legalCodes, $entityCode, $i]);
+            }
+        } catch (PDOException $e) {
+            // Migration 002 not yet applied — skip silently
         }
     }
 

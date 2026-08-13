@@ -10,6 +10,7 @@
 
 declare(strict_types=1);
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/Smtp.php';
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -91,16 +92,20 @@ if ($method === 'POST') {
                        ? $body['primary_color'] : '#1E6F5C';
     $logoUrl         = trim($body['logo_url'] ?? '/deepwoods-logo.png');
 
+    $inviteEmail = trim($body['invite_email'] ?? '');
+    $inviteRole  = in_array($body['invite_role'] ?? '', ['sustainability_team', 'client_uploader', 'client_leadership'], true)
+                   ? $body['invite_role'] : 'sustainability_team';
+
     $entities = is_array($body['entities'] ?? null) ? $body['entities'] : [];
     $config   = is_array($body['config']   ?? null) ? $body['config']   : [];
 
     try {
         $pdo->beginTransaction();
 
-        // Create the client row; is_active = 0 (Deepwoods activates manually after payment)
+        // Create the client row; activated immediately
         $stmt = $pdo->prepare(
-            'INSERT INTO clients (name, slug, logo_url, primary_color, currency, reporting_period, is_active)
-             VALUES (?, ?, ?, ?, ?, ?, 0)'
+            'INSERT INTO clients (name, slug, logo_url, primary_color, currency, reporting_period, is_active, activated_at)
+             VALUES (?, ?, ?, ?, ?, ?, 1, NOW())'
         );
         $stmt->execute([$name, $slug, $logoUrl, $primaryColor, $currency, $reportingPeriod]);
         $clientId = (int)$pdo->lastInsertId();
@@ -119,9 +124,12 @@ if ($method === 'POST') {
             $insertEntity->execute([$clientId, $code, $ename, $short, $isConsolidated, $i + 1]);
         }
 
-        // Default config (setup_complete = false; caller may pass additional keys)
+        // Default config
         $defaultConfig = array_merge(['setup_complete' => 'false'], $config);
-        $upsertConfig  = $pdo->prepare(
+        if ($inviteEmail !== '') {
+            $defaultConfig['contact_email'] = $inviteEmail;
+        }
+        $upsertConfig = $pdo->prepare(
             'INSERT INTO client_config (client_id, config_key, config_value)
              VALUES (?, ?, ?)
              ON DUPLICATE KEY UPDATE config_value = VALUES(config_value)'
@@ -133,7 +141,6 @@ if ($method === 'POST') {
         }
 
         $pdo->commit();
-        dolphin_send_json(['ok' => true, 'client_id' => $clientId, 'slug' => $slug], 201);
 
     } catch (PDOException $e) {
         $pdo->rollBack();
@@ -143,6 +150,71 @@ if ($method === 'POST') {
         error_log('clients.php POST error: ' . $e->getMessage());
         dolphin_send_json(['error' => 'Failed to create client. Please try again.'], 500);
     }
+
+    // Create user + send welcome email (outside transaction so client row is committed first)
+    $tempPassword = null;
+    $emailSent    = false;
+    if (filter_var($inviteEmail, FILTER_VALIDATE_EMAIL)) {
+        $tempPassword = bin2hex(random_bytes(8));
+        $hash = password_hash($tempPassword, PASSWORD_BCRYPT);
+        try {
+            $pdo->prepare(
+                'INSERT INTO users (client_id, email, password_hash, role, must_change_password)
+                 VALUES (?, ?, ?, ?, 1)
+                 ON DUPLICATE KEY UPDATE client_id = VALUES(client_id), role = VALUES(role), must_change_password = 1'
+            )->execute([$clientId, $inviteEmail, $hash, $inviteRole]);
+        } catch (Throwable $e) {
+            error_log('clients.php user insert failed: ' . $e->getMessage());
+        }
+
+        $config  = dolphin_config();
+        $baseUrl = rtrim($config['app_base_url'] ?? $config['platform_base_url'] ?? 'https://decarb.sustainablyyours.me', '/');
+        $smtpCfg = $config['smtp'] ?? [];
+
+        if (!empty($smtpCfg['host']) && !empty($smtpCfg['username']) && !empty($smtpCfg['app_password'])) {
+            try {
+                $smtp = new Smtp(
+                    $smtpCfg['host'],
+                    (int)($smtpCfg['port'] ?? 587),
+                    $smtpCfg['username'],
+                    $smtpCfg['app_password'],
+                    $smtpCfg['from_email'] ?? $smtpCfg['username'],
+                    $smtpCfg['from_name']  ?? 'Deepwoods GHG Portal',
+                );
+                $clientNameHtml = htmlspecialchars($name);
+                $emailHtml = htmlspecialchars($inviteEmail);
+                $htmlBody = <<<HTML
+<html><body style="font-family:Arial,sans-serif;color:#1a1a1a;max-width:560px;margin:0 auto;padding:24px">
+<h2 style="color:#1E6F5C;margin-top:0">Welcome to the Deepwoods GHG Portal</h2>
+<p>Hello,</p>
+<p>Your GHG Portal account for <strong>{$clientNameHtml}</strong> is ready. Here are your login credentials:</p>
+<table style="border-collapse:collapse;width:100%;font-size:14px;margin:16px 0">
+  <tr><td style="padding:8px 12px;background:#F3F4F6;border-radius:4px 4px 0 0;font-weight:600;color:#374151">Login email</td><td style="padding:8px 12px;background:#F9FAFB">{$emailHtml}</td></tr>
+  <tr><td style="padding:8px 12px;background:#F3F4F6;font-weight:600;color:#374151">Temporary password</td><td style="padding:8px 12px;background:#F9FAFB;font-family:monospace">{$tempPassword}</td></tr>
+</table>
+<p style="font-size:13px;color:#6B7280">You will be asked to change your password on first login.</p>
+<p style="margin-top:24px">
+  <a href="{$baseUrl}" style="display:inline-block;background:#1E6F5C;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px">Open your portal</a>
+</p>
+<p style="font-size:12px;color:#9CA3AF;margin-top:32px;border-top:1px solid #F3F4F6;padding-top:16px">— Deepwoods GHG Portal · This is an automated message.</p>
+</body></html>
+HTML;
+                $smtp->send($inviteEmail, "Your GHG Portal account is ready — {$name}", $htmlBody);
+                $emailSent = true;
+            } catch (Throwable $e) {
+                error_log('clients.php welcome email failed: ' . $e->getMessage());
+            }
+        }
+    }
+
+    dolphin_send_json([
+        'ok'           => true,
+        'client_id'    => $clientId,
+        'slug'         => $slug,
+        'invite_email' => $inviteEmail ?: null,
+        'temp_password'=> $tempPassword,
+        'email_sent'   => $emailSent,
+    ], 201);
 }
 
 // ── PATCH — update client metadata ────────────────────────────────────────────

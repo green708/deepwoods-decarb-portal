@@ -43,6 +43,7 @@ class Smtp {
             $safeBody = preg_replace('/^\./m', '..', $htmlBody);
 
             $headers = "From: {$this->fromName} <{$this->fromEmail}>\r\n";
+            $headers .= "Reply-To: <{$this->fromEmail}>\r\n";
             $headers .= "To: <{$to}>\r\n";
             $headers .= "Subject: {$subject}\r\n";
             $headers .= "MIME-Version: 1.0\r\n";

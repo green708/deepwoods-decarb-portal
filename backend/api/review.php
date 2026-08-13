@@ -23,6 +23,14 @@ if ($submissionId <= 0 || !in_array($action, ['Approved', 'Rejected', 'Reassigne
 
 $pdo = dolphin_db();
 
+// Verify the submission exists before acting. deepwoods_admin has cross-client
+// authority by design, but we must not write audit log rows for ghost IDs.
+$check = $pdo->prepare('SELECT id FROM submissions WHERE id = ?');
+$check->execute([$submissionId]);
+if (!$check->fetch()) {
+    dolphin_send_json(['error' => 'Submission not found'], 404);
+}
+
 // Reassigned doesn't change status — it's logged as an action but the
 // submission stays Pending until an actual Approve/Reject happens.
 if ($action !== 'Reassigned') {

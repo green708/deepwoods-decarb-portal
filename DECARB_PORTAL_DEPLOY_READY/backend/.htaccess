@@ -1,0 +1,14 @@
+# This folder gets uploaded as-is into public_html/backend/ on Hostinger.
+# Only files under api/*.php should ever be reachable over HTTP — everything
+# else in this folder (config.php, the service-account key, schema.sql) must
+# never be directly downloadable, even though PHP's own `require` can still
+# read them from disk (that's a filesystem read, not an HTTP request, so this
+# rule doesn't block it).
+
+<FilesMatch "\.(json|sql)$">
+    Require all denied
+</FilesMatch>
+
+<Files "config.php">
+    Require all denied
+</Files>

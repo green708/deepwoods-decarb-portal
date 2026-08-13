@@ -7,9 +7,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 }
 
 $authUser = dolphin_require_auth();
+dolphin_require_active_client($authUser);
 
 $pdo      = dolphin_db();
-$clientId = $authUser['client_id'];
+$clientId = (int)($authUser['client_id'] ?? 0);
+if (!$clientId) { dolphin_send_json([]); }
 
 $stmt = $pdo->prepare(
     'SELECT a.id, a.submission_id, a.action, a.actor, a.notes, a.created_at,

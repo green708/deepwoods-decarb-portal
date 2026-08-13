@@ -19,6 +19,21 @@ export interface ClientEntity {
   is_consolidated: boolean;      // true = this is the roll-up / all-entity view
   consolidates: string[] | null; // ["FP","FOS"] for consolidated entity, null otherwise
   sort_order: number;
+  // Legal entity detail — nullable; existing rows have these as null
+  country?: string | null;
+  registration_no?: string | null;
+  tax_id?: string | null;
+  org_type?: string | null;
+  legal_address?: string | null;
+}
+
+export interface ReportingEngagement {
+  id: number;
+  name: string;
+  report_type: "consolidated" | "standalone";
+  legal_entity_codes: string[] | null;
+  reporting_entity_code: string;
+  sort_order: number;
 }
 
 export interface ClientTargets {
@@ -38,6 +53,7 @@ export interface ClientInfo {
   currency: string;              // "INR" | "USD"
   reporting_period: "FY" | "CY"; // FY = April–March, CY = Jan–Dec
   is_active: boolean;            // false until Deepwoods manually activates the client
+  payment_status: "pending" | "paid" | "waived"; // set by Deepwoods via activate-client.php
 }
 
 export interface ClientContext {
@@ -49,6 +65,9 @@ export interface ClientContext {
   s3_not_relevant: Record<string, string[]>; // { "FP": ["Cat 7"], "FOS": [] }
   targets: ClientTargets;
   config: Record<string, unknown>; // catch-all for client-specific config values
+  // Reporting architecture — optional for backwards compatibility with legacy clients
+  reporting_model?: "consolidated" | "separate" | "mixed" | null;
+  reporting_engagements?: ReportingEngagement[];
 }
 
 // ── Context ───────────────────────────────────────────────────────────────────

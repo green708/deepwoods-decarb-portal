@@ -2,15 +2,17 @@
 // datasets.php
 
 require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/auth_middleware.php';
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Headers: Authorization, Content-Type');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
-$user      = requireAuth();
-$client_id = (int)$user['client_id'];
+$user      = dolphin_require_auth();
+dolphin_require_active_client($user);
+dolphin_require_payment($user);
+$client_id = (int)($user['client_id'] ?? 0);
+if (!$client_id) { echo json_encode([]); exit; }
 
 $stmt = $pdo->prepare(
     "SELECT dataset_id AS id, name, description, submission_type AS type, template_url, enabled

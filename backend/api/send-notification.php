@@ -13,20 +13,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit(0); }
 // DATA HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Resolve the session token to email + client_id. Returns null if invalid. */
-function get_user_from_token(PDO $pdo): ?array {
-    $h = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-    if (!preg_match('/^Bearer\s+(.+)$/i', $h, $m)) return null;
-    $stmt = $pdo->prepare(
-        "SELECT u.email, u.client_id FROM sessions s
-         JOIN users u ON u.id = s.user_id
-         WHERE s.token = ? AND s.expires_at > NOW()"
-    );
-    $stmt->execute([$m[1]]);
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    return $row ?: null;
-}
-
 /** Return client name, portal URL, and display slug for email templates. */
 function get_client_info(PDO $pdo, int $client_id): array {
     $stmt = $pdo->prepare('SELECT name, slug FROM clients WHERE id = ?');
@@ -337,10 +323,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 // ROUTE: POST — send immediately to the authenticated user (test / manual)
 // ─────────────────────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $pdo      = dolphin_db();
-    $authUser = get_user_from_token($pdo);
-    if (!$authUser) { http_response_code(401); die(json_encode(['error' => 'Unauthenticated'])); }
-
+    $authUser  = dolphin_require_auth();
+    dolphin_require_active_client($authUser);
+    $pdo       = dolphin_db();
     $email     = $authUser['email'];
     $client_id = (int)($authUser['client_id'] ?? 0);
 

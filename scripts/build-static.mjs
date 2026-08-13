@@ -60,8 +60,15 @@ async function main() {
     await cp(backendSrc, path.join(outDir, "backend"), { recursive: true });
     console.log("  ✓ backend/ copied into dist-static/");
 
+    // Copy ghg-proxy.php to dist-static root so it lands at public_html/ghg-proxy.php
+    const proxySrc = path.join(root, "ghg-proxy.php");
+    if (existsSync(proxySrc)) {
+      await cp(proxySrc, path.join(outDir, "ghg-proxy.php"));
+      console.log("  ✓ ghg-proxy.php copied into dist-static/");
+    }
+
     console.log(`\nAll done — dist-static/ contains everything for Hostinger.`);
-    console.log("Upload the entire contents of dist-static/ to public_html/ (including .htaccess and backend/).");
+    console.log("Upload the entire contents of dist-static/ to public_html/.");
   } finally {
     child.kill();
   }

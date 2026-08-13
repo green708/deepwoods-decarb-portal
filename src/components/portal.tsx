@@ -3,7 +3,7 @@ import { Lock, type LucideIcon } from "lucide-react";
 
 export function PageHeader({ eyebrow, title, description, right }: { eyebrow?: string; title: string; description?: string; right?: ReactNode }) {
   return (
-    <div className="mx-auto max-w-7xl px-6 pt-5 pb-0 md:px-8">
+    <div className="px-6 pt-5 pb-0 md:px-8">
       <div className="rounded-xl border border-[var(--border)] bg-card px-7 py-6 shadow-[0_1px_3px_rgba(15,23,42,0.07),0_4px_20px_rgba(15,23,42,0.07)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -26,7 +26,7 @@ export function PageHeader({ eyebrow, title, description, right }: { eyebrow?: s
 }
 
 export function PageBody({ children }: { children: ReactNode }) {
-  return <div className="mx-auto max-w-7xl px-6 py-8 md:px-8">{children}</div>;
+  return <div className="px-6 py-8 md:px-8">{children}</div>;
 }
 
 export function Section({ title, subtitle, children, right }: { title: string; subtitle?: string; children: ReactNode; right?: ReactNode }) {

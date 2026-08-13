@@ -1,0 +1,1 @@
+import{o as e,r as t}from"./createLucideIcon-Hwyk2efe.js";import{t as n}from"./useRouter-CyNMu0x-.js";var r=e(t(),1);function i(e){let t=n();return r.useCallback(n=>t.navigate({...n,from:n.from??e?.from}),[e?.from,t])}export{i as t};

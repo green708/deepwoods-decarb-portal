@@ -7,6 +7,7 @@ require __DIR__ . '/db.php';
 //       computed a value and a human confirms it's ready to go live)
 
 $authUser = dolphin_require_auth();
+dolphin_require_active_client($authUser);
 $pdo = dolphin_db();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $authUser['role'] !== 'deepwoods_admin') {
@@ -14,7 +15,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $authUser['role'] !== 'deepwoods_ad
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $clientId = $authUser['client_id'];
+    dolphin_require_payment($authUser);
+    $clientId = (int)($authUser['client_id'] ?? 0);
+    if (!$clientId) { dolphin_send_json([]); }
     $year     = $_GET['year'] ?? '';
 
     $stmt = $pdo->prepare(

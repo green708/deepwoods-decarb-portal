@@ -101,7 +101,7 @@ if ($smtpReady && $adminEmail) {
       <p style='margin:0;font-size:14px;white-space:pre-wrap'>" . htmlspecialchars($messageDisplay) . "</p>
     </div>
     <div style='margin-top:20px;padding:12px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:13px;color:#92400e'>
-      Reply directly to <strong>" . htmlspecialchars($email) . "</strong> to follow up with this prospect.
+      Prospect contact: <strong>" . htmlspecialchars($email) . "</strong>. Manage this request in the Admin Dashboard → Access Requests.
     </div>
   </div>
 </body></html>";

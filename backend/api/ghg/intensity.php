@@ -9,12 +9,12 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Headers: Authorization, Content-Type');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
-$user      = requireAuth();
+$user      = dolphin_require_auth();
 dolphin_require_active_client($user);
+dolphin_require_payment($user);
+if (empty($user['client_id'])) { echo json_encode([]); exit; }
 $client_id = (int)$user['client_id'];
-$entity    = trim($_GET['entity'] ?? '');
-// Enforce entity_scope — scoped users cannot query other entities
-if (!empty($user['entity_scope'])) { $entity = $user['entity_scope']; }
+$entity    = dolphin_validate_entity($user, trim($_GET['entity'] ?? ''));
 
 $stmt = $pdo->prepare(
     "SELECT year AS fy, revenue_lakh, production_units, s12_lb, s12_mb, s3_total

@@ -122,7 +122,35 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
     $config[$row['config_key']] = ($val !== null) ? $val : $row['config_value'];
 }
 
-// ── 8. Assemble response ─────────────────────────────────────────────────────
+// ── 8. Reporting model & engagements ────────────────────────────────────────
+$reporting_model_val = getConfig($pdo, $client_id, 'reporting_model', '');
+$reporting_model = $reporting_model_val !== '' ? $reporting_model_val : null;
+
+$reporting_engagements = [];
+try {
+    $re_stmt = $pdo->prepare(
+        "SELECT id, name, report_type, legal_entity_codes, reporting_entity_code, sort_order
+         FROM reporting_engagements WHERE client_id = ? ORDER BY sort_order, id"
+    );
+    $re_stmt->execute([$client_id]);
+    foreach ($re_stmt->fetchAll(PDO::FETCH_ASSOC) as $re) {
+        $reporting_engagements[] = [
+            'id'                    => (int)$re['id'],
+            'name'                  => $re['name'],
+            'report_type'           => $re['report_type'],
+            'legal_entity_codes'    => $re['legal_entity_codes']
+                                        ? json_decode($re['legal_entity_codes'], true)
+                                        : null,
+            'reporting_entity_code' => $re['reporting_entity_code'],
+            'sort_order'            => (int)$re['sort_order'],
+        ];
+    }
+} catch (PDOException $e) {
+    // Migration 002 not yet applied — return empty array
+    $reporting_engagements = [];
+}
+
+// ── 9. Assemble response ─────────────────────────────────────────────────────
 echo json_encode([
     'client' => [
         'id'               => (int)$client['id'],
@@ -133,14 +161,20 @@ echo json_encode([
         'currency'         => $client['currency'] ?? 'INR',
         'reporting_period' => $client['reporting_period'] ?? 'FY',
         'is_active'        => (bool)($client['is_active'] ?? false),
+        'payment_status'   => $client['payment_status'] ?? 'pending',
+        'invoice_ref'      => $client['invoice_ref']    ?? null,
+        'payment_date'     => $client['payment_date']   ?? null,
+        'activated_at'     => $client['activated_at']   ?? null,
     ],
     'entities'         => $entities,
     'reporting_years'  => $years,
     'enabled_pages'    => $enabled_pages,
     's3_boundary'      => $s3_boundary,
     's3_not_relevant'  => $s3_not_relevant,
-    'targets'          => $targets,
-    'config'           => $config,
+    'targets'               => $targets,
+    'config'                => $config,
+    'reporting_model'       => $reporting_model,
+    'reporting_engagements' => $reporting_engagements,
 ]);
 
 // ── Helper ────────────────────────────────────────────────────────────────────

@@ -85,7 +85,7 @@ try {
 $config    = dolphin_config();
 $emailSent = false;
 $smtpCfg   = $config['smtp'] ?? [];
-$baseUrl   = rtrim($config['platform_base_url'] ?? 'https://decarb.sustainablyyours.me', '/');
+$baseUrl   = rtrim($config['app_base_url'] ?? $config['platform_base_url'] ?? 'https://decarb.sustainablyyours.me', '/');
 
 if (
     !empty($smtpCfg['host']) &&

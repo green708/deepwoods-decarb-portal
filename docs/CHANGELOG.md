@@ -4,6 +4,51 @@ Key milestones and changes. Newest first.
 
 ---
 
+## 2026-08-10 — CLIENT SETUP → DATA COLLECTION journey complete
+
+### Fix A — New clients auto-redirect to /setup after orientation
+`src/routes/_app.tsx` — `ClientContextGate.useEffect` now redirects when `config.setup_complete === false`. Only fires for clients created via the request pipeline (which inserts `setup_complete = false`). Old clients with no key are unaffected.
+
+### Fix B — InventoryUpdateWizard saves to DB
+`src/routes/_app.submissions.tsx` — `submit()` now calls `addSubmission(client.slug, {...})` with the change summary in `notes`. Previously it only showed a toast and discarded the data.
+
+### Fix C — submit.php skips Drive when not configured
+`backend/api/submit.php` — Google Drive instantiation now conditional on `$config['drive']['oauth_client_id']`. Submissions succeed in environments without Drive credentials (files array is empty).
+
+### Fix D — setup.tsx restores entity scope on return
+`src/routes/setup.tsx` — Main `useEffect` now reads `entity_scope_json` from context and converts to camelCase before setting state. `OrgBoundaryStep.useEffect` no longer overwrites already-loaded scope values with defaults.
+
+---
+
+## 2026-08-10 — Production bug fixes + Access Requests workflow
+
+### Fix 1 — Reply-To header now present in all portal emails
+
+**`backend/api/Smtp.php`** — `Reply-To: <fromEmail>` header added after the `From:` header. All outgoing portal emails now direct email-client "Reply" to `green.featherlite@deepwoodsgreen.com`.
+
+**`backend/api/request-access.php`** — Notification email body updated; no longer implies replying to the prospect's address directly.
+
+**`backend/config.php`** — `admin_email` changed to `green@deepwoodsgreen.com` (the central inbox that receives new request-access notifications).
+
+### Fix 2 — 403 Forbidden for deepwoods_admin on GHG data endpoints
+
+**Root cause:** `requireAuth()` in `auth_middleware.php` explicitly blocks `client_id = NULL` (all Deepwoods staff) with HTTP 403.
+
+**Fixed in 5 files** — switched to `dolphin_require_auth()` + early empty-result return:
+`ghg/inventory.php`, `ghg/s1.php`, `ghg/s2.php`, `ghg/s3.php`, `ghg/intensity.php`
+
+### Fix 3 — Access Requests workflow
+
+**`backend/api/client-requests.php`** — NEW. GET lists requests; PATCH updates status; POST converts to client (idempotent, admin-only).
+
+**`src/lib/api.ts`** — `ClientRequest` interface + `useClientRequests()`, `useUpdateRequestStatus()`, `useConvertClientRequest()` hooks.
+
+**`src/routes/_app.admin.tsx`** — "Access Requests" tab (6th tab), "New Requests" KPI card, `AccessRequestsTab` component with request list + Convert modal. `deepwoods_coordinator` now sees a dedicated requests view instead of LockedState.
+
+Build: `npm run build:fresh` → 0 errors ✅
+
+---
+
 ## 2026-08-10 — Tester User-Flow Guide
 
 **`docs/TESTER_USER_FLOW.html`** — NEW standalone HTML document

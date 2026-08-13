@@ -5,6 +5,7 @@
 
 declare(strict_types=1);
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/Smtp.php';
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -76,13 +77,15 @@ if ($method === 'POST') {
         }
     }
 
+    $tempPassword = bin2hex(random_bytes(8)); // 16-char hex string
+
     try {
         $pdo->prepare(
             'INSERT INTO users (email, password_hash, role, client_id, entity_scope, must_change_password)
              VALUES (?, ?, ?, ?, ?, 1)'
         )->execute([
             $email,
-            password_hash($email, PASSWORD_BCRYPT),
+            password_hash($tempPassword, PASSWORD_BCRYPT),
             $role,
             $clientId,   // always from auth, never from request body
             $entityScope,
@@ -94,11 +97,79 @@ if ($method === 'POST') {
         throw $e;
     }
 
+    // Lookup client name for email
+    $clientRow = $pdo->prepare('SELECT name FROM clients WHERE id = ?');
+    $clientRow->execute([$clientId]);
+    $client = $clientRow->fetch();
+    $clientName = $client['name'] ?? 'your organisation';
+
+    // Send invite email (non-fatal)
+    $config    = dolphin_config();
+    $emailSent = false;
+    $smtpCfg   = $config['smtp'] ?? [];
+    $baseUrl   = rtrim($config['platform_base_url'] ?? 'https://decarb.sustainablyyours.me', '/');
+
+    if (
+        !empty($smtpCfg['host']) &&
+        !empty($smtpCfg['username']) &&
+        !empty($smtpCfg['app_password'])
+    ) {
+        try {
+            $smtp = new Smtp(
+                $smtpCfg['host'],
+                (int)($smtpCfg['port'] ?? 587),
+                $smtpCfg['username'],
+                $smtpCfg['app_password'],
+                $smtpCfg['from_email'] ?? $smtpCfg['username'],
+                $smtpCfg['from_name'] ?? 'Deepwoods GHG Portal',
+            );
+
+            $roleLabel = [
+                'sustainability_team' => 'ESG Manager',
+                'client_uploader'     => 'Data Submitter',
+                'client_leadership'   => 'Viewer',
+            ][$role] ?? $role;
+
+            $htmlBody = <<<HTML
+<html><body style="font-family:Arial,sans-serif;color:#1a1a1a;max-width:560px;margin:0 auto;padding:24px">
+<h2 style="color:#1E6F5C;margin-top:0">You've been invited to the GHG Portal</h2>
+<p>Hello,</p>
+<p>You have been added to the <strong>{$clientName}</strong> workspace on the GHG Portal as <strong>{$roleLabel}</strong>. Use the credentials below to log in for the first time.</p>
+<table style="border-collapse:collapse;margin:20px 0;width:100%">
+  <tr style="border-bottom:1px solid #E5E7EB">
+    <td style="padding:10px 16px 10px 0;color:#6B7280;font-size:14px;white-space:nowrap">Login URL</td>
+    <td style="padding:10px 0;font-size:14px"><a href="{$baseUrl}" style="color:#1E6F5C">{$baseUrl}</a></td>
+  </tr>
+  <tr style="border-bottom:1px solid #E5E7EB">
+    <td style="padding:10px 16px 10px 0;color:#6B7280;font-size:14px;white-space:nowrap">Email</td>
+    <td style="padding:10px 0;font-size:14px">{$email}</td>
+  </tr>
+  <tr>
+    <td style="padding:10px 16px 10px 0;color:#6B7280;font-size:14px;white-space:nowrap">Temporary password</td>
+    <td style="padding:10px 0;font-size:14px;font-weight:bold;font-family:monospace;letter-spacing:1px">{$tempPassword}</td>
+  </tr>
+</table>
+<div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400E;margin:20px 0">
+  <strong>Important:</strong> You will be asked to set a new password on your first login. Please do this immediately.
+</div>
+<p style="font-size:13px;color:#6B7280">If you were not expecting this invitation, please contact your team administrator.</p>
+<p style="font-size:12px;color:#9CA3AF;margin-top:32px;border-top:1px solid #F3F4F6;padding-top:16px">— Deepwoods GHG Portal · This is an automated message, please do not reply.</p>
+</body></html>
+HTML;
+
+            $smtp->send($email, "You've been invited to the GHG Portal", $htmlBody);
+            $emailSent = true;
+        } catch (Throwable $e) {
+            error_log('team.php invite email failed for ' . $email . ': ' . $e->getMessage());
+        }
+    }
+
     dolphin_send_json([
-        'ok'              => true,
-        'email'           => $email,
-        'role'            => $role,
-        'initialPassword' => $email,   // first login uses email as password
+        'ok'           => true,
+        'email'        => $email,
+        'role'         => $role,
+        'temp_password' => $tempPassword,
+        'email_sent'   => $emailSent,
     ]);
 }
 
