@@ -15,7 +15,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         </div>
 
         <div className="relative max-w-xl">
-          <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.28em] text-primary/90">
+          <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.28em] text-amber-300">
             Decarbonisation
           </p>
           <h1 className="mt-5 font-display text-[2.75rem] leading-[1.06] text-white xl:text-[3.35rem]">
@@ -45,7 +45,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           <DecarbonisationVisual compact />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-carbon/85 via-carbon/40 to-transparent" />
           <div className="relative flex h-full max-w-[15rem] flex-col justify-center gap-1.5 px-4 sm:max-w-xs">
-            <p className="text-[0.5625rem] font-semibold uppercase tracking-[0.24em] text-primary">
+            <p className="text-[0.5625rem] font-semibold uppercase tracking-[0.24em] text-amber-300">
               Decarbonisation
             </p>
             <p className="font-display text-[1.0625rem] leading-[1.15] text-white sm:text-xl">
@@ -58,9 +58,8 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           <div className="w-full max-w-[26rem]">{children}</div>
         </div>
 
-        <footer className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span>© {new Date().getFullYear()} Deepwoods</span>
-          <span>Decarb Portal</span>
+        <footer className="flex items-center justify-center text-xs text-muted-foreground">
+          <span>© {new Date().getFullYear()} Deepwoods Green Initiatives</span>
         </footer>
       </main>
     </div>

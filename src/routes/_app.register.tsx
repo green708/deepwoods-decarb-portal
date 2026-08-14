@@ -1,203 +1,200 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Leaf, Building2, ArrowRight, CheckCircle2, FileText, Layers } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowRight, Building2, Globe, MapPin, Loader2, CheckCircle2, FileText } from "lucide-react";
 import { useClientContext } from "@/lib/client-context";
+import { authFetch } from "@/lib/auth";
 
 export const Route = createFileRoute("/_app/register")({ component: RegisterEntityPage });
 
-const INK      = "oklch(0.21 0.03 265)";
-const CANOPY   = "oklch(0.34 0.06 158)";
-const MEADOW   = "oklch(0.62 0.16 152)";
-const PAPER    = "oklch(0.978 0.003 120)";
-const SLATE    = "oklch(0.55 0.02 265)";
-const HAIRLINE = "oklch(0.92 0.005 130)";
-const MINT     = "oklch(0.94 0.03 155)";
+const MOSS    = "#1E6F5C";
+const FOREST  = "#1E4D2B";
+const INK     = "#111827";
+const SLATE   = "#5A6872";
+const MUTED   = "#94A3B8";
+const BORDER  = "#E2E8E4";
+const CANVAS  = "#EEF3F0";
+const WHITE   = "#FFFFFF";
+const MINTBG  = "#ECF7F3";
 
-const STEPS = [
-  { n: 1, label: "Organisation Boundary", done: false },
-  { n: 2, label: "Payment Confirmation", done: false },
-  { n: 3, label: "Inventory Setup", done: false },
-  { n: 4, label: "Full Portal Access", done: false },
-];
+interface RequestData {
+  company:        string | null;
+  legal_name:     string | null;
+  operating_name: string | null;
+  industry:       string | null;
+  org_type:       string | null;
+  is_india:       number | null;
+  gstin:          string | null;
+  is_msme:        number | null;
+  udyam_number:   string | null;
+  legal_address:  string | null;
+  website:        string | null;
+}
+
+function Row({ label, value }: { label: string; value?: string | null }) {
+  if (!value) return null;
+  return (
+    <div style={{ display: "flex", gap: 16, padding: "10px 0", borderBottom: `1px solid ${BORDER}` }}>
+      <span style={{ flex: "0 0 180px", fontSize: 12, fontWeight: 600, color: MUTED, lineHeight: 1.5 }}>{label}</span>
+      <span style={{ fontSize: 13, color: INK, flex: 1, lineHeight: 1.5, wordBreak: "break-word" }}>{value}</span>
+    </div>
+  );
+}
 
 function RegisterEntityPage() {
   const navigate = useNavigate();
-  const ctx = useClientContext();
+  const ctx      = useClientContext();
+  const name     = ctx.client.name ?? "Your Organisation";
 
-  const engagements = ctx.reporting_engagements ?? [];
-  const consolidated = ctx.entities.find(e => e.is_consolidated);
-  const displayName = ctx.client.name;
+  const [data, setData]       = useState<RequestData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    authFetch("request-access.php")
+      .then((d: RequestData | null) => {
+        if (d && (d.company || d.legal_name)) setData(d);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const legalName = data?.legal_name || data?.company || name;
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      background: PAPER,
-      fontFamily: "'Manrope','Inter',system-ui,sans-serif",
-      color: INK,
-      position: "relative",
-      overflow: "hidden",
-    }}>
-      {/* Decorative rings */}
-      <div style={{
-        position: "fixed", top: -220, right: -220, width: 700, height: 700,
-        border: `1px solid ${HAIRLINE}`, borderRadius: "50%", pointerEvents: "none", zIndex: 0,
-      }} />
-      <div style={{
-        position: "fixed", top: -110, right: -110, width: 480, height: 480,
-        border: `1px solid ${HAIRLINE}`, borderRadius: "50%", pointerEvents: "none", zIndex: 0,
-      }} />
+    <div style={{ minHeight: "100vh", background: CANVAS, fontFamily: "'Inter',system-ui,sans-serif", color: INK }}>
+      <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+
+      {/* Top accent stripe */}
+      <div style={{ height: 4, background: `linear-gradient(90deg, ${FOREST} 0%, ${MOSS} 60%, #3DA882 100%)` }} />
 
       {/* Header */}
       <header style={{
-        position: "relative", zIndex: 10, background: "white",
-        borderBottom: `1px solid ${HAIRLINE}`, padding: "0 40px",
-        display: "flex", alignItems: "center", justifyContent: "space-between", height: 58,
+        background: WHITE, borderBottom: `1px solid ${BORDER}`,
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "0 48px", height: 60,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: 6, background: CANOPY,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <Leaf style={{ width: 15, height: 15, color: "white" }} />
-          </div>
-          <span style={{ fontSize: 14, fontWeight: 700, color: INK }}>
-            DEEPWOODS <span style={{ color: MEADOW }}>GREEN</span>
-          </span>
-        </div>
-        <span style={{ fontSize: 12, color: SLATE }}>{displayName}</span>
+        <img src="/deepwoods-logo.png" alt="Deepwoods Green" style={{ height: 34, width: "auto" }} />
+        <span style={{ fontSize: 13, color: SLATE, fontWeight: 500 }}>{name}</span>
       </header>
 
       {/* Body */}
-      <div style={{
-        position: "relative", zIndex: 1,
-        maxWidth: 600, margin: "0 auto", padding: "56px 24px 80px",
-      }}>
-        <p style={{
-          fontSize: 11, fontWeight: 700, letterSpacing: "0.08em",
-          textTransform: "uppercase", color: SLATE, margin: "0 0 4px",
-        }}>
-          Getting started
-        </p>
-        <h1 style={{ fontSize: 26, fontWeight: 700, margin: "0 0 6px", color: INK, letterSpacing: "-0.02em" }}>
-          Welcome, {displayName}
-        </h1>
-        <p style={{ fontSize: 14, color: SLATE, margin: "0 0 40px", lineHeight: 1.65 }}>
-          Before GHG data collection can begin, your organisation boundary needs to be defined.
-          This covers your legal entities, reporting structure, and scope boundary.
-        </p>
+      <div style={{ maxWidth: 860, margin: "0 auto", padding: "52px 48px 80px" }}>
 
-        {/* Existing engagements (if any — for return visits) */}
-        {engagements.length > 0 && (
-          <div style={{
-            background: "white", border: `1px solid ${HAIRLINE}`, borderRadius: 14,
-            padding: "20px 28px", marginBottom: 24,
-            boxShadow: "0 1px 3px rgba(17,24,39,0.06)",
-          }}>
-            <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: CANOPY, margin: "0 0 12px" }}>
-              Registered reporting engagements
-            </p>
-            {engagements.map(e => (
-              <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: `1px solid ${HAIRLINE}` }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: 8, background: MINT, flexShrink: 0,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  {e.report_type === "consolidated"
-                    ? <Layers style={{ width: 17, height: 17, color: CANOPY }} />
-                    : <FileText style={{ width: 17, height: 17, color: CANOPY }} />}
-                </div>
-                <div>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: INK }}>{e.name}</p>
-                  <p style={{ margin: 0, fontSize: 11, color: SLATE }}>
-                    {e.report_type === "consolidated" ? "Consolidated" : "Standalone"} · {e.reporting_entity_code}
-                  </p>
+        {/* Page heading */}
+        <div style={{ marginBottom: 36 }}>
+          <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em",
+            textTransform: "uppercase", color: MOSS }}>
+            Welcome
+          </p>
+          <h1 style={{ fontSize: 30, fontWeight: 800, margin: "0 0 10px", color: INK, letterSpacing: "-0.03em" }}>
+            {name}
+          </h1>
+          <p style={{ margin: 0, fontSize: 14, color: SLATE, lineHeight: 1.65, maxWidth: 520 }}>
+            Your account is active. Complete your entity setup so Deepwoods can begin your GHG inventory.
+          </p>
+        </div>
+
+        {loading ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "28px 0", color: SLATE }}>
+            <Loader2 style={{ width: 18, height: 18, color: MOSS, animation: "spin 1s linear infinite" }} />
+            <span style={{ fontSize: 13 }}>Loading your submission details…</span>
+          </div>
+        ) : data ? (
+          <>
+            {/* Company details review card */}
+            <div style={{
+              background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 16,
+              overflow: "hidden", marginBottom: 20,
+              boxShadow: "0 2px 12px rgba(30,79,60,0.06), 0 1px 3px rgba(0,0,0,0.04)",
+            }}>
+              {/* Card header */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "18px 28px", borderBottom: `1px solid ${BORDER}`,
+                background: MINTBG,
+              }}>
+                <Building2 style={{ width: 16, height: 16, color: MOSS, flexShrink: 0 }} />
+                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.09em",
+                  textTransform: "uppercase", color: MOSS }}>
+                  Organisation details — from your access request
+                </span>
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+                  <CheckCircle2 style={{ width: 14, height: 14, color: MOSS }} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: MOSS }}>Received</span>
                 </div>
               </div>
-            ))}
+
+              <div style={{ padding: "4px 28px 16px" }}>
+                <Row label="Legal name"         value={legalName} />
+                {data.operating_name && data.operating_name !== legalName && (
+                  <Row label="Operating name"   value={data.operating_name} />
+                )}
+                <Row label="Industry"           value={data.industry ?? undefined} />
+                <Row label="Organisation type"  value={data.org_type ?? undefined} />
+                <Row label="Registered in"      value={data.is_india !== 0 ? "India" : "Outside India"} />
+                {data.gstin && <Row label="GSTIN" value={data.gstin} />}
+                <Row label="MSME registered"    value={
+                  data.is_msme === 1 ? "Yes" : data.is_msme === 0 ? "No" : undefined
+                } />
+                {data.udyam_number && <Row label="Udyam number" value={data.udyam_number} />}
+              </div>
+
+              {(data.legal_address || data.website) && (
+                <>
+                  <div style={{ margin: "0 28px", borderTop: `1px solid ${BORDER}` }} />
+                  <div style={{ padding: "4px 28px 16px" }}>
+                    {data.legal_address && (
+                      <div style={{ display: "flex", gap: 16, padding: "10px 0", borderBottom: data.website ? `1px solid ${BORDER}` : "none" }}>
+                        <span style={{ display: "flex", alignItems: "flex-start", gap: 6, flex: "0 0 180px" }}>
+                          <MapPin style={{ width: 13, height: 13, color: MUTED, marginTop: 2, flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, fontWeight: 600, color: MUTED }}>Registered address</span>
+                        </span>
+                        <span style={{ fontSize: 13, color: INK, flex: 1, lineHeight: 1.6, whiteSpace: "pre-line" }}>
+                          {data.legal_address}
+                        </span>
+                      </div>
+                    )}
+                    {data.website && (
+                      <div style={{ display: "flex", gap: 16, padding: "10px 0" }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 180px" }}>
+                          <Globe style={{ width: 13, height: 13, color: MUTED, flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, fontWeight: 600, color: MUTED }}>Website</span>
+                        </span>
+                        <a href={data.website} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: 13, color: MOSS, flex: 1, lineHeight: 1.5, fontWeight: 600 }}>
+                          {data.website}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Info note */}
+            <div style={{
+              padding: "14px 20px", borderRadius: 10, marginBottom: 28,
+              background: "#FFFBEB", border: "1px solid #FDE68A",
+              fontSize: 13, color: "#92400E", lineHeight: 1.6,
+            }}>
+              <strong>Something incorrect?</strong> You can update any of these details in the next step.
+            </div>
+          </>
+        ) : (
+          /* No request-access data found */
+          <div style={{
+            background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 16,
+            padding: "40px 32px", marginBottom: 28, textAlign: "center",
+            boxShadow: "0 2px 12px rgba(30,79,60,0.06)",
+          }}>
+            <FileText style={{ width: 32, height: 32, color: MUTED, margin: "0 auto 14px" }} />
+            <p style={{ margin: "0 0 6px", fontSize: 15, fontWeight: 700, color: INK }}>
+              Ready to set up your entity
+            </p>
+            <p style={{ margin: 0, fontSize: 13, color: SLATE, lineHeight: 1.65 }}>
+              You'll fill in your company details in the next step. It only takes a few minutes.
+            </p>
           </div>
         )}
-
-        {/* Account card */}
-        <div style={{
-          background: "white", border: `1px solid ${HAIRLINE}`, borderRadius: 14,
-          padding: "24px 28px", marginBottom: 24,
-          boxShadow: "0 1px 3px rgba(17,24,39,0.06)",
-        }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
-            <div style={{
-              width: 44, height: 44, borderRadius: 10, background: MINT,
-              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-            }}>
-              <Building2 style={{ width: 22, height: 22, color: CANOPY }} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: SLATE, margin: "0 0 3px" }}>
-                Customer Account
-              </p>
-              <h2 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 4px", color: INK, lineHeight: 1.3 }}>
-                {displayName}
-              </h2>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {consolidated && (
-                  <span style={{
-                    fontSize: 11, fontWeight: 600, color: SLATE,
-                    fontFamily: "monospace", letterSpacing: "0.04em",
-                  }}>
-                    {consolidated.code}
-                  </span>
-                )}
-                <span style={{
-                  display: "inline-flex", alignItems: "center", gap: 4,
-                  padding: "2px 9px", borderRadius: 999,
-                  background: "oklch(0.96 0.03 62)", border: "1px solid oklch(0.88 0.07 62)",
-                  fontSize: 11, fontWeight: 600, color: "oklch(0.52 0.12 62)",
-                }}>
-                  <span style={{ fontSize: 8 }}>●</span> Boundary setup required
-                </span>
-              </div>
-            </div>
-          </div>
-          <div style={{
-            marginTop: 16, padding: "11px 14px", borderRadius: 8,
-            background: "oklch(0.97 0.005 120)", border: `1px solid ${HAIRLINE}`,
-            fontSize: 12, color: SLATE, lineHeight: 1.55,
-          }}>
-            Payment is account-level — once confirmed by a Deepwoods consultant, the entire workspace
-            is unlocked for all users on this account.
-          </div>
-        </div>
-
-        {/* Journey preview */}
-        <div style={{
-          background: "white", border: `1px solid ${HAIRLINE}`, borderRadius: 14,
-          padding: "20px 28px", marginBottom: 32,
-          boxShadow: "0 1px 3px rgba(17,24,39,0.06)",
-        }}>
-          <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: SLATE, margin: "0 0 16px" }}>
-            What happens next
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {STEPS.map((s, i) => (
-              <div key={s.n} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{
-                  width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
-                  background: s.done ? CANOPY : "white",
-                  border: `2px solid ${s.done ? CANOPY : HAIRLINE}`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 11, fontWeight: 700,
-                  color: s.done ? "white" : SLATE,
-                }}>
-                  {s.done ? <CheckCircle2 style={{ width: 13, height: 13 }} /> : s.n}
-                </div>
-                <span style={{
-                  fontSize: 13, fontWeight: i === 0 ? 600 : 400,
-                  color: i === 0 ? INK : SLATE,
-                }}>
-                  {s.label}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
 
         {/* CTA */}
         <button
@@ -205,16 +202,17 @@ function RegisterEntityPage() {
           onClick={() => navigate({ to: "/entity-setup" })}
           style={{
             display: "inline-flex", alignItems: "center", gap: 10,
-            padding: "13px 28px", borderRadius: 10, border: "none",
-            background: CANOPY, color: "white",
-            fontSize: 15, fontWeight: 600, cursor: "pointer",
-            boxShadow: "0 2px 8px rgba(30,111,92,0.25)",
-            letterSpacing: "-0.01em",
+            padding: "14px 32px", borderRadius: 12, border: "none",
+            background: `linear-gradient(135deg, ${FOREST} 0%, ${MOSS} 100%)`,
+            color: WHITE, fontSize: 15, fontWeight: 700, cursor: "pointer",
+            boxShadow: "0 4px 16px rgba(30,111,92,0.35)",
+            transition: "opacity 0.15s",
           }}
         >
-          {engagements.length > 0 ? "Update Organisation Boundary" : "Define Organisation Boundary"}
+          Complete entity setup
           <ArrowRight style={{ width: 18, height: 18 }} />
         </button>
+
       </div>
     </div>
   );

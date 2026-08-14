@@ -1,42 +1,62 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { Leaf, Loader2, Check } from "lucide-react";
+import { useState, useRef } from "react";
+import { Loader2, Check, X, ImageUp } from "lucide-react";
 import { API_BASE } from "@/lib/auth";
 
 export const Route = createFileRoute("/request-access")({ component: RequestAccessPage });
 
-const INK    = "oklch(0.21 0.03 265)";
-const CANOPY = "oklch(0.34 0.06 158)";
-const SLATE  = "oklch(0.55 0.02 265)";
-const PAPER  = "oklch(0.978 0.003 120)";
-const HAIRLINE = "oklch(0.92 0.005 130)";
-const CORAL    = "oklch(0.63 0.18 38)";
-const CTINT    = "oklch(0.95 0.03 42)";
+/* ── Design tokens ──────────────────────────────────────────────────────────── */
+const MOSS   = "#1E6F5C";
+const FOREST = "#1E4D2B";
+const INK    = "#111827";
+const SLATE  = "#5A6872";
+const MUTED  = "#94A3B8";
+const BORDER = "#E2E8E4";
+const BG     = "#EEF3F0";
+const WHITE  = "#FFFFFF";
+const MINTBG = "#ECF7F3";
+const CORAL  = "#DC2626";
 
 const INDUSTRIES = [
   "Manufacturing", "Textiles & Apparel", "Chemicals", "Food & Beverage",
   "IT / Technology", "Financial Services", "Real Estate & Construction",
   "Logistics & Transportation", "Furniture Manufacturing", "Other",
 ];
+const ORG_TYPES = [
+  "Private Limited", "Public Limited", "LLP", "Partnership",
+  "Sole Proprietorship", "Trust / NGO", "Government Body", "Other",
+];
 
-const inp: React.CSSProperties = {
-  width: "100%", padding: "9px 12px", border: `1px solid ${HAIRLINE}`,
-  borderRadius: 8, fontSize: 14, color: INK, background: "white",
-  fontFamily: "inherit", outline: "none", boxSizing: "border-box",
-};
+/* ── Component ──────────────────────────────────────────────────────────────── */
 
 function RequestAccessPage() {
   const [form, setForm] = useState({
-    company: "", name: "", email: "", phone: "", industry: "",
+    legal_name: "", operating_name: "", industry: "", org_type: "",
+    is_india: true, gstin: "", is_msme: false, udyam_number: "", legal_address: "", website: "",
+    name: "", email: "", phone: "",
+    // legacy field kept for backend compat
+    company: "",
   });
-  const [loading, setLoading]   = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError]       = useState<string | null>(null);
 
-  const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoName, setLogoName]       = useState<string | null>(null);
+  const logoRef = useRef<HTMLInputElement>(null);
+
+  const [loading, setLoading]     = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError]         = useState<string | null>(null);
+
+  const set = (k: string, v: string | boolean) => setForm(p => ({ ...p, [k]: v }));
+
+  const handleLogo = (file: File) => {
+    setLogoName(file.name);
+    const reader = new FileReader();
+    reader.onload = ev => setLogoPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
 
   const canSubmit =
-    form.company.trim() !== "" &&
+    form.legal_name.trim() !== "" &&
     form.name.trim() !== "" &&
     form.email.trim() !== "" &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email);
@@ -51,11 +71,21 @@ function RequestAccessPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name:    form.name,
-          company: form.company,
-          email:   form.email,
-          phone:   form.phone,
-          message: form.industry ? `Industry: ${form.industry}` : "",
+          name:           form.name,
+          company:        form.legal_name,
+          email:          form.email,
+          phone:          form.phone   || null,
+          industry:       form.industry || null,
+          is_india:       form.is_india,
+          gstin:          form.gstin   || null,
+          legal_name:     form.legal_name || null,
+          operating_name: form.operating_name || null,
+          org_type:       form.org_type || null,
+          is_msme:        form.is_msme,
+          udyam_number:   form.udyam_number || null,
+          legal_address:  form.legal_address || null,
+          website:        form.website || null,
+          logo_url:       logoPreview || null,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -68,26 +98,31 @@ function RequestAccessPage() {
     }
   };
 
+  /* ── Success screen ───────────────────────────────────────────────────────── */
   if (submitted) {
     return (
-      <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'Inter',system-ui,sans-serif",
-        display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <div style={{ maxWidth: 420, width: "100%", background: "white",
-          border: `1px solid ${HAIRLINE}`, borderRadius: 16, padding: "40px 36px",
-          textAlign: "center", boxShadow: "0 1px 2px rgba(17,24,39,0.04)" }}>
-          <div style={{ width: 56, height: 56, borderRadius: "50%", background: CANOPY,
-            display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
-            <Check style={{ width: 28, height: 28, color: "white" }} />
+      <div style={{ minHeight: "100vh", background: BG, fontFamily: "'Inter',system-ui,sans-serif",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div style={{ maxWidth: 460, width: "100%", background: WHITE,
+          border: `1px solid ${BORDER}`, borderRadius: 18, padding: "48px 40px",
+          textAlign: "center", boxShadow: "0 4px 24px rgba(30,79,60,0.08)" }}>
+          <div style={{ width: 60, height: 60, borderRadius: "50%",
+            background: `linear-gradient(135deg, ${FOREST}, ${MOSS})`,
+            display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}>
+            <Check style={{ width: 28, height: 28, color: WHITE }} />
           </div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: INK, margin: "0 0 8px" }}>
-            Request received!
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: INK, margin: "0 0 10px", letterSpacing: "-0.02em" }}>
+            Request received
           </h2>
-          <p style={{ fontSize: 14, color: SLATE, lineHeight: 1.7, margin: "0 0 24px" }}>
+          <p style={{ fontSize: 14, color: SLATE, lineHeight: 1.7, margin: "0 0 6px" }}>
             Thank you, <strong style={{ color: INK }}>{form.name}</strong>.
-            Our team will review your request and be in touch within{" "}
-            <strong style={{ color: INK }}>2 business days</strong> with your login credentials.
           </p>
-          <a href="/" style={{ fontSize: 13, color: CANOPY, fontWeight: 600, textDecoration: "none" }}>
+          <p style={{ fontSize: 14, color: SLATE, lineHeight: 1.7, margin: "0 0 28px" }}>
+            Our team will review your submission and send login credentials to{" "}
+            <strong style={{ color: INK }}>{form.email}</strong> within{" "}
+            <strong style={{ color: INK }}>2 business days</strong>.
+          </p>
+          <a href="/" style={{ fontSize: 13, color: MOSS, fontWeight: 600, textDecoration: "none" }}>
             ← Back to sign in
           </a>
         </div>
@@ -95,104 +130,401 @@ function RequestAccessPage() {
     );
   }
 
+  /* ── Main form ────────────────────────────────────────────────────────────── */
   return (
-    <div style={{ minHeight: "100vh", background: PAPER, fontFamily: "'Inter',system-ui,sans-serif", color: INK }}>
-      {/* Header */}
-      <header style={{ background: "white", borderBottom: `1px solid ${HAIRLINE}`,
-        padding: "0 40px", display: "flex", alignItems: "center",
-        justifyContent: "space-between", height: 58 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 6, background: CANOPY,
-            display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Leaf style={{ width: 15, height: 15, color: "white" }} />
-          </div>
-          <span style={{ fontSize: 14, fontWeight: 700, color: INK, letterSpacing: "-0.01em" }}>
-            DEEPWOODS <span style={{ color: "oklch(0.62 0.16 152)" }}>GREEN</span>
-          </span>
-        </div>
-        <div style={{ fontSize: 12, color: SLATE }}>
+    <div style={{ minHeight: "100vh", background: BG,
+      fontFamily: "'Inter',system-ui,sans-serif", color: INK }}>
+      <style>{CSS}</style>
+
+      {/* ── Top accent stripe ── */}
+      <div style={{ height: 4, background: `linear-gradient(90deg, ${FOREST} 0%, ${MOSS} 60%, #3DA882 100%)` }} />
+
+      {/* ── Header ── */}
+      <header style={{ background: WHITE, borderBottom: `1px solid ${BORDER}`,
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "0 48px", height: 60 }}>
+        <img src="/deepwoods-logo.png" alt="Deepwoods Green" style={{ height: 34, width: "auto" }} />
+        <div style={{ fontSize: 13, color: SLATE }}>
           Already registered?{" "}
-          <a href="/" style={{ color: CANOPY, fontWeight: 600, textDecoration: "none" }}>Sign in</a>
+          <a href="/" style={{ color: MOSS, fontWeight: 700, textDecoration: "none" }}>Sign in</a>
         </div>
       </header>
 
-      {/* Body */}
-      <div style={{ maxWidth: 520, margin: "0 auto", padding: "48px 24px 80px" }}>
-        <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
-          color: SLATE, margin: "0 0 4px" }}>
+      {/* ── Page title ── */}
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "48px 48px 0" }}>
+        <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em",
+          textTransform: "uppercase", color: MOSS }}>
           New Organisation
         </p>
-        <h1 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 6px", color: INK, letterSpacing: "-0.02em" }}>
+        <h1 style={{ margin: "0 0 10px", fontSize: 30, fontWeight: 800, color: INK, letterSpacing: "-0.03em" }}>
           Request portal access
         </h1>
-        <p style={{ fontSize: 14, color: SLATE, margin: "0 0 32px", lineHeight: 1.6 }}>
-          Tell us about your organisation. We'll review your request and send you login credentials within 2 business days.
+        <p style={{ margin: 0, fontSize: 15, color: SLATE, lineHeight: 1.6, maxWidth: 560 }}>
+          Tell us about your organisation and we'll be in touch within 2 business days with your login credentials.
         </p>
-
-        <form onSubmit={handleSubmit} style={{ background: "white", border: `1px solid ${HAIRLINE}`,
-          borderRadius: 12, padding: "28px 32px", display: "flex", flexDirection: "column", gap: 20 }}>
-
-          <Field label="Company name" required>
-            <input style={inp} value={form.company} onChange={e => set("company", e.target.value)}
-              placeholder="Acme Private Limited" />
-          </Field>
-
-          <Field label="Your full name" required>
-            <input style={inp} value={form.name} onChange={e => set("name", e.target.value)}
-              placeholder="Jane Smith" />
-          </Field>
-
-          <Field label="Work email" required>
-            <input style={inp} type="email" value={form.email} onChange={e => set("email", e.target.value)}
-              placeholder="jane@company.com" />
-          </Field>
-
-          <Field label="Phone number">
-            <input style={inp} type="tel" value={form.phone} onChange={e => set("phone", e.target.value)}
-              placeholder="+91 98765 43210" />
-          </Field>
-
-          <Field label="Industry">
-            <select style={{ ...inp, appearance: "auto" } as React.CSSProperties}
-              value={form.industry} onChange={e => set("industry", e.target.value)}>
-              <option value="">Select industry…</option>
-              {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
-            </select>
-          </Field>
-
-          {error && (
-            <div style={{ padding: "10px 14px", borderRadius: 8, background: CTINT,
-              border: `1px solid ${CORAL}`, fontSize: 13, color: CORAL }}>
-              {error}
-            </div>
-          )}
-
-          <button type="submit" disabled={!canSubmit || loading} style={{
-            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
-            padding: "11px 28px", borderRadius: 8, border: "none",
-            background: canSubmit && !loading ? CANOPY : HAIRLINE,
-            color: canSubmit && !loading ? "white" : SLATE,
-            fontSize: 14, fontWeight: 600, cursor: canSubmit && !loading ? "pointer" : "not-allowed",
-            transition: "background 0.15s",
-          }}>
-            {loading && <Loader2 style={{ width: 16, height: 16, animation: "spin 1s linear infinite" }} />}
-            {loading ? "Submitting…" : "Request access"}
-          </button>
-        </form>
       </div>
-      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+
+      {/* ── Form ── */}
+      <form onSubmit={handleSubmit} style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 48px 80px",
+        display: "flex", flexDirection: "column", gap: 24 }}>
+
+        {/* ── Organisation Information ── */}
+        <div className="ra-card">
+          <div className="ra-section-label">Organisation Information</div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+
+            {/* India + GSTIN */}
+            <div className="ra-grid-2">
+              <Field label="Is your organisation registered in India?"
+                hint="This determines whether we ask for a GSTIN or a general business registration / tax ID.">
+                <div className="ra-toggle">
+                  <button type="button" className={`ra-toggle-btn${form.is_india ? " active" : ""}`}
+                    onClick={() => set("is_india", true)}>Yes</button>
+                  <button type="button" className={`ra-toggle-btn${!form.is_india ? " active" : ""}`}
+                    onClick={() => set("is_india", false)}>No</button>
+                </div>
+              </Field>
+              <Field label="GSTIN"
+                hint="Your 15-character GST Identification Number, as shown on your GST registration certificate.">
+                <input className="ra-input" value={form.gstin}
+                  onChange={e => set("gstin", e.target.value.toUpperCase())}
+                  placeholder={form.is_india ? "15-character GST Identification Number" : "Not applicable"}
+                  maxLength={15} disabled={!form.is_india}
+                  style={{ opacity: form.is_india ? 1 : 0.45 }} />
+              </Field>
+            </div>
+
+            {/* Legal name + Operating name */}
+            <div className="ra-grid-2">
+              <Field label="Legal name of the organisation" required
+                hint="The exact registered name on your incorporation or registration certificate — this is what will appear on official reports.">
+                <input className="ra-input" value={form.legal_name}
+                  onChange={e => set("legal_name", e.target.value)}
+                  placeholder="Exact registered name" />
+              </Field>
+              <Field label="Operating name of the organisation (if different)"
+                hint="Name as you want it displayed across the portal and any reports, if different from the legal name above.">
+                <input className="ra-input" value={form.operating_name}
+                  onChange={e => set("operating_name", e.target.value)}
+                  placeholder="Name as it appears on the portal and reports" />
+              </Field>
+            </div>
+
+            {/* Industry + Org type */}
+            <div className="ra-grid-2">
+              <Field label="Industry" required
+                hint="Choose the sector closest to your primary business activity — this affects the default emission factors used in your calculations.">
+                <select className="ra-select" value={form.industry}
+                  onChange={e => set("industry", e.target.value)}>
+                  <option value="">Select an industry</option>
+                  {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
+                </select>
+              </Field>
+              <Field label="Organisational Type" required
+                hint="Your legal structure, as stated on your registration documents.">
+                <select className="ra-select" value={form.org_type}
+                  onChange={e => set("org_type", e.target.value)}>
+                  <option value="">Select a type</option>
+                  {ORG_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </Field>
+            </div>
+
+            {/* MSME */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <Field label="Is your organisation registered as an MSME?"
+                hint="Select Yes if you hold an Udyam (or equivalent) MSME registration.">
+                <div className="ra-toggle">
+                  <button type="button" className={`ra-toggle-btn${form.is_msme ? " active" : ""}`}
+                    onClick={() => set("is_msme", true)}>Yes</button>
+                  <button type="button" className={`ra-toggle-btn${!form.is_msme ? " active" : ""}`}
+                    onClick={() => { set("is_msme", false); set("udyam_number", ""); }}>No</button>
+                </div>
+              </Field>
+              {form.is_msme && (
+                <Field label="Udyam Registration Number"
+                  hint="Your 19-character Udyam number (e.g. UDYAM-XX-00-0000000). Found on your Udyam Registration Certificate.">
+                  <input className="ra-input" value={form.udyam_number}
+                    onChange={e => set("udyam_number", e.target.value.toUpperCase())}
+                    placeholder="UDYAM-XX-00-0000000" maxLength={25} />
+                </Field>
+              )}
+            </div>
+
+            {/* Legal address */}
+            <Field label="Legal Address" required
+              hint="Your registered head office address. This will automatically become your first facility in the next step, so double-check it here.">
+              <textarea className="ra-textarea" rows={3} value={form.legal_address}
+                onChange={e => set("legal_address", e.target.value)}
+                placeholder="Full registered head-office address" />
+            </Field>
+
+            {/* Website + Logo */}
+            <div className="ra-grid-2">
+              <Field label="Organisation Website" required
+                hint="Include https:// — this is used on client-facing reports.">
+                <input className="ra-input" type="url" value={form.website}
+                  onChange={e => set("website", e.target.value)}
+                  placeholder="https://www.company.com" />
+              </Field>
+
+              <Field label="Upload Company Logo"
+                hint="PNG or SVG with a transparent background works best. Used on your reports and in the portal header.">
+                <input ref={logoRef} type="file"
+                  accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                  style={{ display: "none" }}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleLogo(f); }} />
+                {!logoPreview ? (
+                  <div className="ra-dropzone"
+                    onClick={() => logoRef.current?.click()}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handleLogo(f); }}>
+                    <ImageUp style={{ width: 22, height: 22, color: MUTED, marginBottom: 8 }} />
+                    <span style={{ fontSize: 13, color: SLATE }}>Drag and drop, or <span style={{ color: MOSS, fontWeight: 600 }}>click to choose</span> a file</span>
+                  </div>
+                ) : (
+                  <div className="ra-logo-preview">
+                    <img src={logoPreview} alt="Logo"
+                      style={{ width: 48, height: 48, objectFit: "contain",
+                        borderRadius: 8, border: `1px solid ${BORDER}`, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: "0 0 3px", fontSize: 13, fontWeight: 600, color: INK,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {logoName}
+                      </p>
+                      <button type="button" onClick={() => logoRef.current?.click()}
+                        style={{ fontSize: 12, color: MOSS, background: "none", border: "none",
+                          padding: 0, cursor: "pointer", fontWeight: 600 }}>
+                        Change file
+                      </button>
+                    </div>
+                    <button type="button"
+                      onClick={() => { setLogoPreview(null); setLogoName(null); if (logoRef.current) logoRef.current.value = ""; }}
+                      style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", padding: 4, flexShrink: 0 }}>
+                      <X style={{ width: 16, height: 16 }} />
+                    </button>
+                  </div>
+                )}
+              </Field>
+            </div>
+
+          </div>
+        </div>
+
+        {/* ── Contact Details ── */}
+        <div className="ra-card">
+          <div className="ra-section-label">Your Contact Details</div>
+          <p style={{ margin: "0 0 24px", fontSize: 14, color: SLATE, lineHeight: 1.6 }}>
+            Login credentials and status updates will be sent to the email address below.
+          </p>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+            <Field label="Your full name" required>
+              <input className="ra-input" value={form.name}
+                onChange={e => set("name", e.target.value)}
+                placeholder="Jane Smith" />
+            </Field>
+
+            <div className="ra-grid-2">
+              <Field label="Work email" required>
+                <input className="ra-input" type="email" value={form.email}
+                  onChange={e => set("email", e.target.value)}
+                  placeholder="jane@company.com" />
+              </Field>
+              <Field label="Mobile / phone">
+                <input className="ra-input" type="tel" value={form.phone}
+                  onChange={e => set("phone", e.target.value)}
+                  placeholder="+91 98765 43210" />
+              </Field>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Error + Submit ── */}
+        {error && (
+          <div style={{ padding: "12px 16px", borderRadius: 10,
+            background: "#FEF2F2", border: `1px solid #FECACA`,
+            fontSize: 13, color: CORAL }}>
+            {error}
+          </div>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "0 4px" }}>
+          <p style={{ margin: 0, fontSize: 12, color: MUTED, maxWidth: 440, lineHeight: 1.6 }}>
+            By submitting this form you agree to Deepwoods Green processing your organisation's details
+            to evaluate your request.
+          </p>
+          <button type="submit" disabled={!canSubmit || loading} className="ra-submit">
+            {loading && <Loader2 style={{ width: 16, height: 16, animation: "ra-spin 1s linear infinite" }} />}
+            {loading ? "Submitting…" : "Request access →"}
+          </button>
+        </div>
+
+      </form>
     </div>
   );
 }
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+/* ── Field wrapper ─────────────────────────────────────────────────────────── */
+function Field({ label, required, hint, children, style }: {
+  label: string; required?: boolean; hint?: string;
+  children: React.ReactNode; style?: React.CSSProperties;
+}) {
   return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6 }}>
-        <label style={{ fontSize: 13, fontWeight: 600, color: INK }}>{label}</label>
-        {required && <span style={{ fontSize: 10, color: CORAL }}>●</span>}
+    <div style={style}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 5, marginBottom: 8 }}>
+        <label style={{ fontSize: 13, fontWeight: 600, color: INK, lineHeight: 1 }}>{label}</label>
+        {required && <span style={{ fontSize: 10, color: CORAL, lineHeight: 1 }}>●</span>}
       </div>
       {children}
+      {hint && (
+        <p style={{ margin: "7px 0 0", fontSize: 12, color: MUTED, lineHeight: 1.6 }}>{hint}</p>
+      )}
     </div>
   );
 }
+
+/* ── Stylesheet ────────────────────────────────────────────────────────────── */
+const CSS = `
+.ra-card {
+  background: ${WHITE};
+  border: 1.5px solid ${BORDER};
+  border-radius: 16px;
+  padding: 36px 40px;
+  box-shadow: 0 4px 24px rgba(30,79,60,0.09), 0 1px 4px rgba(0,0,0,0.04);
+}
+.ra-section-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: ${MOSS};
+  padding-bottom: 18px;
+  margin-bottom: 28px;
+  border-bottom: 1.5px solid ${BORDER};
+}
+.ra-section-label::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, ${FOREST} 0%, ${MOSS} 100%);
+  flex-shrink: 0;
+}
+.ra-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.ra-input, .ra-select, .ra-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1.5px solid ${BORDER};
+  border-radius: 9px;
+  font-size: 14px;
+  color: ${INK};
+  background: white;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  appearance: auto;
+}
+.ra-input:focus, .ra-select:focus, .ra-textarea:focus {
+  border-color: ${MOSS};
+  box-shadow: 0 0 0 3px rgba(30,111,92,0.12);
+}
+.ra-input::placeholder, .ra-textarea::placeholder {
+  color: #BCC5BF;
+}
+.ra-textarea {
+  resize: vertical;
+  min-height: 88px;
+  line-height: 1.6;
+}
+.ra-toggle {
+  display: inline-flex;
+  background: ${BG};
+  border: 1.5px solid ${BORDER};
+  border-radius: 9px;
+  padding: 3px;
+  gap: 3px;
+}
+.ra-toggle-btn {
+  padding: 8px 24px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  color: #9CA3AF;
+  background: transparent;
+  transition: all 0.18s;
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+.ra-toggle-btn.active {
+  background: ${WHITE};
+  color: ${FOREST};
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(30,79,60,0.22), 0 0 0 1.5px rgba(30,79,60,0.28);
+  border-top: 2.5px solid ${MOSS};
+}
+.ra-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 110px;
+  border: 2px dashed ${BORDER};
+  border-radius: 10px;
+  cursor: pointer;
+  background: #FAFCFB;
+  transition: border-color 0.18s, background 0.18s, box-shadow 0.18s;
+  padding: 20px 16px;
+  text-align: center;
+}
+.ra-dropzone:hover {
+  border-color: ${MOSS};
+  background: ${MINTBG};
+  box-shadow: 0 0 0 3px rgba(30,111,92,0.08);
+}
+.ra-logo-preview {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1.5px solid ${BORDER};
+  border-radius: 9px;
+  background: white;
+  min-height: 72px;
+}
+.ra-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 32px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, ${FOREST} 0%, ${MOSS} 100%);
+  color: white;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  box-shadow: 0 3px 10px rgba(30,111,92,0.3);
+  white-space: nowrap;
+  font-family: inherit;
+}
+.ra-submit:hover:not(:disabled) { opacity: 0.88; }
+.ra-submit:active:not(:disabled) { transform: translateY(1px); }
+.ra-submit:disabled { opacity: 0.45; cursor: not-allowed; background: #9CA3AF; box-shadow: none; }
+@keyframes ra-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+`;

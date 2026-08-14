@@ -1,8 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PageBody, PageHeader, LockedState } from "@/components/portal";
 import { getRole, ROLE_META, authFetch } from "@/lib/auth";
-import { CheckCircle2, XCircle, RefreshCw, ListChecks, ScrollText, Users, Lock, Unlock, ChevronDown, ChevronRight, Building2, Clock, FileCheck, AlertCircle, Loader2, Search, Zap, Plus, X, Workflow, UserPlus, FileText, ClipboardList, Copy, Check } from "lucide-react";
+import { CheckCircle2, XCircle, RefreshCw, ListChecks, ScrollText, Users, Lock, Unlock, ChevronDown, ChevronRight, Building2, Clock, FileCheck, AlertCircle, Loader2, Search, Zap, Plus, X, Workflow, UserPlus, FileText, ClipboardList, Copy, Check, Paintbrush } from "lucide-react";
 import { toast } from "sonner";
 import { useActivationClients, useUpdateClientInvoice, useClients, type ApiClient, type ActivationClient } from "@/lib/api";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
@@ -215,7 +215,8 @@ function CreateClientModal({ open, onClose, onCreated }: {
         )}
 
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
-          Client is created in <strong>Pending Activation</strong> state. Activate from the "Client Activation" tab after confirming payment externally.
+          Client is created in <strong>Pending</strong> state. Use{" "}
+          <strong>Approve Payment &amp; Activate</strong> in the Client Activation tab once payment is confirmed externally.
         </div>
 
         <div className="flex gap-3">
@@ -441,8 +442,10 @@ function InvoiceModal({ client, open, onClose }: {
           />
         </div>
 
-        <div className="mb-4 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-600">
-          Payment is handled <strong>externally</strong> by Deepwoods. These fields are for internal record-keeping only.
+        <div className="mb-4 rounded-xl border border-[#C5E4D0] bg-[#F0FAF5] px-4 py-3 text-xs text-[#2D6A4F]">
+          Payment is handled <strong>externally</strong> by Deepwoods. Setting status to <strong>Paid</strong> or{" "}
+          <strong>Waived</strong> for the first time unlocks the complete customer workspace and sends the
+          client their access confirmation email.
         </div>
 
         <div className="flex gap-3">
@@ -460,14 +463,16 @@ function InvoiceModal({ client, open, onClose }: {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-type AdminTab = "activation" | "clients" | "queue" | "screening" | "log" | "requests";
+type AdminTab = "activation" | "clients" | "queue" | "screening" | "log" | "requests" | "branding";
 
 // ── Access Requests tab ───────────────────────────────────────────────────────
 
 type ReqStatus = "new" | "contacted" | "converted" | "rejected";
 interface ClientReq {
   id: number; name: string; company: string; email: string;
-  phone: string; employees: string; message: string;
+  phone: string; employees: string; message: string; industry: string;
+  is_india: number; gstin: string; legal_name: string; operating_name: string;
+  org_type: string; is_msme: number | null; legal_address: string; website: string;
   status: ReqStatus; created_at: string; updated_at: string;
 }
 interface ConvResult { slug: string; inviteEmail: string; tempPassword: string | null; emailSent: boolean; smtpDiag: string | null; }
@@ -561,14 +566,32 @@ function RequestsTab() {
                 {isOpen && (
                   <div className="border-t border-[var(--border)] bg-[#FAFAFA] px-6 py-5">
                     <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-3 text-sm mb-5">
-                      {[["Company", req.company], ["Contact", req.name], ["Email", req.email],
-                        ["Phone", req.phone || "—"], ["Submitted", new Date(req.created_at).toLocaleString()]]
-                        .map(([label, value]) => (
+                      {[
+                        ["Company", req.company],
+                        ["Legal name", req.legal_name || "—"],
+                        ["Operating name", req.operating_name || "—"],
+                        ["Contact", req.name],
+                        ["Email", req.email],
+                        ["Phone", req.phone || "—"],
+                        ["Industry", req.industry || "—"],
+                        ["Org type", req.org_type || "—"],
+                        ["Registered in India", req.is_india ? "Yes" : "No"],
+                        ["GSTIN", req.gstin || "—"],
+                        ["MSME", req.is_msme === null ? "—" : req.is_msme ? "Yes" : "No"],
+                        ["Website", req.website || "—"],
+                        ["Submitted", new Date(req.created_at).toLocaleString()],
+                      ].map(([label, value]) => (
                           <div key={label}>
                             <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">{label}</div>
                             <div className="text-sm text-[var(--navy)]">{value}</div>
                           </div>
                         ))}
+                      {req.legal_address && (
+                        <div className="col-span-full">
+                          <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Legal Address</div>
+                          <p className="text-sm text-[var(--navy)] leading-relaxed whitespace-pre-wrap">{req.legal_address}</p>
+                        </div>
+                      )}
                       {req.message && (
                         <div className="col-span-full">
                           <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Message</div>
@@ -846,6 +869,194 @@ function AcceptSuccessModal({ result, onClose }: { result: ConvResult; onClose: 
   );
 }
 
+// ── Branding tab component ────────────────────────────────────────────────────
+
+interface BrandingClient { id: number; name: string; logo_url: string | null; primary_color: string; }
+
+function BrandingTab() {
+  const qc = useQueryClient();
+
+  const { data: raw = [] } = useQuery<ActivationClient[]>({
+    queryKey: ["activation-clients"],
+    queryFn: () => authFetch("activate-client.php"),
+  });
+
+  const [editing, setEditing] = useState<number | null>(null);
+  const [logoUrl, setLogoUrl] = useState("");
+  const [color, setColor]   = useState("#1E6F5C");
+  const [saving, setSaving] = useState(false);
+  const logoRef = useRef<HTMLInputElement>(null);
+
+  const clients: BrandingClient[] = raw.map(c => ({
+    id: c.id, name: c.name,
+    logo_url: (c as Record<string, unknown>).logo_url as string | null ?? null,
+    primary_color: (c as Record<string, unknown>).primary_color as string ?? "#1E6F5C",
+  }));
+
+  const openEdit = (c: BrandingClient) => {
+    setEditing(c.id);
+    setLogoUrl(c.logo_url ?? "");
+    setColor(c.primary_color ?? "#1E6F5C");
+  };
+
+  const handleLogoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setLogoUrl(ev.target?.result as string ?? "");
+    reader.readAsDataURL(file);
+  };
+
+  const save = async () => {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      await authFetch("branding.php", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_id: editing, logo_url: logoUrl || null, primary_color: color }),
+      });
+      toast.success("Branding updated");
+      qc.invalidateQueries({ queryKey: ["activation-clients"] });
+      setEditing(null);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const initials = (name: string) =>
+    name.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+
+  return (
+    <div className="max-w-3xl space-y-3">
+      <p className="text-sm" style={{ color: "var(--navy-2)" }}>
+        Set each client's logo and primary brand colour. These appear in their portal sidebar and reports.
+      </p>
+
+      {clients.map(c => (
+        <div key={c.id} className="rounded-xl border bg-white p-4 shadow-sm" style={{ borderColor: "var(--border)" }}>
+          <div className="flex items-center gap-4">
+            {/* Logo preview */}
+            <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden border flex items-center justify-center bg-[#F9FAFB]"
+              style={{ borderColor: "var(--border)" }}>
+              {c.logo_url
+                ? <img src={c.logo_url} alt={c.name} className="w-full h-full object-contain" />
+                : <span className="text-sm font-bold" style={{ color: c.primary_color }}>{initials(c.name)}</span>
+              }
+            </div>
+
+            {/* Client name + colour swatch */}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold truncate" style={{ color: "var(--navy)" }}>{c.name}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <div className="w-4 h-4 rounded-full border" style={{ background: c.primary_color, borderColor: "var(--border)" }} />
+                <span className="text-xs font-mono" style={{ color: "var(--navy-2)" }}>{c.primary_color}</span>
+                {!c.logo_url && <span className="text-xs" style={{ color: "var(--navy-2)" }}>· No logo set</span>}
+              </div>
+            </div>
+
+            <button onClick={() => editing === c.id ? setEditing(null) : openEdit(c)}
+              className="flex-shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-[#F3F4F6] transition-colors"
+              style={{ borderColor: "var(--border)", color: "var(--navy)" }}>
+              {editing === c.id ? "Cancel" : "Customise"}
+            </button>
+          </div>
+
+          {/* Inline editor */}
+          {editing === c.id && (
+            <div className="mt-4 pt-4 border-t space-y-4" style={{ borderColor: "var(--border)" }}>
+              <input ref={logoRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                className="hidden" onChange={handleLogoFile} />
+
+              {/* Logo */}
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--navy-2)" }}>
+                  Logo
+                </label>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-lg border flex items-center justify-center bg-[#F9FAFB] flex-shrink-0"
+                    style={{ borderColor: "var(--border)" }}>
+                    {logoUrl
+                      ? <img src={logoUrl} alt="" className="w-full h-full object-contain rounded-lg" />
+                      : <span className="text-sm font-bold" style={{ color: color }}>{initials(c.name)}</span>
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <input value={logoUrl} onChange={e => setLogoUrl(e.target.value)}
+                      placeholder="https://company.com/logo.png"
+                      className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-[#1E6F5C]"
+                      style={{ borderColor: "var(--border)" }} />
+                    <button type="button" onClick={() => logoRef.current?.click()}
+                      className="text-xs font-semibold" style={{ color: "#1E6F5C" }}>
+                      ↑ Or upload from computer
+                    </button>
+                  </div>
+                  {logoUrl && (
+                    <button type="button" onClick={() => setLogoUrl("")}
+                      className="flex-shrink-0 rounded-lg border p-1.5 hover:bg-slate-100"
+                      style={{ borderColor: "var(--border)", color: "var(--navy-2)" }}>
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Primary colour */}
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--navy-2)" }}>
+                  Primary colour
+                </label>
+                <div className="flex items-center gap-3">
+                  <input type="color" value={color} onChange={e => setColor(e.target.value)}
+                    className="h-10 w-16 cursor-pointer rounded-lg border p-1" style={{ borderColor: "var(--border)" }} />
+                  <input value={color} onChange={e => setColor(e.target.value)}
+                    placeholder="#1E6F5C" maxLength={9}
+                    className="w-32 rounded-lg border px-3 py-2 text-sm font-mono outline-none focus:border-[#1E6F5C]"
+                    style={{ borderColor: "var(--border)" }} />
+                  <span className="text-xs" style={{ color: "var(--navy-2)" }}>Appears in nav sidebar and highlights</span>
+                </div>
+              </div>
+
+              {/* Preview */}
+              <div className="rounded-lg border p-3" style={{ borderColor: "var(--border)", background: "#F9FAFB" }}>
+                <p className="text-xs font-semibold mb-2" style={{ color: "var(--navy-2)" }}>Preview</p>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center overflow-hidden" style={{ background: color + "22" }}>
+                    {logoUrl
+                      ? <img src={logoUrl} alt="" className="w-full h-full object-contain" />
+                      : <span className="text-xs font-bold" style={{ color }}>{initials(c.name)}</span>
+                    }
+                  </div>
+                  <div className="h-5 rounded-full px-3 flex items-center text-white text-xs font-semibold"
+                    style={{ background: color }}>
+                    Active nav item
+                  </div>
+                  <div className="h-1 w-16 rounded-full" style={{ background: color }} />
+                </div>
+              </div>
+
+              <button onClick={save} disabled={saving}
+                className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                style={{ background: "#1E6F5C" }}>
+                {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {saving ? "Saving…" : "Save branding"}
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {clients.length === 0 && (
+        <div className="rounded-xl border bg-white py-12 text-center" style={{ borderColor: "var(--border)" }}>
+          <p className="text-sm" style={{ color: "var(--navy-2)" }}>No clients found.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Activation tab component ──────────────────────────────────────────────────
 
 function ActivationTab() {
@@ -928,11 +1139,13 @@ function ActivationTab() {
         onClose={() => setInvoiceTarget(null)}
       />
       <div className="space-y-6 max-w-3xl">
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5">
-        <p className="text-xs font-semibold text-amber-800">Manual activation gate</p>
-        <p className="mt-0.5 text-xs text-amber-700">
-          Clients remain in "Pending Activation" state until a Deepwoods admin activates them here.
-          Activation is permanent unless manually reversed. Payment verification happens externally before activation.
+      <div className="rounded-xl border border-[#C5E4D0] bg-[#F0FAF5] px-4 py-3.5">
+        <p className="text-xs font-semibold text-[#1E6F5C]">Payment is account-level</p>
+        <p className="mt-0.5 text-xs text-[#2D6A4F]">
+          Once the client has completed organisation setup and you have confirmed payment externally,
+          use <strong>Approve Payment &amp; Activate</strong> to: record payment status · stamp activation date ·
+          unlock the complete workspace for all users · send the client their access confirmation email.
+          One approval unlocks the parent org, all legal entities, all reporting engagements, and the full portal.
         </p>
       </div>
 
@@ -969,20 +1182,12 @@ function ActivationTab() {
                   {c.payment_status === "paid" ? "Paid" : c.payment_status === "waived" ? "Waived" : "Pending"}
                 </span>
                 <button
-                  onClick={() => setActive(c.id, true)}
-                  disabled={activating === c.id}
-                  className="flex items-center gap-1.5 rounded-lg bg-[#1E6F5C] px-3.5 py-2 text-xs font-bold text-white disabled:opacity-50 hover:brightness-110"
-                >
-                  {activating === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unlock className="h-3 w-3" />}
-                  Activate
-                </button>
-                <button
                   onClick={() => setInvoiceTarget(c)}
-                  className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-[#1E6F5C] hover:text-[#1E6F5C]"
-                  title="Invoice &amp; payment"
+                  className="flex items-center gap-1.5 rounded-lg bg-[#1E6F5C] px-3.5 py-2 text-xs font-bold text-white hover:brightness-110"
+                  title="Record payment and unlock the complete customer workspace"
                 >
-                  <FileText className="h-3 w-3" />
-                  Invoice
+                  <Unlock className="h-3 w-3" />
+                  Approve Payment &amp; Activate
                 </button>
                 <button
                   onClick={() => setInviteTarget({ id: c.id, name: c.name })}
@@ -1044,10 +1249,10 @@ function ActivationTab() {
                 <button
                   onClick={() => setInvoiceTarget(c)}
                   className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-[#1E6F5C] hover:text-[#1E6F5C]"
-                  title="Invoice &amp; payment"
+                  title="View or update payment record"
                 >
                   <FileText className="h-3 w-3" />
-                  Invoice
+                  Payment details
                 </button>
                 <button
                   onClick={() => setInviteTarget({ id: c.id, name: c.name })}
@@ -1142,6 +1347,7 @@ function Admin() {
     {id:"queue",     label:"Submissions Queue",   icon:<ListChecks className="w-4 h-4"/>},
     {id:"screening", label:"Relevance Screening", icon:<Lock className="w-4 h-4"/>},
     {id:"log",       label:"Audit Log",           icon:<ScrollText className="w-4 h-4"/>},
+    {id:"branding",  label:"Branding",            icon:<Paintbrush className="w-4 h-4"/>},
   ];
 
   return (
@@ -1382,6 +1588,9 @@ function Admin() {
             )}
           </div>
         )}
+
+        {/* ── Branding tab ── */}
+        {tab==="branding" && <BrandingTab />}
 
         {/* ── Audit log tab ── */}
         {tab==="log" && (

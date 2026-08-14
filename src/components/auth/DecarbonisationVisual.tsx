@@ -157,7 +157,7 @@ export function DecarbonisationVisual({ compact = false }: Props) {
                   fill={`oklch(${0.6 + on * 0.15} ${0.02 + on * 0.13} ${240 - on * 100})`} />
                 <text x={x} y={866}
                   textAnchor={i === 0 ? "start" : i === STAGES.length - 1 ? "end" : "middle"}
-                  fill={`oklch(0.96 0.01 120 / ${0.5 + on * 0.4})`}>
+                  fill={`oklch(0.97 0.01 120 / ${0.72 + on * 0.28})`}>
                   {s.toUpperCase()}
                 </text>
               </g>

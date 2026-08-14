@@ -34,7 +34,17 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET') {
     $stmt = $pdo->query(
-        "SELECT id, name, company, email, phone, employees, message, status, created_at, updated_at
+        "SELECT id, name, company, email, phone, employees, message,
+                COALESCE(industry,        '') AS industry,
+                COALESCE(is_india,        1)  AS is_india,
+                COALESCE(gstin,           '') AS gstin,
+                COALESCE(legal_name,      '') AS legal_name,
+                COALESCE(operating_name,  '') AS operating_name,
+                COALESCE(org_type,        '') AS org_type,
+                is_msme,
+                COALESCE(legal_address,   '') AS legal_address,
+                COALESCE(website,         '') AS website,
+                status, created_at, updated_at
          FROM client_requests
          ORDER BY
            FIELD(status,'new','contacted','rejected','converted'),

@@ -11,18 +11,8 @@ export function BrandHeader({ inverted = false }: { inverted?: boolean }) {
       <img
         src={logoSrc}
         alt="Deepwoods Green"
-        className="h-6 w-auto sm:h-7"
+        className="h-9 w-auto sm:h-11"
       />
-      <span
-        className={cn(
-          "border-l pl-3 text-[0.6875rem] font-semibold uppercase tracking-[0.18em]",
-          inverted
-            ? "border-white/25 text-white/75"
-            : "border-border-strong text-muted-foreground",
-        )}
-      >
-        Decarb Portal
-      </span>
     </div>
   );
 }
@@ -121,7 +111,8 @@ export function PrimaryButton({
       type="submit"
       disabled={loading || props.disabled}
       {...props}
-      className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary text-[0.9375rem] font-semibold text-primary-foreground shadow-[var(--shadow-cta)] transition-[background-color,transform,box-shadow] duration-200 hover:bg-primary-deep active:translate-y-px active:shadow-none focus:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-70"
+      className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md text-[0.9375rem] font-semibold text-white shadow-[0_1px_4px_rgba(30,111,92,0.35)] transition-[opacity,transform,box-shadow] duration-200 hover:opacity-90 active:translate-y-px active:shadow-none focus:outline-none focus-visible:ring-[3px] focus-visible:ring-[#1E6F5C]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+      style={{ background: "linear-gradient(135deg, #1E4D2B 0%, #1E6F5C 100%)" }}
     >
       {loading ? (
         <>

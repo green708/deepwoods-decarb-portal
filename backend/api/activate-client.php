@@ -77,6 +77,25 @@ if ($method === 'POST') {
         $pdo->prepare(
             'UPDATE clients SET is_active = 1, activated_at = NOW() WHERE id = ?'
         )->execute([$clientId]);
+
+        // Copy logo from client_requests if the clients row has none yet.
+        try {
+            $logoStmt = $pdo->prepare(
+                "SELECT cr.logo_url
+                 FROM client_requests cr
+                 JOIN users u ON LOWER(u.email) = LOWER(cr.email)
+                 WHERE u.client_id = ? AND cr.logo_url IS NOT NULL AND cr.logo_url != ''
+                 ORDER BY cr.created_at DESC
+                 LIMIT 1"
+            );
+            $logoStmt->execute([$clientId]);
+            $logoRow = $logoStmt->fetch();
+            if ($logoRow && $logoRow['logo_url']) {
+                $pdo->prepare(
+                    'UPDATE clients SET logo_url = ? WHERE id = ? AND (logo_url IS NULL OR logo_url = "")'
+                )->execute([$logoRow['logo_url'], $clientId]);
+            }
+        } catch (Throwable $ignored) {}
     } else {
         $pdo->prepare(
             'UPDATE clients SET is_active = 0 WHERE id = ?'
@@ -159,10 +178,35 @@ if ($method === 'PATCH') {
              ON DUPLICATE KEY UPDATE config_value = \'true\''
         )->execute([$clientId]);
 
+        // 1b. Ensure is_active=1 — clients created manually start inactive;
+        //     payment approval is the single unified action that activates the account.
+        $pdo->prepare(
+            'UPDATE clients SET is_active = 1 WHERE id = ? AND is_active = 0'
+        )->execute([$clientId]);
+
         // 2. Set activated_at if not already stamped
         $pdo->prepare(
             'UPDATE clients SET activated_at = NOW() WHERE id = ? AND activated_at IS NULL'
         )->execute([$clientId]);
+
+        // 2b. Copy logo from client_requests to clients (if not already set).
+        try {
+            $logoStmt = $pdo->prepare(
+                "SELECT cr.logo_url
+                 FROM client_requests cr
+                 JOIN users u ON LOWER(u.email) = LOWER(cr.email)
+                 WHERE u.client_id = ? AND cr.logo_url IS NOT NULL AND cr.logo_url != ''
+                 ORDER BY cr.created_at DESC
+                 LIMIT 1"
+            );
+            $logoStmt->execute([$clientId]);
+            $logoRow = $logoStmt->fetch();
+            if ($logoRow && $logoRow['logo_url']) {
+                $pdo->prepare(
+                    'UPDATE clients SET logo_url = ? WHERE id = ? AND (logo_url IS NULL OR logo_url = "")'
+                )->execute([$logoRow['logo_url'], $clientId]);
+            }
+        } catch (Throwable $ignored) {}
 
         // 3. Find primary user: first sustainability_team account for this client,
         //    fall back to contact_email stored in client_config during onboarding.

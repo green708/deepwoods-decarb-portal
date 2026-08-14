@@ -40,13 +40,30 @@ try {
 
     // ── 1. Update the clients row ──────────────────────────────────────────────
 
-    $companyName = trim($body['company_name'] ?? '');
-    $currency    = in_array($body['currency'] ?? '', ['INR', 'USD'], true) ? $body['currency'] : 'INR';
+    $companyName  = trim($body['company_name'] ?? '');
+    $currency     = in_array($body['currency'] ?? '', ['INR', 'USD'], true) ? $body['currency'] : 'INR';
+    $logoUrl      = isset($body['logo_url'])      ? (string)$body['logo_url']      : null;
+    $primaryColor = isset($body['primary_color']) ? trim((string)$body['primary_color']) : null;
+
+    $clientSets   = ['currency = ?'];
+    $clientParams = [$currency];
 
     if ($companyName !== '') {
-        $pdo->prepare('UPDATE clients SET name = ?, currency = ? WHERE id = ?')
-            ->execute([$companyName, $currency, $clientId]);
+        $clientSets[]   = 'name = ?';
+        $clientParams[] = $companyName;
     }
+    if ($logoUrl !== null && $logoUrl !== '') {
+        $clientSets[]   = 'logo_url = ?';
+        $clientParams[] = $logoUrl;
+    }
+    if ($primaryColor !== null && $primaryColor !== '' && preg_match('/^#[0-9A-Fa-f]{3,8}$/', $primaryColor)) {
+        $clientSets[]   = 'primary_color = ?';
+        $clientParams[] = $primaryColor;
+    }
+
+    $clientParams[] = $clientId;
+    $pdo->prepare('UPDATE clients SET ' . implode(', ', $clientSets) . ' WHERE id = ?')
+        ->execute($clientParams);
 
     // ── 2. Persist config keys ────────────────────────────────────────────────
 

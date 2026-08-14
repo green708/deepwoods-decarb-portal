@@ -23,7 +23,14 @@ export const Route = createFileRoute("/_app")({ component: AppRoot });
 function NavigateTo({ to }: { to: string }) {
   const navigate = useNavigate();
   useEffect(() => { navigate({ to }); }, []);
-  return null;
+  return (
+    <div className="flex h-screen flex-col items-center justify-center gap-4 bg-white">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#E6F4EF]">
+        <Loader2 className="h-7 w-7 animate-spin text-[#1E6F5C]" />
+      </div>
+      <p className="text-sm font-medium text-muted-foreground">Loading your workspace…</p>
+    </div>
+  );
 }
 
 // ── PendingActivation — shown to client users whose account isn't yet active ──
@@ -144,22 +151,175 @@ function PaymentPending({ ctx }: { ctx: ClientContext }) {
   );
 }
 
+// ── ForcePasswordChangeScreen — shown when must_change_password=true ─────────
+// Renders before ANY portal content. User must complete this before the portal
+// loads. No register page, no sidebar, no client data is visible behind it.
+
+function ForcePasswordChangeScreen({ onDone }: { onDone: () => void }) {
+  const [current, setCurrent]   = useState("");
+  const [next, setNext]         = useState("");
+  const [confirm, setConfirm]   = useState("");
+  const [error, setError]       = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone]         = useState(false);
+
+  const rules = [
+    { ok: next.length >= 8,               label: "At least 8 characters" },
+    { ok: /[A-Z]/.test(next),             label: "One uppercase letter" },
+    { ok: /[0-9]/.test(next),             label: "One number" },
+    { ok: next !== "" && next !== current, label: "Different from your one-time code" },
+  ];
+  const strong = rules.every(r => r.ok);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!strong) { setError("Please meet all password requirements."); return; }
+    if (next !== confirm) { setError("Passwords do not match."); return; }
+    setError(null);
+    setSubmitting(true);
+    try {
+      await changePassword(current, next);
+      setDone(true);
+      setTimeout(onDone, 1400);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Password change failed. Check your one-time code and try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const fieldCls = "w-full rounded-lg border border-white/20 bg-white/10 px-3.5 py-2.5 text-sm text-white placeholder:text-white/40 outline-none focus:border-white/50 focus:bg-white/15 backdrop-blur-sm";
+
+  if (done) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#1E4D2B] via-[#145C3D] to-[#1E4D2B] px-4">
+        <div className="text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white/15">
+            <Check className="h-7 w-7 text-white" />
+          </div>
+          <p className="text-base font-semibold text-white">Password set. Loading your workspace…</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-[#1E4D2B] via-[#145C3D] to-[#1E4D2B] px-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-7 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10">
+            <KeyRound className="h-7 w-7 text-white/80" />
+          </div>
+          <h1 className="text-xl font-bold text-white">Set your password</h1>
+          <p className="mt-1.5 text-sm text-white/65">
+            For security, set a permanent password before accessing the portal.
+            Enter the one-time access code from your invitation email as your current password.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-white/60">One-time access code</label>
+            <input
+              type="password"
+              value={current}
+              onChange={e => setCurrent(e.target.value)}
+              autoComplete="current-password"
+              placeholder="From your invitation email"
+              className={fieldCls}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-white/60">New password</label>
+            <input
+              type="password"
+              value={next}
+              onChange={e => setNext(e.target.value)}
+              autoComplete="new-password"
+              placeholder="Choose a strong password"
+              className={fieldCls}
+              required
+            />
+            {next && (
+              <ul className="mt-2 space-y-1">
+                {rules.map(r => (
+                  <li key={r.label} className={`flex items-center gap-1.5 text-[11px] ${r.ok ? "text-[#34D399]" : "text-white/45"}`}>
+                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${r.ok ? "bg-[#34D399]" : "bg-white/30"}`} />
+                    {r.label}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-white/60">Confirm new password</label>
+            <input
+              type="password"
+              value={confirm}
+              onChange={e => setConfirm(e.target.value)}
+              autoComplete="new-password"
+              placeholder="Repeat your new password"
+              className={fieldCls}
+              required
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-lg border border-red-400/30 bg-red-500/15 px-3 py-2 text-xs text-red-300">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={submitting || !current || !next || !confirm}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-sm font-semibold text-[#145C3D] hover:bg-white/90 disabled:opacity-50"
+          >
+            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            {submitting ? "Updating…" : "Set password & continue"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── AppRoot — wraps everything in ClientContextProvider ───────────────────────
 
 function AppRoot() {
   const navigate = useNavigate();
   const [role, setRoleState] = useState<Role | null>(null);
   const [checking, setChecking] = useState(true);
+  const [mustChangePw, setMustChangePw] = useState(false);
 
   useEffect(() => {
     const r = getRole();
-    if (!r || !getToken()) { navigate({ to: "/" }); return; }
+    if (!r || !getToken()) { setChecking(false); navigate({ to: "/" }); return; }
     authFetch("me.php")
-      .then(() => { setRoleState(r); setChecking(false); })
-      .catch(() => { toast.error("Session expired — please sign in again."); navigate({ to: "/" }); });
+      .then(() => { setRoleState(r); setMustChangePw(getMustChangePassword()); })
+      .catch(() => { toast.error("Session expired — please sign in again."); navigate({ to: "/" }); })
+      .finally(() => setChecking(false));
   }, [navigate]);
 
-  if (checking || !role) return null;
+  if (checking) return (
+    <div className="flex h-screen flex-col items-center justify-center gap-4 bg-white">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#E6F4EF]">
+        <Loader2 className="h-7 w-7 animate-spin text-[#1E6F5C]" />
+      </div>
+      <p className="text-sm font-medium text-muted-foreground">Verifying session…</p>
+    </div>
+  );
+  if (!role) return null;
+
+  // Check must_change_password BEFORE rendering any portal content.
+  // Uses state (not inline localStorage read) so clearing the flag causes a
+  // proper re-render that removes the gate without a manual page refresh.
+  if (mustChangePw) {
+    return <ForcePasswordChangeScreen onDone={() => setMustChangePw(false)} />;
+  }
 
   return (
     <ClientContextProvider>
@@ -172,6 +332,7 @@ function AppRoot() {
 function ClientContextGate({ role }: { role: Role }) {
   const ctxState = useClientContextSafe();
   const navigate = useNavigate();
+  const pathname = useRouterState({ select: s => s.location.pathname });
 
   if (ctxState.status === "loading") {
     return (
@@ -214,24 +375,35 @@ function ClientContextGate({ role }: { role: Role }) {
     const inventoryComplete = ctxState.data.config.inventory_complete === "true";
     const paymentUnlocked   = (ctxState.data.client.payment_status === "paid" ||
                                ctxState.data.client.payment_status === "waived");
-    const onSetupPath = typeof window !== "undefined" && (
-      window.location.pathname.startsWith("/register") ||
-      window.location.pathname.startsWith("/entity-setup") ||
-      window.location.pathname.startsWith("/inventory-setup")
+    // Setup paths render fullscreen (no sidebar) while setup is in progress.
+    // /register is the new-client landing — it shows the draft entity from
+    // request-access and a "Complete" button leading to /entity-setup.
+    // Once setup is complete /register falls through to the normal AppLayout.
+    const onSetupPath = (
+      pathname.startsWith("/register") ||
+      pathname.startsWith("/entity-setup") ||
+      pathname.startsWith("/inventory-setup")
     );
 
-    // Phase A gate: org boundary not yet submitted → Entity Register landing.
+    // Phase A gate: send new clients to /register (their landing page).
+    // /register shows the draft entity card pre-filled from request-access data.
     if (!setupComplete && !onSetupPath) {
       return <NavigateTo to="/register" />;
     }
 
+    // During setup: render fullscreen without AppLayout chrome.
+    // After setup is complete /register is a normal portal page with the sidebar.
+    if (!setupComplete && onSetupPath) {
+      return <Outlet />;
+    }
+
     // Payment gate: org boundary done but payment not yet confirmed.
-    if (setupComplete && !paymentUnlocked && !onSetupPath) {
+    if (setupComplete && !paymentUnlocked) {
       return <PaymentPending ctx={ctxState.data} />;
     }
 
     // Phase B gate: payment confirmed but inventory boundary not yet defined.
-    if (setupComplete && paymentUnlocked && !inventoryComplete && !onSetupPath) {
+    if (setupComplete && paymentUnlocked && !inventoryComplete) {
       return <NavigateTo to="/inventory-setup" />;
     }
   }
@@ -242,6 +414,30 @@ function ClientContextGate({ role }: { role: Role }) {
         <AppLayout role={role} />
       </EntityProvider>
     </FiscalYearProvider>
+  );
+}
+
+// ── ClientLogo — shows logo image or falls back to company-initials badge ─────
+
+function ClientLogo({ src, alt, size }: { src?: string | null; alt: string; size: "sm" | "lg" }) {
+  if (src) {
+    return <img src={src} alt={alt} className={size === "lg" ? "h-12 w-auto" : "h-7 w-auto"} />;
+  }
+  const words = alt.trim().split(/\s+/);
+  const initials = words.length === 1
+    ? words[0].slice(0, 2).toUpperCase()
+    : (words[0][0] + words[words.length - 1][0]).toUpperCase();
+  const dim = size === "lg" ? { w: 48, h: 48, fs: 18, r: 10 } : { w: 28, h: 28, fs: 11, r: 6 };
+  return (
+    <div style={{
+      width: dim.w, height: dim.h, borderRadius: dim.r,
+      background: "var(--primary, #1E6F5C)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: dim.fs, fontWeight: 800, color: "#fff", flexShrink: 0,
+      letterSpacing: "-0.02em",
+    }}>
+      {initials}
+    </div>
   );
 }
 
@@ -414,7 +610,7 @@ function AppLayout({ role }: { role: Role }) {
     <div className="min-h-screen bg-background">
       {/* Mobile top bar */}
       <div className="sticky top-0 z-[60] flex items-center justify-between border-b bg-white px-4 py-2.5 md:hidden">
-        <img src={headerLogo.src} alt={headerLogo.alt} className="h-7 w-auto" />
+        <ClientLogo src={headerLogo.src} alt={headerLogo.alt} size="sm" />
         <button onClick={() => setMobileOpen(!mobileOpen)} className="rounded p-1 text-[var(--navy)] hover:bg-muted">
           {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
@@ -428,7 +624,7 @@ function AppLayout({ role }: { role: Role }) {
         <aside className={`fixed inset-y-0 left-0 z-[50] w-64 border-r border-[var(--border)] bg-white text-[var(--navy)] transition-transform duration-300 ease-in-out md:sticky md:top-0 md:z-auto md:h-screen md:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}>
           <div className="flex h-full flex-col">
             <div className="px-5 py-5" style={{ background: headerLogo.logoBg }}>
-              <img src={headerLogo.src} alt={headerLogo.alt} className="h-12 w-auto" />
+              <ClientLogo src={headerLogo.src} alt={headerLogo.alt} size="lg" />
             </div>
             <div className="h-1" style={{ background: headerLogo.accent }} />
             <div className="border-b border-[var(--border)] px-5 py-3">

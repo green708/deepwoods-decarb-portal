@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { ArrowLeft, Leaf, ChevronRight } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { login, loginDemo, forgotPassword, changePassword } from "@/lib/auth";
+import { login, loginDemo, forgotPassword, changePassword, getRole, DEEPWOODS_ROLES } from "@/lib/auth";
 import {
   AuthError,
   AuthSuccess,
@@ -54,7 +54,8 @@ export function LoginForm({ onNavigate }: { onNavigate: (v: AuthView) => void })
     setLoading(true);
     try {
       await login(email, password);
-      navigate({ to: "/workstreams" });
+      const role = getRole();
+      navigate({ to: DEEPWOODS_ROLES.includes(role as never) ? "/admin" : "/register" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Please check your email address and password and try again.");
       setLoading(false);
@@ -67,11 +68,26 @@ export function LoginForm({ onNavigate }: { onNavigate: (v: AuthView) => void })
   };
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-6">
       <Heading
-        title="Sign in to your workspace"
-        subtitle="Access your organisation's Decarb Portal."
+        title="Sign in"
+        subtitle="Welcome back — access your decarbonisation workspace."
       />
+
+      {/* DECARB accent strip */}
+      <div className="flex items-center gap-3">
+        <div className="h-px flex-1 bg-border" />
+        <div className="flex items-center gap-2.5">
+          <span className="flex items-center gap-1">
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#1E6F5C", display: "inline-block", opacity: 0.5 }} />
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#3B82F6", display: "inline-block", opacity: 0.5 }} />
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#64748B", display: "inline-block", opacity: 0.5 }} />
+          </span>
+          <span className="text-[0.6rem] font-black tracking-[0.38em] uppercase text-foreground/25">Decarb</span>
+          <Leaf className="size-2.5 text-foreground/20" aria-hidden />
+        </div>
+        <div className="h-px flex-1 bg-border" />
+      </div>
 
       <form onSubmit={submit} noValidate className="space-y-5">
         <div aria-live="polite">
@@ -112,44 +128,25 @@ export function LoginForm({ onNavigate }: { onNavigate: (v: AuthView) => void })
       </form>
 
       <div className="space-y-4 border-t border-border pt-5">
-        {/* Demo portal */}
-        <button
-          type="button"
-          onClick={handleDemo}
-          className="flex w-full items-center gap-3 rounded-lg border border-border bg-muted/50 px-4 py-3 text-left transition-colors hover:border-border-strong hover:bg-muted focus:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/25"
-        >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
-            <Leaf className="size-4 text-primary-deep" aria-hidden />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[0.8125rem] font-semibold text-foreground">Demo portal</p>
-            <p className="text-[0.75rem] text-muted-foreground">Explore a sample GHG portal — no login needed</p>
-          </div>
-          <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-        </button>
-
-        {/* New client CTA */}
+        {/* New client CTA — distinctive dark-green gradient banner */}
         <Link
           to="/request-access"
-          className="flex w-full items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-left transition-colors hover:border-primary/50 hover:bg-primary/10 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/25"
+          className="group block w-full overflow-hidden rounded-xl focus:outline-none focus-visible:ring-[3px] focus-visible:ring-[#1E6F5C]/40"
         >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary">
-            <Leaf className="size-4 text-primary-foreground" aria-hidden />
+          <div
+            className="transition-opacity group-hover:opacity-90"
+            style={{ background: "linear-gradient(135deg, #1E4D2B 0%, #1E6F5C 100%)", padding: "16px 20px" }}
+          >
+            <p className="mb-0.5 text-[0.6rem] font-bold uppercase tracking-[0.22em] text-white/55">New Organisation</p>
+            <p className="text-[0.9rem] font-bold leading-snug text-white">Start your decarbonisation journey</p>
+            <p className="mt-0.5 text-[0.72rem] text-white/65">GHG baseline → action plan → certified report</p>
+            <p className="mt-2.5 text-[0.72rem] font-semibold text-[#86EFAC]">Request access →</p>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[0.8125rem] font-semibold text-primary-deep">Start your GHG inventory</p>
-            <p className="text-[0.75rem] text-primary-deep/70">Request access to set up your organisation</p>
-          </div>
-          <ChevronRight className="size-4 shrink-0 text-primary-deep/60" aria-hidden />
         </Link>
 
         <SecurityNote>
           Secure access to your organisation's sustainability workspace.
         </SecurityNote>
-        <p className="text-xs text-muted-foreground">
-          Invited by your organisation?{" "}
-          <TextLink onClick={() => onNavigate("change")}>Set your password</TextLink>
-        </p>
       </div>
     </div>
   );

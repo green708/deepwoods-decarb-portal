@@ -3,25 +3,59 @@ declare(strict_types=1);
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/Smtp.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    dolphin_send_json(['error' => 'POST only'], 405);
+$method = $_SERVER['REQUEST_METHOD'];
+
+// ── GET — fetch prefill data for the current user ─────────────────────────────
+if ($method === 'GET') {
+    $authUser = dolphin_require_auth();
+    $email    = strtolower(trim($authUser['email'] ?? ''));
+    if (!$email) {
+        dolphin_send_json(null);
+    }
+    $pdo  = dolphin_db();
+    $stmt = $pdo->prepare(
+        'SELECT company, legal_name, operating_name, industry, org_type,
+                is_india, gstin, is_msme, udyam_number, legal_address, website, logo_url
+         FROM client_requests
+         WHERE email = ?
+         ORDER BY created_at DESC
+         LIMIT 1'
+    );
+    $stmt->execute([$email]);
+    $row = $stmt->fetch() ?: null;
+    dolphin_send_json($row);
+}
+
+if ($method !== 'POST') {
+    dolphin_send_json(['error' => 'GET or POST only'], 405);
 }
 
 $config = dolphin_config();
 $body   = dolphin_json_body();
 
-// ── Validate ────────────────────────────────────────────────────────────────
-$name    = trim($body['name']      ?? '');
-$company = trim($body['company']   ?? '');
+// ── Validate required fields ─────────────────────────────────────────────────
+$name    = trim($body['name']    ?? '');
+$company = trim($body['company'] ?? '');
 $email   = trim(strtolower($body['email'] ?? ''));
-$phone   = trim($body['phone']     ?? '');
-$employees = trim($body['employees'] ?? '');
-$message = trim($body['message']   ?? '');
+$phone   = trim($body['phone']   ?? '');
+
+// Extended fields (migration 004)
+$industry      = trim($body['industry']       ?? '');
+$isIndia       = isset($body['is_india'])     ? (int)(bool)$body['is_india'] : 1;
+$gstin         = strtoupper(trim($body['gstin']         ?? ''));
+$legalName     = trim($body['legal_name']     ?? '');
+$operatingName = trim($body['operating_name'] ?? '');
+$orgType       = trim($body['org_type']       ?? '');
+$isMsme        = isset($body['is_msme'])      ? (int)(bool)$body['is_msme']  : null;
+$udyamNumber   = trim($body['udyam_number']   ?? '');
+$legalAddress  = trim($body['legal_address']  ?? '');
+$website       = trim($body['website']        ?? '');
+$logoUrl       = isset($body['logo_url']) && is_string($body['logo_url']) ? $body['logo_url'] : '';
 
 $errors = [];
-if ($name === '')                      $errors[] = 'Name is required.';
-if ($company === '')                   $errors[] = 'Company is required.';
-if ($email === '')                     $errors[] = 'Email is required.';
+if ($name === '')    $errors[] = 'Your name is required.';
+if ($company === '') $errors[] = 'Company name is required.';
+if ($email === '')   $errors[] = 'Email is required.';
 elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = 'Email is not valid.';
 
 if ($errors) {
@@ -32,21 +66,76 @@ if ($errors) {
 $pdo = dolphin_db();
 
 try {
-    $stmt = $pdo->prepare(
-        'INSERT INTO client_requests (name, company, email, phone, employees, message)
-         VALUES (?, ?, ?, ?, ?, ?)'
-    );
-    $stmt->execute([
-        $name,
-        $company,
-        $email,
-        $phone ?: null,
-        $employees ?: null,
-        $message ?: null,
-    ]);
+    // Try with all columns (migration 007). Falls back through 005 → 004 → 003 → base.
+    try {
+        $stmt = $pdo->prepare(
+            'INSERT INTO client_requests
+               (name, company, email, phone, industry,
+                is_india, gstin, legal_name, operating_name,
+                org_type, is_msme, udyam_number, legal_address, website, logo_url)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+        );
+        $stmt->execute([
+            $name,
+            $company,
+            $email,
+            $phone        ?: null,
+            $industry     ?: null,
+            $isIndia,
+            $gstin        ?: null,
+            $legalName    ?: null,
+            $operatingName ?: null,
+            $orgType      ?: null,
+            $isMsme,
+            $udyamNumber  ?: null,
+            $legalAddress ?: null,
+            $website      ?: null,
+            $logoUrl      ?: null,
+        ]);
+    } catch (PDOException $colErr) {
+        // logo_url column not yet applied — fall back to migration 005 (no logo_url).
+        if (str_contains($colErr->getMessage(), 'Unknown column') || $colErr->getCode() === '42S22') {
+            try {
+                $stmt = $pdo->prepare(
+                    'INSERT INTO client_requests
+                       (name, company, email, phone, industry,
+                        is_india, gstin, legal_name, operating_name,
+                        org_type, is_msme, udyam_number, legal_address, website)
+                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+                );
+                $stmt->execute([
+                    $name, $company, $email,
+                    $phone        ?: null,
+                    $industry     ?: null,
+                    $isIndia,
+                    $gstin        ?: null,
+                    $legalName    ?: null,
+                    $operatingName ?: null,
+                    $orgType      ?: null,
+                    $isMsme,
+                    $udyamNumber  ?: null,
+                    $legalAddress ?: null,
+                    $website      ?: null,
+                ]);
+            } catch (PDOException $e2) {
+                // Last resort: base schema (no industry column)
+                if (str_contains($e2->getMessage(), 'Unknown column') || $e2->getCode() === '42S22') {
+                    $stmt = $pdo->prepare(
+                        'INSERT INTO client_requests (name, company, email, phone)
+                         VALUES (?,?,?,?)'
+                    );
+                    $stmt->execute([$name, $company, $email, $phone ?: null]);
+                } else {
+                    throw $e2;
+                }
+            }
+        } else {
+            throw $colErr;
+        }
+    }
 } catch (PDOException $e) {
-    // Duplicate email (or any constraint error) — return success to avoid info leak
-    if (str_starts_with($e->getCode(), '23')) {
+    // Duplicate email (23xxx) — return success to avoid info leak
+    if (str_starts_with((string)$e->getCode(), '23')) {
         dolphin_send_json(['ok' => true, 'message' => 'Request received']);
     }
     error_log('request-access INSERT failed: ' . $e->getMessage());
@@ -72,43 +161,47 @@ if ($smtpReady && $adminEmail) {
             $config['smtp']['from_name']
         );
 
-        // ── Notification to Deepwoods ──────────────────────────────────────
-        $phoneDisplay    = $phone    ?: '(not provided)';
-        $employeesDisplay = $employees ?: '(not provided)';
-        $messageDisplay  = $message  ?: '(no message)';
+        $row = fn($label, $val) =>
+            "<tr><td style='padding:7px 0;color:#6b7280;width:140px;vertical-align:top'>{$label}</td>"
+          . "<td style='padding:7px 0;font-weight:600'>" . htmlspecialchars((string)($val ?: '—')) . "</td></tr>";
 
         $notifyHtml = "
-<html><body style='font-family:Arial,sans-serif;color:#1a1a1a;max-width:600px;margin:0 auto'>
+<html><body style='font-family:Arial,sans-serif;color:#1a1a1a;max-width:620px;margin:0 auto'>
   <div style='background:#1E6F5C;padding:24px 32px;border-radius:8px 8px 0 0'>
     <h2 style='color:#fff;margin:0;font-size:20px'>{$platformName}</h2>
-    <p style='color:rgba(255,255,255,0.8);margin:6px 0 0;font-size:14px'>New Request Access submission</p>
+    <p style='color:rgba(255,255,255,0.8);margin:6px 0 0;font-size:14px'>New access request</p>
   </div>
   <div style='background:#f9fafb;padding:24px 32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px'>
-    <table style='width:100%;border-collapse:collapse;font-size:14px'>
-      <tr><td style='padding:8px 0;color:#6b7280;width:120px'>Name</td>
-          <td style='padding:8px 0;font-weight:600'>" . htmlspecialchars($name) . "</td></tr>
-      <tr><td style='padding:8px 0;color:#6b7280'>Company</td>
-          <td style='padding:8px 0;font-weight:600'>" . htmlspecialchars($company) . "</td></tr>
-      <tr><td style='padding:8px 0;color:#6b7280'>Email</td>
-          <td style='padding:8px 0'><a href='mailto:" . htmlspecialchars($email) . "' style='color:#1E6F5C'>" . htmlspecialchars($email) . "</a></td></tr>
-      <tr><td style='padding:8px 0;color:#6b7280'>Phone</td>
-          <td style='padding:8px 0'>" . htmlspecialchars($phoneDisplay) . "</td></tr>
-      <tr><td style='padding:8px 0;color:#6b7280'>Employees</td>
-          <td style='padding:8px 0'>" . htmlspecialchars($employeesDisplay) . "</td></tr>
+    <p style='font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#1E6F5C;margin:0 0 10px'>Organisation</p>
+    <table style='width:100%;border-collapse:collapse;font-size:13.5px'>
+      {$row('Company', $company)}
+      {$row('Legal name', $legalName)}
+      {$row('Operating name', $operatingName)}
+      {$row('Industry', $industry)}
+      {$row('Org type', $orgType)}
+      {$row('Registered in India', $isIndia ? 'Yes' : 'No')}
+      {$row('GSTIN', $gstin)}
+      {$row('MSME', $isMsme === null ? '—' : ($isMsme ? 'Yes' : 'No'))}
+      {$row('Udyam No.', $udyamNumber)}
+      {$row('Website', $website)}
     </table>
-    <div style='margin-top:16px;padding-top:16px;border-top:1px solid #e5e7eb'>
-      <p style='color:#6b7280;font-size:13px;margin:0 0 6px'>Message</p>
-      <p style='margin:0;font-size:14px;white-space:pre-wrap'>" . htmlspecialchars($messageDisplay) . "</p>
-    </div>
+    <p style='font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#1E6F5C;margin:18px 0 6px'>Legal Address</p>
+    <p style='font-size:13.5px;margin:0;white-space:pre-wrap'>" . htmlspecialchars($legalAddress ?: '—') . "</p>
+    <p style='font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#1E6F5C;margin:18px 0 10px'>Primary Contact</p>
+    <table style='width:100%;border-collapse:collapse;font-size:13.5px'>
+      {$row('Name', $name)}
+      {$row('Email', $email)}
+      {$row('Phone', $phone)}
+    </table>
     <div style='margin-top:20px;padding:12px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:13px;color:#92400e'>
-      Prospect contact: <strong>" . htmlspecialchars($email) . "</strong>. Manage this request in the Admin Dashboard → Access Requests.
+      Login credentials and status emails go to: <strong>" . htmlspecialchars($email) . "</strong>
     </div>
   </div>
 </body></html>";
 
-        $smtp->send($adminEmail, "New Request Access — {$company}", $notifyHtml);
+        $smtp->send($adminEmail, "New Access Request — " . htmlspecialchars($company), $notifyHtml);
 
-        // ── Confirmation to requester ──────────────────────────────────────
+        // Confirmation to requester
         $confirmHtml = "
 <html><body style='font-family:Arial,sans-serif;color:#1a1a1a;max-width:600px;margin:0 auto'>
   <div style='background:#1E6F5C;padding:24px 32px;border-radius:8px 8px 0 0'>
@@ -119,21 +212,19 @@ if ($smtpReady && $adminEmail) {
     <p style='font-size:15px;margin:0 0 16px'>Hi " . htmlspecialchars($name) . ",</p>
     <p style='font-size:14px;line-height:1.7;margin:0 0 16px'>
       Thank you for your interest in the Deepwoods GHG Reporting Platform.
-      We've received your request and our team will be in touch within <strong>2 business days</strong>.
+      We've received your request for <strong>" . htmlspecialchars($company) . "</strong>
+      and our team will be in touch within <strong>2 business days</strong>.
     </p>
     <p style='font-size:14px;line-height:1.7;margin:0 0 24px'>
-      In the meantime, feel free to reply to this email if you have any questions.
+      We'll send your login credentials and next steps to this email address.
     </p>
-    <p style='font-size:13px;color:#6b7280;margin:0'>
-      — The Deepwoods Green Advisory team
-    </p>
+    <p style='font-size:13px;color:#6b7280;margin:0'>— The Deepwoods Green Advisory team</p>
   </div>
 </body></html>";
 
         $smtp->send($email, "We've received your request — {$platformName}", $confirmHtml);
 
     } catch (Throwable $e) {
-        // Email failure is non-fatal — the request is already saved to DB
         error_log('request-access email failed: ' . $e->getMessage());
     }
 }

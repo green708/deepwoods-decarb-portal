@@ -1,24 +1,25 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
-  Leaf, ChevronLeft, ChevronRight, Check, Loader2, Plus, Trash2,
-  Building2, Layers, FileText,
+  ChevronLeft, ChevronRight, Check, Loader2, Plus, Trash2,
+  Building2, MapPin, Users, CreditCard, ClipboardCheck, Layers, Upload, X,
 } from "lucide-react";
 import { authFetch } from "@/lib/auth";
 import { useClientContext, clearClientContext } from "@/lib/client-context";
 
 export const Route = createFileRoute("/_app/entity-setup")({ component: EntitySetupPage });
 
-// ── Lovable design tokens ─────────────────────────────────────────────────────
-const INK      = "oklch(0.21 0.03 265)";
-const CANOPY   = "oklch(0.34 0.06 158)";
-const CORAL    = "oklch(0.63 0.18 38)";
-const MEADOW   = "oklch(0.62 0.16 152)";
-const CTINT    = "oklch(0.95 0.03 42)";
-const PAPER    = "oklch(0.978 0.003 120)";
-const SLATE    = "oklch(0.55 0.02 265)";
-const HAIRLINE = "oklch(0.92 0.005 130)";
-const MINT     = "oklch(0.94 0.03 155)";
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const INK      = "#111827";
+const CANOPY   = "#1E6F5C";
+const CORAL    = "#DC2626";
+const PAPER    = "#EEF3F0";
+const SLATE    = "#5A6872";
+const HAIRLINE = "#E2E8E4";
+const MINT     = "#ECF7F3";
+const CTINT    = "#FEF2F2";
+const FOREST   = "#1E4D2B";
+const MUTED    = "#94A3B8";
 
 const INDUSTRIES = [
   "Manufacturing", "Textiles & Apparel", "Chemicals", "Food & Beverage",
@@ -26,306 +27,285 @@ const INDUSTRIES = [
   "Logistics & Transportation", "Furniture Manufacturing", "Other",
 ];
 
-const ORG_TYPES: Array<{ value: string; label: string }> = [
-  { value: "parent",      label: "Parent / Holding Company" },
-  { value: "subsidiary",  label: "Subsidiary" },
-  { value: "branch",      label: "Branch" },
-  { value: "jv",          label: "Joint Venture" },
-  { value: "other",       label: "Other" },
+const ORG_TYPES_LEGAL = [
+  "Private Limited", "Public Limited", "LLP", "Partnership",
+  "Sole Proprietorship", "Trust / NGO", "Government Body", "Other",
 ];
 
-const COUNTRIES = [
-  "India", "United States", "United Kingdom", "Singapore", "UAE",
-  "Australia", "Canada", "Germany", "Netherlands", "Other",
-];
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-// ── Types ────────────────────────────────────────────────────────────────────
+interface Facility { name: string; address: string; }
+interface TeamMember { name: string; email: string; role: string; }
+interface Subsidiary { name: string; country: string; }
 
-interface LegalEntity {
-  code: string;
-  name: string;
-  short_name: string;
-  country: string;
-  registration_no: string;
-  tax_id: string;
-  org_type: string;
-  legal_address: string;
-}
-
-interface ReportingEngagement {
-  name: string;
-  report_type: "consolidated" | "standalone";
-  legal_entity_codes: string[];
-  reporting_entity_code: string;
-}
+type ReportingModel = "consolidated" | "separate" | "mixed" | null;
 
 interface WizardState {
-  // Step 0 — Org details
-  legalName: string;
-  operatingName: string;
-  industry: string;
-  country: string;
-  registration_no: string;
-  tax_id: string;
-  org_type: string;
-  legal_address: string;
-  website: string;
-  // Step 1 — Reporting approach
-  has_subsidiaries: boolean | null;
-  reporting_model: "consolidated" | "separate" | "mixed" | null;
-  // Step 2 — Legal entities (subsidiaries)
-  subsidiaries: LegalEntity[];
-  // Step 3 — Engagement grouping (mixed only)
-  engagements: ReportingEngagement[];
+  // Step 1 — Company Details
+  is_india:       boolean;
+  gstin:          string;
+  legalName:      string;
+  operatingName:  string;
+  industry:       string;
+  org_type:       string;
+  is_msme:        boolean;
+  udyam_number:   string;
+  legal_address:  string;
+  website:        string;
+  logo_preview:   string | null;
+  // Step 2 — Reporting Structure
+  has_subsidiaries:  boolean | null;
+  reporting_model:   ReportingModel;
+  subsidiaries:      Subsidiary[];
+  // Step 3 — Facilities
+  facilities:     Facility[];
+  // Step 4 — Team
+  team:           TeamMember[];
 }
 
 const INIT: WizardState = {
-  legalName: "", operatingName: "", industry: "", country: "India",
-  registration_no: "", tax_id: "", org_type: "parent", legal_address: "", website: "",
+  is_india: true, gstin: "",
+  legalName: "", operatingName: "", industry: "", org_type: "", is_msme: false, udyam_number: "",
+  legal_address: "", website: "", logo_preview: null,
   has_subsidiaries: null, reporting_model: null,
-  subsidiaries: [],
-  engagements: [],
+  subsidiaries: [{ name: "", country: "India" }],
+  facilities: [{ name: "Head Office", address: "" }],
+  team: [{ name: "", email: "", role: "viewer" }],
 };
 
-// Compute the ordered list of steps based on current wizard state
-function computeSteps(state: WizardState): string[] {
-  const base = ["Organisation Details", "Reporting Approach"];
-  if (state.has_subsidiaries) {
-    base.push("Legal Entities");
-    if (state.reporting_model === "mixed") {
-      base.push("Engagement Groups");
-    }
-  }
-  base.push("Review & Confirm");
-  return base;
+const STEPS = [
+  { label: "Company Details",      short: "Company",     icon: Building2 },
+  { label: "Reporting Structure",  short: "Structure",   icon: Layers },
+  { label: "Facilities",           short: "Facilities",  icon: MapPin },
+  { label: "Manage Team",          short: "Team",        icon: Users },
+  { label: "Payment",              short: "Payment",     icon: CreditCard },
+  { label: "Submit",               short: "Submit",      icon: ClipboardCheck },
+];
+
+function makeCode(s: string): string {
+  return s.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) || "ENTITY";
 }
 
-// Map a logical step index to the step list
-function logicalStep(step: number, steps: string[]): string {
-  return steps[step] ?? "";
-}
-
-// ── Page ─────────────────────────────────────────────────────────────────────
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 function EntitySetupPage() {
-  const navigate = useNavigate();
-  const ctx = useClientContext();
+  const navigate  = useNavigate();
+  const ctx       = useClientContext();
 
-  const [step, setStep] = useState(0);
-  const [data, setData] = useState<WizardState>({
-    ...INIT,
-    legalName: ctx.client.name,
-  });
+  const [step, setStep]       = useState(0);
+  const [data, setData]       = useState<WizardState>({ ...INIT, legalName: ctx.client.name ?? "" });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [prefilling, setPrefilling] = useState(true);
+  const [error, setError]     = useState<string | null>(null);
 
   const update = (patch: Partial<WizardState>) => setData(p => ({ ...p, ...patch }));
 
-  const steps = computeSteps(data);
-  const totalSteps = steps.length;
-  const currentLabel = logicalStep(step, steps);
+  // ── Prefill from request-access submission ─────────────────────────────────
+  useEffect(() => {
+    authFetch("request-access.php")
+      .then((d: Record<string, string | number | null> | null) => {
+        if (!d) return;
+        update({
+          legalName:     (d.legal_name as string)      || (d.company as string) || ctx.client.name || "",
+          operatingName: (d.operating_name as string)  || "",
+          industry:      (d.industry as string)         || "",
+          org_type:      (d.org_type as string)         || "",
+          is_india:      d.is_india !== 0,
+          gstin:         (d.gstin as string)            || "",
+          is_msme:       d.is_msme === 1,
+          udyam_number:  (d.udyam_number as string)    || "",
+          legal_address: (d.legal_address as string)   || "",
+          website:       (d.website as string)          || "",
+          logo_preview:  (d.logo_url as string)        || null,
+          facilities: [{ name: "Head Office", address: (d.legal_address as string) || "" }],
+        });
+      })
+      .catch(() => {})
+      .finally(() => setPrefilling(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const canNext = (): boolean => {
-    if (currentLabel === "Organisation Details") {
-      return data.legalName.trim() !== "" && data.industry !== "" && data.legal_address.trim() !== "" && data.country !== "";
+    if (step === 0) {
+      return data.legalName.trim() !== "" && data.industry !== "" && data.legal_address.trim() !== "";
     }
-    if (currentLabel === "Reporting Approach") {
-      return data.has_subsidiaries !== null && (data.has_subsidiaries === false || data.reporting_model !== null);
+    if (step === 1) {
+      if (data.has_subsidiaries === null) return false;
+      if (data.has_subsidiaries && data.reporting_model === null) return false;
+      return true;
     }
-    if (currentLabel === "Legal Entities") {
-      return data.subsidiaries.length > 0 && data.subsidiaries.every(s => s.code.trim() !== "" && s.name.trim() !== "");
+    if (step === 2) {
+      return data.facilities.length > 0 && data.facilities.every(f => f.name.trim() !== "");
     }
     return true;
-  };
-
-  const handleNext = () => {
-    if (!canNext()) return;
-    if (step < totalSteps - 1) setStep(s => s + 1);
-  };
-
-  const handleBack = () => {
-    if (step > 0) setStep(s => s - 1);
   };
 
   const handleSubmit = async () => {
     setError(null);
     setLoading(true);
     try {
-      const parentCode = makeCode(data.legalName);
+      const parentCode    = makeCode(data.legalName);
+      const reportingModel = data.has_subsidiaries
+        ? (data.reporting_model ?? "consolidated")
+        : "consolidated";
 
-      // Build entities list
-      const entities: Array<{
-        code: string; name: string; short_name: string; is_consolidated: boolean;
-      }> = [
-        {
-          code: parentCode,
-          name: data.legalName,
-          short_name: data.operatingName || data.legalName.slice(0, 8),
-          is_consolidated: data.subsidiaries.length > 0,
-        },
-        ...data.subsidiaries.map(s => ({
-          code: s.code,
-          name: s.name,
-          short_name: s.short_name || s.name.slice(0, 8),
-          is_consolidated: false,
-        })),
+      const entities = [
+        { code: parentCode, name: data.legalName,
+          short_name: data.operatingName || data.legalName.slice(0, 8), is_consolidated: false },
       ];
 
-      // Legal entities detail (for new columns)
-      const legal_entities = [
-        {
-          code: parentCode,
-          country: data.country,
-          registration_no: data.registration_no,
-          tax_id: data.tax_id,
-          org_type: data.org_type || "parent",
-          legal_address: data.legal_address,
-        },
-        ...data.subsidiaries.map(s => ({
-          code: s.code,
-          country: s.country,
-          registration_no: s.registration_no,
-          tax_id: s.tax_id,
-          org_type: s.org_type || "subsidiary",
-          legal_address: s.legal_address,
-        })),
+      const legalEntities = [
+        { code: parentCode, country: data.is_india ? "India" : "Other",
+          registration_no: "", tax_id: data.gstin, org_type: "parent",
+          legal_address: data.legal_address },
       ];
 
-      // Reporting engagements
-      let reporting_engagements: ReportingEngagement[] = [];
-      const model = data.has_subsidiaries ? (data.reporting_model ?? "consolidated") : "consolidated";
-
-      if (model === "consolidated" || model === "separate") {
-        // Auto-generate one engagement per entity (separate) or one consolidated engagement
-        if (model === "consolidated") {
-          reporting_engagements = [{
-            name: `${data.legalName} — Consolidated GHG Report`,
-            report_type: "consolidated",
-            legal_entity_codes: entities.map(e => e.code),
-            reporting_entity_code: parentCode,
-          }];
-        } else {
-          reporting_engagements = entities
-            .filter(e => !e.is_consolidated)
-            .map(e => ({
-              name: `${e.name} — GHG Report`,
-              report_type: "standalone" as const,
-              legal_entity_codes: [e.code],
-              reporting_entity_code: e.code,
-            }));
-        }
-      } else {
-        // Mixed — use the engagements defined in step 3
-        reporting_engagements = data.engagements;
-      }
+      const reportingEngagements = [
+        { name: `${data.legalName} — Consolidated GHG Report`,
+          report_type: "consolidated",
+          legal_entity_codes: [parentCode],
+          reporting_entity_code: parentCode },
+      ];
 
       await authFetch("client-setup.php", {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           company_name: data.legalName,
-          industry: data.industry,
-          country: data.country,
-          reporting_model: model,
+          industry:     data.industry,
+          country:      data.is_india ? "India" : "Other",
+          reporting_model: reportingModel,
+          logo_url:     data.logo_preview || undefined,
           entities,
-          legal_entities,
-          reporting_engagements,
+          legal_entities: legalEntities,
+          reporting_engagements: reportingEngagements,
         }),
       });
 
       clearClientContext();
-      window.location.href = "/workstreams";
+      navigate({ to: "/register" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submission failed. Please try again.");
       setLoading(false);
     }
   };
 
+  if (prefilling) {
+    return (
+      <div style={{ minHeight: "100vh", background: PAPER, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Loader2 style={{ width: 24, height: 24, color: CANOPY, animation: "spin 1s linear infinite" }} />
+        <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ background: PAPER, fontFamily: "'Manrope','Inter',system-ui,sans-serif", color: INK, minHeight: "100vh" }}>
+    <div style={{ background: PAPER, fontFamily: "'Inter',system-ui,sans-serif", color: INK, minHeight: "100vh" }}>
       <style>{LOV_CSS}</style>
 
-      {/* Decorative rings */}
-      <div style={{ position: "fixed", top: -220, right: -220, width: 700, height: 700,
-        border: `1px solid ${HAIRLINE}`, borderRadius: "50%", pointerEvents: "none", zIndex: 0 }} />
-      <div style={{ position: "fixed", top: -110, right: -110, width: 480, height: 480,
-        border: `1px solid ${HAIRLINE}`, borderRadius: "50%", pointerEvents: "none", zIndex: 0 }} />
+      {/* Top accent stripe */}
+      <div style={{ height: 4, background: `linear-gradient(90deg, ${FOREST} 0%, ${CANOPY} 60%, #3DA882 100%)` }} />
 
       {/* Header */}
-      <header style={{ position: "relative", zIndex: 10, background: "white",
-        borderBottom: `1px solid ${HAIRLINE}`, padding: "0 40px",
-        display: "flex", alignItems: "center", height: 58 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 6, background: CANOPY,
-            display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Leaf style={{ width: 15, height: 15, color: "white" }} />
-          </div>
-          <span style={{ fontSize: 14, fontWeight: 700, color: INK }}>
-            DEEPWOODS <span style={{ color: MEADOW }}>GREEN</span>
-          </span>
-        </div>
-        <div style={{ marginLeft: "auto", fontSize: 12, color: SLATE }}>{ctx.client.name}</div>
+      <header style={{
+        background: "white", borderBottom: `1px solid ${HAIRLINE}`,
+        padding: "0 48px", display: "flex", alignItems: "center",
+        justifyContent: "space-between", height: 60,
+      }}>
+        <img src="/deepwoods-logo.png" alt="Deepwoods Green" style={{ height: 34, width: "auto" }} />
+        <span style={{ fontSize: 13, color: SLATE }}>{ctx.client.name}</span>
       </header>
 
+      {/* Stepper bar */}
+      <div style={{ background: "white", borderBottom: `1px solid ${HAIRLINE}`, padding: "16px 48px" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center" }}>
+          {STEPS.map((s, i) => {
+            const done   = i < step;
+            const active = i === step;
+            return (
+              <Fragment key={i}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+                    background: done ? CANOPY : active ? `linear-gradient(135deg, ${FOREST}, ${CANOPY})` : "white",
+                    border: `2px solid ${done || active ? CANOPY : HAIRLINE}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 10, fontWeight: 700,
+                    color: done || active ? "white" : SLATE,
+                    boxShadow: active ? "0 0 0 3px oklch(0.34 0.06 158 / 0.15)" : "none",
+                  }}>
+                    {done ? <Check style={{ width: 10, height: 10 }} /> : i + 1}
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: active ? 700 : done ? 500 : 400,
+                    color: active ? INK : done ? CANOPY : SLATE,
+                    whiteSpace: "nowrap",
+                  }}>
+                    {s.short}
+                  </span>
+                </div>
+                {i < STEPS.length - 1 && (
+                  <div style={{ flex: 1, height: 1, background: i < step ? CANOPY : HAIRLINE, margin: "0 8px" }} />
+                )}
+              </Fragment>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Body */}
-      <div style={{ position: "relative", zIndex: 1, maxWidth: 820, margin: "0 auto", padding: "36px 24px 80px" }}>
-        <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
-          color: SLATE, margin: "0 0 4px" }}>
-          Organisation Setup
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "40px 48px 80px" }}>
+        <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase",
+          color: CANOPY, margin: "0 0 6px" }}>
+          Step {step + 1} of {STEPS.length}
         </p>
-        <h1 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 6px", color: INK }}>
-          Define your organisation boundary
+        <h1 style={{ fontSize: 28, fontWeight: 800, margin: "0 0 28px", color: INK, letterSpacing: "-0.03em" }}>
+          {STEPS[step].label}
         </h1>
-        <p style={{ fontSize: 14, color: SLATE, margin: "0 0 28px", lineHeight: 1.6 }}>
-          We'll ask a few questions to understand your legal structure and reporting needs.
-        </p>
 
-        <RingStepper steps={steps} current={step} />
-
-        <div style={{ marginTop: 28, background: "white", border: `1px solid ${HAIRLINE}`,
-          borderRadius: 12, padding: "28px 32px", boxShadow: "0 1px 2px rgba(17,24,39,0.04)" }}>
-
-          {currentLabel === "Organisation Details" && (
-            <OrgDetailsStep data={data} update={update} />
-          )}
-          {currentLabel === "Reporting Approach" && (
-            <ReportingApproachStep data={data} update={update} />
-          )}
-          {currentLabel === "Legal Entities" && (
-            <LegalEntitiesStep data={data} update={update} />
-          )}
-          {currentLabel === "Engagement Groups" && (
-            <EngagementGroupsStep data={data} update={update} />
-          )}
-          {currentLabel === "Review & Confirm" && (
-            <ReviewStep data={data} steps={steps} />
-          )}
+        <div style={{
+          background: "white", border: `1px solid ${HAIRLINE}`,
+          borderRadius: 16, padding: "36px 40px",
+          boxShadow: "0 2px 12px rgba(30,79,60,0.06), 0 1px 3px rgba(0,0,0,0.04)",
+        }}>
+          {step === 0 && <CompanyDetailsStep    data={data} update={update} />}
+          {step === 1 && <ReportingStructureStep data={data} update={update} />}
+          {step === 2 && <FacilitiesStep        data={data} update={update} />}
+          {step === 3 && <TeamStep              data={data} update={update} />}
+          {step === 4 && <PaymentStep />}
+          {step === 5 && <SubmitStep            data={data} />}
         </div>
 
         {error && (
-          <div style={{ marginTop: 12, padding: "12px 16px", borderRadius: 8,
-            background: CTINT, border: `1px solid ${CORAL}`, fontSize: 13, color: CORAL }}>
+          <div style={{ marginTop: 12, padding: "12px 16px", borderRadius: 10,
+            background: CTINT, border: `1px solid #FECACA`, fontSize: 13, color: CORAL }}>
             {error}
           </div>
         )}
 
         <div style={{ marginTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           {step > 0 ? (
-            <button type="button" onClick={handleBack} className="lov-btn-back">
+            <button type="button" onClick={() => setStep(s => s - 1)} className="lov-btn-back">
               <ChevronLeft style={{ width: 15, height: 15 }} /> Back
             </button>
           ) : <div />}
 
-          {currentLabel !== "Review & Confirm" ? (
-            <button type="button" onClick={handleNext} disabled={!canNext()} className="lov-btn-next"
-              style={{ background: canNext() ? CANOPY : HAIRLINE, color: canNext() ? "white" : SLATE,
-                cursor: canNext() ? "pointer" : "not-allowed" }}>
+          {step < STEPS.length - 1 ? (
+            <button type="button"
+              onClick={() => canNext() && setStep(s => s + 1)}
+              disabled={!canNext()}
+              className="lov-btn-next"
+              style={{
+                background: canNext() ? `linear-gradient(135deg, ${FOREST}, ${CANOPY})` : HAIRLINE,
+                color: canNext() ? "white" : SLATE,
+                cursor: canNext() ? "pointer" : "not-allowed",
+              }}>
               Next <ChevronRight style={{ width: 15, height: 15 }} />
             </button>
           ) : (
             <button type="button" onClick={handleSubmit} disabled={loading} className="lov-btn-primary">
               {loading && <Loader2 style={{ width: 15, height: 15, animation: "lov-spin 1s linear infinite" }} />}
-              {loading ? "Submitting…" : "Complete setup"}
+              {loading ? "Submitting…" : "Submit registration"}
             </button>
           )}
         </div>
@@ -334,386 +314,578 @@ function EntitySetupPage() {
   );
 }
 
-// ── Step 0: Organisation Details ──────────────────────────────────────────────
+// ── Step 1: Company Details ───────────────────────────────────────────────────
 
-function OrgDetailsStep({ data, update }: { data: WizardState; update: (p: Partial<WizardState>) => void }) {
+function CompanyDetailsStep({ data, update }: { data: WizardState; update: (p: Partial<WizardState>) => void }) {
+  const logoRef = useRef<HTMLInputElement>(null);
+
+  const handleLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => update({ logo_preview: ev.target?.result as string });
+    reader.readAsDataURL(file);
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-        <Field label="Legal name of the organisation" required>
-          <input className="lov-input" value={data.legalName}
-            onChange={e => update({ legalName: e.target.value })} placeholder="Acme Private Limited" />
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+
+      {/* India + GSTIN */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+        <Field label="Is your organisation registered in India?"
+          hint="This determines whether we ask for a GSTIN or a general business registration / tax ID.">
+          <div className="lov-yn">
+            {["Yes", "No"].map(opt => {
+              const active = opt === "Yes" ? data.is_india : !data.is_india;
+              return (
+                <button key={opt} type="button" onClick={() => update({ is_india: opt === "Yes" })}
+                  className={active ? "lov-yn-btn active" : "lov-yn-btn"}>
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
         </Field>
-        <Field label="Operating / trading name (if different)">
-          <input className="lov-input" value={data.operatingName}
-            onChange={e => update({ operatingName: e.target.value })} placeholder="Acme" />
+
+        <Field label="GSTIN" required={data.is_india}
+          hint="Your 15-character GST Identification Number, as shown on your GST registration certificate.">
+          <input className="lov-input" value={data.gstin}
+            onChange={e => update({ gstin: e.target.value.toUpperCase() })}
+            placeholder={data.is_india ? "15-character GST Identification Number" : "Not applicable"}
+            maxLength={15} disabled={!data.is_india} />
         </Field>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-        <Field label="Industry" required>
+      {/* Legal name + Operating name */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+        <Field label="Legal name of the organisation" required
+          hint="The exact registered name on your incorporation or registration certificate — this is what will appear on official reports.">
+          <input className="lov-input" value={data.legalName}
+            onChange={e => update({ legalName: e.target.value })}
+            placeholder="Exact registered name" />
+        </Field>
+        <Field label="Operating name of the organisation (if different)"
+          hint="Name as you want it displayed across the portal and any reports, if different from the legal name above.">
+          <input className="lov-input" value={data.operatingName}
+            onChange={e => update({ operatingName: e.target.value })}
+            placeholder="Name as it appears in operations" />
+        </Field>
+      </div>
+
+      {/* Industry + Org type */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+        <Field label="Industry" required
+          hint="Choose the sector closest to your primary business activity — this affects the default emission factors used in your calculations.">
           <select className="lov-select" value={data.industry}
             onChange={e => update({ industry: e.target.value })}>
-            <option value="">Select industry…</option>
+            <option value="">Select an industry</option>
             {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
           </select>
         </Field>
-        <Field label="Country of incorporation" required>
-          <select className="lov-select" value={data.country}
-            onChange={e => update({ country: e.target.value })}>
-            {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+        <Field label="Organisational Type" required
+          hint="Your legal structure, as stated on your registration documents.">
+          <select className="lov-select" value={data.org_type}
+            onChange={e => update({ org_type: e.target.value })}>
+            <option value="">Select a type</option>
+            {ORG_TYPES_LEGAL.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </Field>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-        <Field label="Company registration number">
-          <input className="lov-input" value={data.registration_no}
-            onChange={e => update({ registration_no: e.target.value })} placeholder="U12345MH2010PTC…" />
+      {/* MSME */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <Field label="Is your organisation registered as an MSME?"
+          hint="Select Yes if you hold an Udyam (or equivalent) MSME registration.">
+          <div className="lov-yn">
+            {["Yes", "No"].map(opt => {
+              const active = opt === "Yes" ? data.is_msme : !data.is_msme;
+              return (
+                <button key={opt} type="button" onClick={() => update({ is_msme: opt === "Yes", udyam_number: opt === "No" ? "" : data.udyam_number })}
+                  className={active ? "lov-yn-btn active" : "lov-yn-btn"}>
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
         </Field>
-        <Field label="GSTIN / Tax ID">
-          <input className="lov-input" value={data.tax_id}
-            onChange={e => update({ tax_id: e.target.value })} placeholder="22AAAAA0000A1Z5" />
-        </Field>
+        {data.is_msme && (
+          <Field label="Udyam Registration Number"
+            hint="Your 19-character Udyam number (e.g. UDYAM-XX-00-0000000). Found on your Udyam Registration Certificate.">
+            <input className="lov-input" value={data.udyam_number}
+              onChange={e => update({ udyam_number: e.target.value.toUpperCase() })}
+              placeholder="UDYAM-XX-00-0000000" maxLength={25} />
+          </Field>
+        )}
       </div>
 
-      <Field label="Registered address" required>
+      {/* Legal address */}
+      <Field label="Legal Address" required
+        hint="Your registered head office address. This will automatically become your first facility in the next step, so double-check it here.">
         <textarea className="lov-textarea" rows={3} value={data.legal_address}
-          onChange={e => update({ legal_address: e.target.value })}
-          placeholder="123 Main Street, City, State, Postal Code" />
+          onChange={e => update({
+            legal_address: e.target.value,
+            facilities: [{ name: "Head Office", address: e.target.value }, ...data.facilities.slice(1)],
+          })}
+          placeholder="Full registered head-office address" />
       </Field>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-        <Field label="Website">
-          <input className="lov-input" value={data.website}
-            onChange={e => update({ website: e.target.value })} placeholder="https://www.yourcompany.com" />
+      {/* Website + Logo */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+        <Field label="Organisation Website" required
+          hint="Include https:// — this is used on client-facing reports.">
+          <input className="lov-input" type="url" value={data.website}
+            onChange={e => update({ website: e.target.value })}
+            placeholder="https://www.company.com" />
+        </Field>
+
+        <Field label="Upload Company Logo"
+          hint="PNG or SVG with a transparent background works best. Used on your reports and in the portal header.">
+          <input ref={logoRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"
+            style={{ display: "none" }} onChange={handleLogo} />
+          {!data.logo_preview ? (
+            <div
+              onClick={() => logoRef.current?.click()}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => {
+                e.preventDefault();
+                const file = e.dataTransfer.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = ev => update({ logo_preview: ev.target?.result as string });
+                reader.readAsDataURL(file);
+              }}
+              style={{
+                border: `1.5px dashed ${HAIRLINE}`, borderRadius: 8, padding: "18px 16px",
+                textAlign: "center", cursor: "pointer", background: "white",
+                color: SLATE, fontSize: 13, lineHeight: 1.5,
+                transition: "border-color 0.15s",
+              }}
+            >
+              Drag and drop, or click to choose a file
+            </div>
+          ) : (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 12, padding: "10px 12px",
+              border: `1px solid ${HAIRLINE}`, borderRadius: 8, background: "white",
+            }}>
+              <img src={data.logo_preview} alt="Logo preview"
+                style={{ width: 44, height: 44, objectFit: "contain", borderRadius: 6,
+                  border: `1px solid ${HAIRLINE}`, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <button type="button" onClick={() => logoRef.current?.click()}
+                  style={{ fontSize: 12, color: CANOPY, background: "none", border: "none",
+                    padding: 0, cursor: "pointer", fontWeight: 600, display: "block" }}>
+                  Change logo
+                </button>
+              </div>
+              <button type="button"
+                onClick={() => { update({ logo_preview: null }); if (logoRef.current) logoRef.current.value = ""; }}
+                style={{ background: "none", border: "none", color: SLATE, cursor: "pointer", padding: 4, flexShrink: 0 }}>
+                <X style={{ width: 15, height: 15 }} />
+              </button>
+            </div>
+          )}
         </Field>
       </div>
+
     </div>
   );
 }
 
-// ── Step 1: Reporting Approach ────────────────────────────────────────────────
+// ── Step 2: Reporting Structure ───────────────────────────────────────────────
 
-function ReportingApproachStep({ data, update }: { data: WizardState; update: (p: Partial<WizardState>) => void }) {
-  const setHasSubs = (val: boolean) => {
-    update({
-      has_subsidiaries: val,
-      reporting_model: val ? data.reporting_model : "consolidated",
-      subsidiaries: val ? data.subsidiaries : [],
-      engagements: val ? data.engagements : [],
-    });
-  };
+function ReportingStructureStep({ data, update }: { data: WizardState; update: (p: Partial<WizardState>) => void }) {
+  const patchSub = (i: number, p: Partial<Subsidiary>) =>
+    update({ subsidiaries: data.subsidiaries.map((s, j) => j === i ? { ...s, ...p } : s) });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-      <div>
-        <h3 style={{ margin: "0 0 6px", fontSize: 15, fontWeight: 700, color: INK }}>
-          Does this organisation have subsidiaries or operate through multiple legal entities?
-        </h3>
-        <p style={{ margin: "0 0 20px", fontSize: 13, color: SLATE, lineHeight: 1.65 }}>
-          This determines how GHG reports are structured and which entities appear in the boundary.
-        </p>
+      <p style={{ margin: 0, fontSize: 13, color: SLATE, lineHeight: 1.6 }}>
+        This determines how GHG emissions are reported across your legal structure. The right approach depends
+        on whether you have subsidiaries and how ownership control is exercised.
+      </p>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* Q1: Subsidiaries? */}
+      <div>
+        <p style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 600, color: INK }}>
+          Does <strong>{data.legalName || "your organisation"}</strong> have subsidiaries or group companies?
+        </p>
+        <div style={{ display: "flex", gap: 12 }}>
           {[
-            { val: false, label: "No — single legal entity", desc: "One company, one GHG report." },
-            { val: true,  label: "Yes — multiple legal entities", desc: "Parent with subsidiaries, branches, or joint ventures." },
-          ].map(opt => (
-            <ChoiceCard
-              key={String(opt.val)}
-              selected={data.has_subsidiaries === opt.val}
-              label={opt.label}
-              desc={opt.desc}
-              icon={opt.val ? <Layers style={{ width: 18, height: 18 }} /> : <Building2 style={{ width: 18, height: 18 }} />}
-              onClick={() => setHasSubs(opt.val)}
-            />
-          ))}
+            { key: true,  label: "Yes — we are a holding company or have subsidiaries",
+              desc: "You'll set a reporting approach for the group." },
+            { key: false, label: "No — standalone entity",
+              desc: "A single consolidated report covers the whole organisation." },
+          ].map(opt => {
+            const active = data.has_subsidiaries === opt.key;
+            return (
+              <button key={String(opt.key)} type="button"
+                onClick={() => update({
+                  has_subsidiaries: opt.key,
+                  reporting_model: opt.key ? data.reporting_model : "consolidated",
+                })}
+                style={{
+                  flex: 1, textAlign: "left", padding: "18px 20px", borderRadius: 12,
+                  border: `${active ? "2.5" : "1.5"}px solid ${active ? CANOPY : HAIRLINE}`,
+                  background: active ? MINT : "white",
+                  cursor: "pointer", transition: "all 0.2s",
+                  boxShadow: active ? "0 4px 16px rgba(30,79,60,0.18)" : "0 1px 3px rgba(0,0,0,0.04)",
+                  transform: active ? "translateY(-1px)" : "none",
+                }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <div style={{
+                    width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
+                    border: `2px solid ${active ? CANOPY : HAIRLINE}`,
+                    background: active ? CANOPY : "white",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    {active && <Check style={{ width: 10, height: 10, color: "white" }} />}
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>{opt.label}</span>
+                </div>
+                <p style={{ margin: 0, paddingLeft: 26, fontSize: 12, color: SLATE, lineHeight: 1.5 }}>{opt.desc}</p>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {data.has_subsidiaries && (
-        <div>
-          <h3 style={{ margin: "0 0 6px", fontSize: 15, fontWeight: 700, color: INK }}>
-            How will GHG reports be filed?
-          </h3>
-          <p style={{ margin: "0 0 20px", fontSize: 13, color: SLATE, lineHeight: 1.65 }}>
-            This sets the reporting structure. You can always refine engagement groupings on the next screen.
+      {/* Q2: Reporting model (only if has subsidiaries) */}
+      {data.has_subsidiaries === true && (
+        <div style={{ borderTop: `1px solid ${HAIRLINE}`, paddingTop: 24 }}>
+          <p style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 600, color: INK }}>
+            How will GHG emissions be reported across the group?
           </p>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
-              {
-                val: "consolidated" as const,
-                label: "Single consolidated report",
-                desc: "All entities rolled up into one GHG report at parent level.",
-                icon: <Layers style={{ width: 18, height: 18 }} />,
-              },
-              {
-                val: "separate" as const,
-                label: "Separate report per entity",
-                desc: "Each legal entity files its own standalone GHG report.",
-                icon: <FileText style={{ width: 18, height: 18 }} />,
-              },
-              {
-                val: "mixed" as const,
-                label: "Mixed — some entities consolidated, some standalone",
-                desc: "You will define custom groupings on the next screen.",
-                icon: <Building2 style={{ width: 18, height: 18 }} />,
-              },
-            ].map(opt => (
-              <ChoiceCard
-                key={opt.val}
-                selected={data.reporting_model === opt.val}
-                label={opt.label}
-                desc={opt.desc}
-                icon={opt.icon}
-                onClick={() => update({ reporting_model: opt.val, engagements: opt.val !== "mixed" ? [] : data.engagements })}
-              />
+              { key: "consolidated" as const,
+                label: "Consolidated",
+                desc: "One combined GHG report for the parent and all subsidiaries together. Scope boundaries are set at the group level." },
+              { key: "separate" as const,
+                label: "Separate",
+                desc: "Each legal entity reports independently. Emissions are not aggregated at the group level." },
+              { key: "mixed" as const,
+                label: "Mixed",
+                desc: "Some subsidiaries are consolidated into the parent report; others report separately. You'll define the scope for each entity." },
+            ].map(opt => {
+              const active = data.reporting_model === opt.key;
+              return (
+                <button key={opt.key} type="button"
+                  onClick={() => update({ reporting_model: opt.key })}
+                  style={{
+                    textAlign: "left", padding: "16px 20px", borderRadius: 12,
+                    border: `${active ? "2.5" : "1.5"}px solid ${active ? CANOPY : HAIRLINE}`,
+                    background: active ? MINT : "white",
+                    cursor: "pointer", transition: "all 0.2s",
+                    boxShadow: active ? "0 4px 16px rgba(30,79,60,0.18)" : "0 1px 3px rgba(0,0,0,0.04)",
+                    transform: active ? "translateY(-1px)" : "none",
+                  }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <div style={{
+                      width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
+                      border: `2px solid ${active ? CANOPY : HAIRLINE}`,
+                      background: active ? CANOPY : "white",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {active && <Check style={{ width: 9, height: 9, color: "white" }} />}
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>{opt.label}</span>
+                  </div>
+                  <p style={{ margin: 0, paddingLeft: 24, fontSize: 12, color: SLATE, lineHeight: 1.5 }}>
+                    {opt.desc}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Q3: Subsidiaries list (if has_subsidiaries and model chosen) */}
+      {data.has_subsidiaries === true && data.reporting_model !== null && (
+        <div style={{ borderTop: `1px solid ${HAIRLINE}`, paddingTop: 24 }}>
+          <p style={{ margin: "0 0 6px", fontSize: 14, fontWeight: 600, color: INK }}>
+            List your subsidiary companies
+          </p>
+          <p style={{ margin: "0 0 16px", fontSize: 12, color: SLATE, lineHeight: 1.6 }}>
+            You can add full details for each entity in subsequent steps. For now, just name each subsidiary.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {data.subsidiaries.map((s, i) => (
+              <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <div style={{
+                  width: 26, height: 26, borderRadius: "50%", flexShrink: 0, marginTop: 8,
+                  background: `linear-gradient(135deg, ${FOREST}, ${CANOPY})`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 10, fontWeight: 700, color: "white",
+                }}>
+                  {i + 1}
+                </div>
+                <input className="lov-input" style={{ flex: 1 }}
+                  value={s.name}
+                  onChange={e => patchSub(i, { name: e.target.value })}
+                  placeholder={`Subsidiary ${i + 1} name`} />
+                <input className="lov-input" style={{ width: 140 }}
+                  value={s.country}
+                  onChange={e => patchSub(i, { country: e.target.value })}
+                  placeholder="Country" />
+                {i > 0 && (
+                  <button type="button"
+                    onClick={() => update({ subsidiaries: data.subsidiaries.filter((_, j) => j !== i) })}
+                    style={{ background: "none", border: "none", color: SLATE, cursor: "pointer", padding: "8px 4px" }}>
+                    <Trash2 style={{ width: 14, height: 14 }} />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
+          <button type="button"
+            onClick={() => update({ subsidiaries: [...data.subsidiaries, { name: "", country: "India" }] })}
+            className="lov-add-link" style={{ marginTop: 12 }}>
+            <Plus style={{ width: 14, height: 14 }} /> Add subsidiary
+          </button>
+        </div>
+      )}
+
+      {/* Standalone confirmation */}
+      {data.has_subsidiaries === false && (
+        <div style={{
+          padding: "14px 18px", borderRadius: 10,
+          background: MINT, border: `1px solid oklch(0.85 0.05 155)`,
+          fontSize: 13, color: CANOPY, lineHeight: 1.6,
+        }}>
+          <strong>Single-entity consolidated report.</strong>{" "}
+          Your GHG inventory will cover {data.legalName || "your organisation"} as a single legal and operating entity.
+          All facilities added in the next step are included within this scope.
         </div>
       )}
     </div>
   );
 }
 
-// ── Step 2: Legal Entities ────────────────────────────────────────────────────
+// ── Step 3: Facilities ────────────────────────────────────────────────────────
 
-function LegalEntitiesStep({ data, update }: { data: WizardState; update: (p: Partial<WizardState>) => void }) {
-  const add = () => update({
-    subsidiaries: [
-      ...data.subsidiaries,
-      { code: "", name: "", short_name: "", country: "India", registration_no: "", tax_id: "", org_type: "subsidiary", legal_address: "" },
-    ],
-  });
+function FacilitiesStep({ data, update }: { data: WizardState; update: (p: Partial<WizardState>) => void }) {
+  const patchFacility = (i: number, p: Partial<Facility>) =>
+    update({ facilities: data.facilities.map((f, j) => j === i ? { ...f, ...p } : f) });
 
-  const patch = (i: number, p: Partial<typeof data.subsidiaries[0]>) =>
-    update({ subsidiaries: data.subsidiaries.map((s, j) => j === i ? { ...s, ...p } : s) });
+  const addFacility = () =>
+    update({ facilities: [...data.facilities, { name: "", address: "" }] });
 
-  const remove = (i: number) =>
-    update({ subsidiaries: data.subsidiaries.filter((_, j) => j !== i) });
+  const removeFacility = (i: number) =>
+    update({ facilities: data.facilities.filter((_, j) => j !== i) });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-      <p style={{ margin: 0, fontSize: 14, color: SLATE, lineHeight: 1.6 }}>
-        Add each subsidiary, branch, or joint venture that is part of your GHG reporting boundary.
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <p style={{ margin: 0, fontSize: 13, color: SLATE, lineHeight: 1.6 }}>
+        Include every physical location where this organisation operates. Facility 1 is auto-filled from your registered address.
       </p>
 
-      {data.subsidiaries.map((s, i) => (
+      {data.facilities.map((f, i) => (
         <div key={i} style={{ border: `1px solid ${HAIRLINE}`, borderRadius: 10, padding: "20px 24px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
             <div style={{ width: 24, height: 24, borderRadius: "50%", background: CANOPY, flexShrink: 0,
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "white" }}>
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 10, fontWeight: 700, color: "white" }}>
               {i + 1}
             </div>
             <span style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: INK }}>
-              Entity {i + 1}
+              {i === 0 ? "Head Office" : `Facility ${i + 1}`}
             </span>
-            <button type="button" onClick={() => remove(i)}
-              style={{ marginLeft: "auto", background: "none", border: "none", color: SLATE, cursor: "pointer", padding: "2px 4px" }}>
-              <Trash2 style={{ width: 14, height: 14 }} />
-            </button>
+            {i > 0 && (
+              <button type="button" onClick={() => removeFacility(i)}
+                style={{ marginLeft: "auto", background: "none", border: "none", color: SLATE, cursor: "pointer" }}>
+                <Trash2 style={{ width: 14, height: 14 }} />
+              </button>
+            )}
           </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <Field label="Legal entity name" required>
-                <input className="lov-input" value={s.name}
-                  onChange={e => patch(i, { name: e.target.value, short_name: e.target.value.slice(0, 8) })}
-                  placeholder="Acme Manufacturing Pvt Ltd" />
-              </Field>
-              <Field label="Short code (unique, up to 8 chars)" required>
-                <input className="lov-input" value={s.code}
-                  onChange={e => patch(i, { code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8) })}
-                  placeholder="ACMEMFG" />
-              </Field>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <Field label="Country">
-                <select className="lov-select" value={s.country} onChange={e => patch(i, { country: e.target.value })}>
-                  {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </Field>
-              <Field label="Entity type">
-                <select className="lov-select" value={s.org_type} onChange={e => patch(i, { org_type: e.target.value })}>
-                  {ORG_TYPES.filter(t => t.value !== "parent").map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-              </Field>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <Field label="Registration number">
-                <input className="lov-input" value={s.registration_no}
-                  onChange={e => patch(i, { registration_no: e.target.value })} placeholder="U12345…" />
-              </Field>
-              <Field label="GSTIN / Tax ID">
-                <input className="lov-input" value={s.tax_id}
-                  onChange={e => patch(i, { tax_id: e.target.value })} placeholder="22AAAAA…" />
-              </Field>
-            </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <Field label="Facility name" required>
+              <input className="lov-input" value={f.name}
+                onChange={e => patchFacility(i, { name: e.target.value })}
+                placeholder={i === 0 ? "Head Office" : "Facility name"} />
+            </Field>
+            <Field label="Facility address">
+              <textarea className="lov-textarea" rows={2} value={f.address}
+                onChange={e => patchFacility(i, { address: e.target.value })}
+                placeholder="Full physical address" />
+            </Field>
           </div>
         </div>
       ))}
 
-      <button type="button" onClick={add} className="lov-add-link">
-        <Plus style={{ width: 14, height: 14 }} /> Add another legal entity
+      <button type="button" onClick={addFacility} className="lov-add-link">
+        <Plus style={{ width: 14, height: 14 }} /> Add another facility
       </button>
     </div>
   );
 }
 
-// ── Step 3: Engagement Groups (mixed only) ────────────────────────────────────
+// ── Step 4: Manage Team ───────────────────────────────────────────────────────
 
-function EngagementGroupsStep({ data, update }: { data: WizardState; update: (p: Partial<WizardState>) => void }) {
-  const parentCode = makeCode(data.legalName);
-  const allCodes = [{ code: parentCode, name: data.legalName }, ...data.subsidiaries.map(s => ({ code: s.code, name: s.name }))];
+function TeamStep({ data, update }: { data: WizardState; update: (p: Partial<WizardState>) => void }) {
+  const patchMember = (i: number, p: Partial<TeamMember>) =>
+    update({ team: data.team.map((m, j) => j === i ? { ...m, ...p } : m) });
 
-  const addEngagement = () => update({
-    engagements: [
-      ...data.engagements,
-      { name: "", report_type: "consolidated", legal_entity_codes: [], reporting_entity_code: "" },
-    ],
-  });
+  const addMember = () =>
+    update({ team: [...data.team, { name: "", email: "", role: "viewer" }] });
 
-  const patchEng = (i: number, p: Partial<ReportingEngagement>) =>
-    update({ engagements: data.engagements.map((e, j) => j === i ? { ...e, ...p } : e) });
-
-  const removeEng = (i: number) =>
-    update({ engagements: data.engagements.filter((_, j) => j !== i) });
-
-  const toggleCode = (i: number, code: string) => {
-    const eng = data.engagements[i];
-    const codes = eng.legal_entity_codes.includes(code)
-      ? eng.legal_entity_codes.filter(c => c !== code)
-      : [...eng.legal_entity_codes, code];
-    patchEng(i, { legal_entity_codes: codes });
-  };
+  const removeMember = (i: number) =>
+    update({ team: data.team.filter((_, j) => j !== i) });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <p style={{ margin: 0, fontSize: 14, color: SLATE, lineHeight: 1.6 }}>
-        Define named GHG reporting engagements. Each engagement groups one or more legal entities
-        into a report, keyed to a single reporting entity code.
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <p style={{ margin: 0, fontSize: 13, color: SLATE, lineHeight: 1.6 }}>
+        Add people who should have access to this entity. Access is scoped to this entity only.
       </p>
 
-      {data.engagements.map((eng, i) => (
+      {data.team.map((m, i) => (
         <div key={i} style={{ border: `1px solid ${HAIRLINE}`, borderRadius: 10, padding: "20px 24px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
             <span style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: INK }}>
-              Engagement {i + 1}
+              Team member {i + 1}
             </span>
-            <button type="button" onClick={() => removeEng(i)}
-              style={{ marginLeft: "auto", background: "none", border: "none", color: SLATE, cursor: "pointer" }}>
-              <Trash2 style={{ width: 14, height: 14 }} />
-            </button>
+            {i > 0 && (
+              <button type="button" onClick={() => removeMember(i)}
+                style={{ marginLeft: "auto", background: "none", border: "none", color: SLATE, cursor: "pointer" }}>
+                <Trash2 style={{ width: 14, height: 14 }} />
+              </button>
+            )}
           </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <Field label="Engagement name">
-                <input className="lov-input" value={eng.name}
-                  onChange={e => patchEng(i, { name: e.target.value })} placeholder="Consolidated GHG Report" />
-              </Field>
-              <Field label="Report type">
-                <select className="lov-select" value={eng.report_type}
-                  onChange={e => patchEng(i, { report_type: e.target.value as "consolidated" | "standalone" })}>
-                  <option value="consolidated">Consolidated</option>
-                  <option value="standalone">Standalone</option>
-                </select>
-              </Field>
-            </div>
-
-            <Field label="Entities in scope">
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
-                {allCodes.map(({ code, name }) => {
-                  const sel = eng.legal_entity_codes.includes(code);
-                  return (
-                    <button key={code} type="button"
-                      onClick={() => toggleCode(i, code)}
-                      style={{
-                        padding: "5px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600,
-                        border: `1.5px solid ${sel ? CANOPY : HAIRLINE}`,
-                        background: sel ? "oklch(0.96 0.03 155)" : "white",
-                        color: sel ? CANOPY : SLATE, cursor: "pointer",
-                      }}>
-                      {code} — {name}
-                    </button>
-                  );
-                })}
-              </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+            <Field label="Full name">
+              <input className="lov-input" value={m.name}
+                onChange={e => patchMember(i, { name: e.target.value })}
+                placeholder="Jane Smith" />
             </Field>
-
-            <Field label="Reporting entity (the GHG data is filed under this code)">
-              <select className="lov-select" value={eng.reporting_entity_code}
-                onChange={e => patchEng(i, { reporting_entity_code: e.target.value })}>
-                <option value="">Select…</option>
-                {eng.legal_entity_codes.map(code => {
-                  const n = allCodes.find(a => a.code === code);
-                  return <option key={code} value={code}>{code} — {n?.name}</option>;
-                })}
+            <Field label="Email">
+              <input className="lov-input" type="email" value={m.email}
+                onChange={e => patchMember(i, { email: e.target.value })}
+                placeholder="jane@company.com" />
+            </Field>
+            <Field label="Role">
+              <select className="lov-select" value={m.role}
+                onChange={e => patchMember(i, { role: e.target.value })}>
+                <option value="admin">Account Admin</option>
+                <option value="sustainability_team">Sustainability Team</option>
+                <option value="client_uploader">Data Contributor</option>
+                <option value="client_leadership">Viewer</option>
               </select>
             </Field>
           </div>
         </div>
       ))}
 
-      <button type="button" onClick={addEngagement} className="lov-add-link">
-        <Plus style={{ width: 14, height: 14 }} /> Add reporting engagement
+      <button type="button" onClick={addMember} className="lov-add-link">
+        <Plus style={{ width: 14, height: 14 }} /> Add team member
       </button>
     </div>
   );
 }
 
-// ── Step 4: Review & Confirm ──────────────────────────────────────────────────
+// ── Step 5: Payment ───────────────────────────────────────────────────────────
 
-function ReviewStep({ data, steps }: { data: WizardState; steps: string[] }) {
-  const model = data.has_subsidiaries ? (data.reporting_model ?? "consolidated") : "consolidated";
-  const modelLabel = { consolidated: "Consolidated", separate: "Separate per entity", mixed: "Mixed" }[model];
+function PaymentStep() {
+  return (
+    <div style={{ maxWidth: 580 }}>
+      <div style={{
+        border: `1px solid ${HAIRLINE}`, borderRadius: 10, overflow: "hidden",
+        marginBottom: 20,
+      }}>
+        <div style={{ height: 4, background: `linear-gradient(90deg, ${FOREST}, ${CANOPY})` }} />
+        <div style={{ padding: "24px 28px" }}>
+          <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, textTransform: "uppercase",
+            letterSpacing: "0.07em", color: SLATE }}>
+            Plan
+          </p>
+          <h2 style={{ margin: "0 0 16px", fontSize: 18, fontWeight: 700, color: INK }}>
+            Deepwoods Decarb Portal — Annual Access
+          </h2>
+          <ul style={{ margin: "0 0 16px", padding: "0 0 0 18px", fontSize: 13, lineHeight: 1.9, color: SLATE }}>
+            <li>Full Scope 1, 2 and 3 GHG inventory for this entity</li>
+            <li>Facility-level data submission and document vault</li>
+            <li>Annual assured GHG report package</li>
+            <li>Decarbonisation pathway and peer benchmarking modules</li>
+            <li>Carbon footprint dashboards and intensity metrics</li>
+          </ul>
+          <div style={{
+            padding: "12px 16px", borderRadius: 8,
+            background: MINT, border: `1px solid oklch(0.85 0.05 155)`,
+            fontSize: 13, color: CANOPY, lineHeight: 1.6,
+          }}>
+            <strong>Pricing is confirmed manually.</strong> A Deepwoods consultant will review your registration
+            and confirm the engagement terms. Nothing is charged automatically.
+          </div>
+        </div>
+      </div>
+
+      <p style={{ margin: 0, fontSize: 13, color: SLATE, lineHeight: 1.65 }}>
+        Once your registration is reviewed and payment is confirmed at the account level,
+        the entire workspace is unlocked for all users on this account.
+      </p>
+    </div>
+  );
+}
+
+// ── Step 6: Submit / Review ───────────────────────────────────────────────────
+
+function SubmitStep({ data }: { data: WizardState }) {
+  const modelLabel: Record<string, string> = {
+    consolidated: "Consolidated (single report for all entities)",
+    separate: "Separate (each entity reports independently)",
+    mixed: "Mixed (consolidated + separate, by entity)",
+  };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-      <p style={{ margin: 0, fontSize: 14, color: SLATE, lineHeight: 1.6 }}>
-        Review your organisation boundary. Once submitted, a Deepwoods consultant will confirm your
-        engagement and discuss payment before GHG data collection is unlocked.
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      <p style={{ margin: 0, fontSize: 13, color: SLATE, lineHeight: 1.6 }}>
+        Review your registration details before submitting to Deepwoods for review.
       </p>
 
-      <Section title="Organisation">
-        <RR label="Legal name"        value={data.legalName || "—"} />
+      <ReviewSection title="Company Details">
+        <RR label="Legal name"    value={data.legalName  || "—"} />
         {data.operatingName && <RR label="Operating name" value={data.operatingName} />}
-        <RR label="Industry"          value={data.industry || "—"} />
-        <RR label="Country"           value={data.country || "—"} />
-        {data.registration_no && <RR label="Registration No." value={data.registration_no} />}
-        {data.tax_id && <RR label="Tax ID / GSTIN" value={data.tax_id} />}
-        <RR label="Registered address" value={data.legal_address || "—"} />
-      </Section>
+        <RR label="Industry"      value={data.industry   || "—"} />
+        {data.org_type && <RR label="Org type" value={data.org_type} />}
+        <RR label="Registered in India" value={data.is_india ? "Yes" : "No"} />
+        {data.gstin && <RR label="GSTIN" value={data.gstin} />}
+        <RR label="MSME"          value={data.is_msme ? "Yes" : "No"} />
+        <RR label="Legal address" value={data.legal_address || "—"} />
+        {data.website && <RR label="Website" value={data.website} />}
+      </ReviewSection>
 
-      <Section title="Reporting Structure">
-        <RR label="Reporting model" value={modelLabel} />
-        <RR label="Total legal entities" value={String(1 + data.subsidiaries.length)} />
-        {data.subsidiaries.length > 0 && data.subsidiaries.map((s, i) => (
-          <RR key={i} label={`Entity ${i + 2}`} value={`${s.name} (${s.code})`} />
+      <ReviewSection title="Reporting Structure">
+        <RR label="Has subsidiaries"    value={data.has_subsidiaries === null ? "—" : data.has_subsidiaries ? "Yes" : "No"} />
+        {data.reporting_model && (
+          <RR label="Reporting model" value={modelLabel[data.reporting_model] ?? data.reporting_model} />
+        )}
+        {data.has_subsidiaries && data.subsidiaries.some(s => s.name) && data.subsidiaries.map((s, i) => (
+          <RR key={i} label={`Subsidiary ${i + 1}`} value={[s.name, s.country].filter(Boolean).join(" — ")} />
         ))}
-      </Section>
+      </ReviewSection>
 
-      {data.engagements.length > 0 && (
-        <Section title="Reporting Engagements">
-          {data.engagements.map((e, i) => (
-            <RR key={i}
-              label={e.name || `Engagement ${i + 1}`}
-              value={`${e.report_type === "consolidated" ? "Consolidated" : "Standalone"} · ${e.reporting_entity_code} · ${(e.legal_entity_codes || []).join(", ")}`}
-            />
+      <ReviewSection title="Facilities">
+        {data.facilities.map((f, i) => (
+          <RR key={i} label={i === 0 ? "Head Office" : `Facility ${i + 1}`}
+            value={[f.name, f.address].filter(Boolean).join(" — ") || "—"} />
+        ))}
+      </ReviewSection>
+
+      {data.team.some(m => m.name || m.email) && (
+        <ReviewSection title="Team Members">
+          {data.team.filter(m => m.name || m.email).map((m, i) => (
+            <RR key={i} label={m.role || "Member"} value={[m.name, m.email].filter(Boolean).join(" — ")} />
           ))}
-        </Section>
+        </ReviewSection>
       )}
 
       <div style={{
         padding: "14px 18px", borderRadius: 10,
-        background: "oklch(0.97 0.01 250)", border: "1px solid oklch(0.88 0.02 250)",
+        background: "#EEF3F0", border: `1px solid ${HAIRLINE}`,
         fontSize: 13, color: SLATE, lineHeight: 1.6,
       }}>
-        <strong style={{ color: INK }}>About payment:</strong> Payment is confirmed at the account level by a
-        Deepwoods consultant. Once confirmed, your entire workspace is unlocked — no per-entity fees apply at
-        this stage.
+        <strong style={{ color: INK }}>What happens next:</strong> Your registration will be submitted to Deepwoods for
+        review. Once confirmed and payment is processed at the account level, your full workspace is unlocked.
       </div>
     </div>
   );
@@ -721,38 +893,24 @@ function ReviewStep({ data, steps }: { data: WizardState; steps: string[] }) {
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
-function ChoiceCard({ selected, label, desc, icon, onClick }: {
-  selected: boolean; label: string; desc: string;
-  icon: React.ReactNode; onClick: () => void;
+function Field({ label, required, hint, children }: {
+  label: string; required?: boolean; hint?: string; children: React.ReactNode;
 }) {
   return (
-    <button type="button" onClick={onClick} style={{
-      display: "flex", alignItems: "flex-start", gap: 14, width: "100%", textAlign: "left",
-      padding: "16px 20px", borderRadius: 10, border: `2px solid ${selected ? CANOPY : HAIRLINE}`,
-      background: selected ? "oklch(0.97 0.02 158)" : "white", cursor: "pointer",
-      transition: "border-color 0.15s, background 0.15s",
-    }}>
-      <div style={{
-        width: 36, height: 36, borderRadius: 8, background: selected ? CANOPY : MINT,
-        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-        color: selected ? "white" : CANOPY,
-      }}>
-        {icon}
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 7 }}>
+        <label style={{ fontSize: 13, fontWeight: 600, color: INK }}>{label}</label>
+        {required && <span style={{ fontSize: 10, color: CORAL }}>●</span>}
       </div>
-      <div>
-        <p style={{ margin: "0 0 3px", fontSize: 14, fontWeight: 700, color: INK }}>{label}</p>
-        <p style={{ margin: 0, fontSize: 12, color: SLATE, lineHeight: 1.5 }}>{desc}</p>
-      </div>
-      {selected && (
-        <div style={{ marginLeft: "auto", flexShrink: 0 }}>
-          <Check style={{ width: 16, height: 16, color: CANOPY }} />
-        </div>
+      {children}
+      {hint && (
+        <p style={{ margin: "7px 0 0", fontSize: 12, color: "#94A3B8", lineHeight: 1.6 }}>{hint}</p>
       )}
-    </button>
+    </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function ReviewSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
       <h3 style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em",
@@ -767,74 +925,29 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function RR({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-      <span style={{ flex: "0 0 200px", fontSize: 12, fontWeight: 600, color: SLATE, lineHeight: 1.5 }}>{label}</span>
+      <span style={{ flex: "0 0 180px", fontSize: 12, fontWeight: 600, color: SLATE, lineHeight: 1.5 }}>{label}</span>
       <span style={{ fontSize: 13, color: INK, flex: 1, lineHeight: 1.5, wordBreak: "break-word" }}>{value}</span>
     </div>
   );
 }
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6 }}>
-        <label style={{ fontSize: 13, fontWeight: 600, color: INK }}>{label}</label>
-        {required && <span style={{ fontSize: 10, color: CORAL }}>●</span>}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-// ── RingStepper ───────────────────────────────────────────────────────────────
-
-function RingStepper({ steps, current }: { steps: string[]; current: number }) {
-  return (
-    <div style={{ display: "flex", alignItems: "flex-start", overflowX: "auto" }}>
-      {steps.map((label, i) => {
-        const done = i < current; const active = i === current;
-        return (
-          <Fragment key={label}>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 0 }}>
-              <div style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
-                background: done ? CANOPY : "transparent",
-                border: done ? "none" : active ? `2px solid ${CORAL}` : `2px solid ${HAIRLINE}`,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 12, fontWeight: 700, color: done ? "white" : active ? CORAL : SLATE }}>
-                {done ? <Check style={{ width: 13, height: 13 }} /> : i + 1}
-              </div>
-              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
-                color: active ? CORAL : done ? CANOPY : SLATE, textAlign: "center", whiteSpace: "nowrap", maxWidth: 90 }}>
-                {label}
-              </span>
-            </div>
-            {i < steps.length - 1 && (
-              <div style={{ flex: 1, height: 1, background: i < current ? CANOPY : HAIRLINE, margin: "0 6px", marginTop: 15 }} />
-            )}
-          </Fragment>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function makeCode(s: string): string {
-  return s.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) || "ENTITY";
-}
-
 // ── CSS ───────────────────────────────────────────────────────────────────────
 
 const LOV_CSS = `
-.lov-input,.lov-select,.lov-textarea{width:100%;padding:9px 12px;border:1px solid ${HAIRLINE};border-radius:8px;font-size:14px;color:${INK};background:white;font-family:inherit;outline:none;box-sizing:border-box;transition:border-color 0.15s}
-.lov-input:focus,.lov-select:focus,.lov-textarea:focus{border-color:${CORAL}}
-.lov-textarea{resize:vertical}.lov-select{appearance:auto}
-.lov-add-link{display:inline-flex;align-items:center;gap:6px;padding:0;background:none;border:none;color:${CORAL};font-size:13px;font-weight:600;cursor:pointer}
+.lov-input,.lov-select,.lov-textarea{width:100%;padding:10px 14px;border:1.5px solid ${HAIRLINE};border-radius:9px;font-size:14px;color:${INK};background:white;font-family:inherit;outline:none;box-sizing:border-box;transition:border-color 0.15s,box-shadow 0.15s;appearance:auto}
+.lov-input:focus,.lov-select:focus,.lov-textarea:focus{border-color:${CANOPY};box-shadow:0 0 0 3px rgba(30,111,92,0.12)}
+.lov-input::placeholder,.lov-textarea::placeholder{color:#BCC5BF}
+.lov-textarea{resize:vertical;min-height:80px;line-height:1.6}
+.lov-add-link{display:inline-flex;align-items:center;gap:6px;padding:0;background:none;border:none;color:${CANOPY};font-size:13px;font-weight:600;cursor:pointer;margin-top:4px}
 .lov-add-link:hover{text-decoration:underline}
-.lov-btn-primary{display:inline-flex;align-items:center;gap:8px;padding:10px 28px;border-radius:8px;background:${CANOPY};border:none;color:white;font-size:13px;font-weight:600;cursor:pointer;transition:opacity 0.15s}
-.lov-btn-primary:hover:not(:disabled){opacity:0.88}.lov-btn-primary:disabled{opacity:0.5;cursor:not-allowed}
-.lov-btn-back{display:inline-flex;align-items:center;gap:6px;padding:10px 20px;border-radius:8px;border:1.5px solid ${CORAL};background:transparent;color:${CORAL};font-size:13px;font-weight:600;cursor:pointer}
-.lov-btn-back:hover{background:${CTINT}}
-.lov-btn-next{display:inline-flex;align-items:center;gap:6px;padding:10px 24px;border-radius:8px;border:none;font-size:13px;font-weight:600}
+.lov-btn-primary{display:inline-flex;align-items:center;gap:8px;padding:13px 32px;border-radius:10px;background:linear-gradient(135deg,${FOREST},${CANOPY});border:none;color:white;font-size:14px;font-weight:700;cursor:pointer;transition:opacity 0.15s,transform 0.1s;box-shadow:0 3px 10px rgba(30,111,92,0.3);font-family:inherit}
+.lov-btn-primary:hover:not(:disabled){opacity:0.88}.lov-btn-primary:active:not(:disabled){transform:translateY(1px)}.lov-btn-primary:disabled{opacity:0.45;cursor:not-allowed;background:#9CA3AF;box-shadow:none}
+.lov-btn-back{display:inline-flex;align-items:center;gap:6px;padding:11px 22px;border-radius:10px;border:1.5px solid ${HAIRLINE};background:white;color:${SLATE};font-size:14px;font-weight:600;cursor:pointer;transition:border-color 0.15s;font-family:inherit}
+.lov-btn-back:hover{border-color:${CANOPY};color:${CANOPY}}
+.lov-btn-next{display:inline-flex;align-items:center;gap:6px;padding:13px 28px;border-radius:10px;border:none;font-size:14px;font-weight:700;box-shadow:0 3px 10px rgba(30,111,92,0.3);font-family:inherit;transition:opacity 0.15s,transform 0.1s}
+.lov-btn-next:active{transform:translateY(1px)}
+.lov-yn{display:inline-flex;background:#EEF3F0;border:1.5px solid ${HAIRLINE};border-radius:9px;padding:3px;gap:3px}
+.lov-yn-btn{border:0;background:transparent;padding:8px 24px;font-size:13px;font-weight:500;cursor:pointer;color:#9CA3AF;font-family:inherit;border-radius:7px;transition:all 0.18s;line-height:1;letter-spacing:0.01em}
+.lov-yn-btn.active{background:white;color:${FOREST};font-weight:700;box-shadow:0 2px 8px rgba(30,79,60,0.22),0 0 0 1.5px rgba(30,79,60,0.28);border-top:2.5px solid ${CANOPY}}
 @keyframes lov-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 `;
