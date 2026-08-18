@@ -33,7 +33,7 @@ function get_client_info(PDO $pdo, int $client_id): array {
     }
 
     return [
-        'name'       => $client['name']  ?? 'GHG Portal',
+        'name'       => $client['name']  ?? 'Decarbonisation Portal',
         'slug'       => $client['slug']  ?? '',
         'portal_url' => $portalUrl,
     ];
@@ -160,7 +160,7 @@ HTML;
 <!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>{$client_name_safe} GHG Portal — Notification</title></head>
+<title>{$client_name_safe} Decarbonisation Portal — Notification</title></head>
 <body style="margin:0;padding:0;background:#F0F4F8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F4F8;padding:32px 16px;">
 <tr><td align="center">
@@ -173,7 +173,7 @@ HTML;
         <span style="color:#fff;font-size:18px;font-weight:800;">D</span>
       </div>
       <div>
-        <div style="color:#fff;font-size:16px;font-weight:700;letter-spacing:-.01em;">{$client_name_safe} GHG Portal</div>
+        <div style="color:#fff;font-size:16px;font-weight:700;letter-spacing:-.01em;">{$client_name_safe} Decarbonisation Portal</div>
         <div style="color:#94A3B8;font-size:12px;">Alert Centre Digest &mdash; {$date}</div>
       </div>
     </div>
@@ -205,7 +205,7 @@ HTML;
   <!-- Footer -->
   <tr><td style="background:{$navy};padding:16px 32px;">
     <p style="margin:0;font-size:11px;color:#64748B;text-align:center;">
-      {$client_name_safe} GHG Portal &mdash; Powered by <b style="color:#94A3B8;">Deepwoods Green</b>
+      {$client_name_safe} Decarbonisation Portal &mdash; Powered by <b style="color:#94A3B8;">Deepwoods Green</b>
     </p>
   </td></tr>
 
@@ -239,8 +239,8 @@ function send_to_user(
 
     $high = count(array_filter($actions, fn($a) => ($a['priority'] ?? '') === 'High'));
     $subject = $high > 0
-        ? "⚠ {$high} urgent action(s) — {$client_name} GHG Portal"
-        : "{$client_name} GHG Portal — Notification Digest";
+        ? "⚠ {$high} urgent action(s) — {$client_name} Decarbonisation Portal"
+        : "{$client_name} Decarbonisation Portal — Notification Digest";
 
     try {
         $smtp = new Smtp($cfg['host'], $cfg['port'], $cfg['username'], $cfg['app_password'], $cfg['from_email'], $cfg['from_name']);
@@ -304,7 +304,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $sent = 0; $failed = 0;
     foreach ($due as $prefs) {
         $client_id   = (int)($prefs['client_id'] ?? 0);
-        $client_info = $client_id ? get_client_info($pdo, $client_id) : ['name' => 'GHG Portal', 'portal_url' => ''];
+        $client_info = $client_id ? get_client_info($pdo, $client_id) : ['name' => 'Decarbonisation Portal', 'portal_url' => ''];
         $items       = $client_id ? get_priority_items($pdo, $client_id) : ['actions' => [], 'updates' => []];
         $ok = send_to_user(
             $prefs['user_email'], $prefs,
@@ -336,7 +336,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'frequency' => 'manual', 'include_actions' => 1, 'include_updates' => 1,
     ];
 
-    $client_info = $client_id ? get_client_info($pdo, $client_id) : ['name' => 'GHG Portal', 'portal_url' => ''];
+    $client_info = $client_id ? get_client_info($pdo, $client_id) : ['name' => 'Decarbonisation Portal', 'portal_url' => ''];
     $items       = $client_id ? get_priority_items($pdo, $client_id) : ['actions' => [], 'updates' => []];
 
     // Also BCC test address if configured

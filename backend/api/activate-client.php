@@ -9,7 +9,6 @@
 
 declare(strict_types=1);
 require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/Smtp.php';
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -28,31 +27,36 @@ $method = $_SERVER['REQUEST_METHOD'];
 // ── GET — list all clients ────────────────────────────────────────────────────
 
 if ($method === 'GET') {
-    $stmt = $pdo->query(
-        "SELECT c.id, c.name, c.slug, c.is_active, c.activated_at, c.created_at,
-                c.invoice_ref, c.payment_status, c.payment_date, c.payment_notes,
-                (SELECT COUNT(*) FROM users u WHERE u.client_id = c.id) AS user_count,
-                (SELECT cc.config_value FROM client_config cc
-                 WHERE cc.client_id = c.id AND cc.config_key = 'setup_complete') AS setup_complete,
-                (SELECT cc2.config_value FROM client_config cc2
-                 WHERE cc2.client_id = c.id AND cc2.config_key = 'ghg_setup_done') AS ghg_setup_done,
-                (SELECT cc3.config_value FROM client_config cc3
-                 WHERE cc3.client_id = c.id AND cc3.config_key = 'contact_email') AS contact_email,
-                (SELECT cc4.config_value FROM client_config cc4
-                 WHERE cc4.client_id = c.id AND cc4.config_key = 'payment_requested') AS payment_requested,
-                (SELECT cc5.config_value FROM client_config cc5
-                 WHERE cc5.client_id = c.id AND cc5.config_key = 'payment_complete') AS payment_complete
-         FROM clients c
-         ORDER BY c.created_at DESC"
-    );
-    $rows = $stmt->fetchAll();
-    foreach ($rows as &$r) {
-        $r['id']         = (int)$r['id'];
-        $r['is_active']  = (bool)$r['is_active'];
-        $r['user_count'] = (int)$r['user_count'];
+    try {
+        $stmt = $pdo->query(
+            "SELECT c.id, c.name, c.slug, c.is_active, c.activated_at, c.created_at,
+                    c.invoice_ref, c.payment_status, c.payment_date, c.payment_notes,
+                    (SELECT COUNT(*) FROM users u WHERE u.client_id = c.id) AS user_count,
+                    (SELECT cc.config_value FROM client_config cc
+                     WHERE cc.client_id = c.id AND cc.config_key = 'setup_complete') AS setup_complete,
+                    (SELECT cc2.config_value FROM client_config cc2
+                     WHERE cc2.client_id = c.id AND cc2.config_key = 'ghg_setup_done') AS ghg_setup_done,
+                    (SELECT cc3.config_value FROM client_config cc3
+                     WHERE cc3.client_id = c.id AND cc3.config_key = 'contact_email') AS contact_email,
+                    (SELECT cc4.config_value FROM client_config cc4
+                     WHERE cc4.client_id = c.id AND cc4.config_key = 'payment_requested') AS payment_requested,
+                    (SELECT cc5.config_value FROM client_config cc5
+                     WHERE cc5.client_id = c.id AND cc5.config_key = 'payment_complete') AS payment_complete
+             FROM clients c
+             ORDER BY c.created_at DESC"
+        );
+        $rows = $stmt->fetchAll();
+        foreach ($rows as &$r) {
+            $r['id']         = (int)$r['id'];
+            $r['is_active']  = (bool)$r['is_active'];
+            $r['user_count'] = (int)$r['user_count'];
+        }
+        unset($r);
+        dolphin_send_json($rows);
+    } catch (PDOException $e) {
+        error_log('activate-client.php GET error: ' . $e->getMessage());
+        dolphin_send_json(['error' => 'activate-client GET failed: ' . $e->getMessage()], 500);
     }
-    unset($r);
-    dolphin_send_json($rows);
 }
 
 // ── POST — activate or deactivate a client ────────────────────────────────────
@@ -237,6 +241,7 @@ if ($method === 'PATCH') {
 
             if (!empty($smtpCfg['host']) && !empty($smtpCfg['username']) && !empty($smtpCfg['app_password'])) {
                 try {
+                    require_once __DIR__ . '/Smtp.php';
                     $smtp = new Smtp(
                         $smtpCfg['host'],
                         (int)($smtpCfg['port'] ?? 587),

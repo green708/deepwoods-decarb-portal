@@ -79,7 +79,7 @@ function Slide1({ clientName }: { clientName: string }) {
         <div>
           <div className="text-[10px] font-bold uppercase tracking-widest text-[var(--navy-2)]">1 of 3</div>
           <h2 className="text-xl font-bold text-[var(--navy)]">
-            {clientName ? `Welcome, ${clientName}` : "Welcome to your GHG portal"}
+            {clientName ? `Welcome, ${clientName}` : "Welcome to your Decarbonisation Portal"}
           </h2>
         </div>
       </div>
@@ -197,7 +197,7 @@ function Onboard() {
 
   useEffect(() => {
     if (!token) { navigate({ to: "/" }); return; }
-    if (role && DEEPWOODS_ROLES.includes(role)) { navigate({ to: "/workstreams" }); return; }
+    if (role && DEEPWOODS_ROLES.includes(role)) { navigate({ to: "/home" }); return; }
     authFetch("context.php")
       .then((ctx: any) => {
         setClientName(ctx?.client?.name ?? "");
@@ -207,7 +207,7 @@ function Onboard() {
 
   const finish = () => {
     localStorage.setItem("decarb_orientation_done", "1");
-    navigate({ to: "/workstreams" });
+    navigate({ to: "/home" });
   };
 
   const TOTAL = 3;

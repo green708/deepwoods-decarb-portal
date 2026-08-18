@@ -66,7 +66,7 @@ if (
             $smtpCfg['username'],
             $smtpCfg['app_password'],
             $smtpCfg['from_email'] ?? $smtpCfg['username'],
-            $smtpCfg['from_name']  ?? 'Deepwoods GHG Portal',
+            $smtpCfg['from_name']  ?? 'Deepwoods Decarbonisation Portal',
         );
 
         $clientNameHtml = htmlspecialchars($client['name']);
@@ -76,7 +76,7 @@ if (
 <html><body style="font-family:Arial,sans-serif;color:#1a1a1a;max-width:560px;margin:0 auto;padding:24px">
 <h2 style="color:#1E6F5C;margin-top:0">&#128276; Payment request — {$clientNameHtml}</h2>
 <p>Hello,</p>
-<p><strong>{$clientNameHtml}</strong> has completed their organisational boundary setup on the GHG Portal and is ready to proceed with payment.</p>
+<p><strong>{$clientNameHtml}</strong> has completed their organisational boundary setup on the Decarbonisation Portal and is ready to proceed with payment.</p>
 <p>Please:</p>
 <ol style="padding-left:20px;font-size:14px;line-height:1.8">
   <li>Send the invoice to the client manually</li>
@@ -85,7 +85,7 @@ if (
 <p style="margin-top:24px">
   <a href="{$adminUrl}" style="display:inline-block;background:#1E6F5C;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px">Open Admin Panel</a>
 </p>
-<p style="font-size:12px;color:#9CA3AF;margin-top:32px;border-top:1px solid #F3F4F6;padding-top:16px">— Deepwoods GHG Portal · Automated notification</p>
+<p style="font-size:12px;color:#9CA3AF;margin-top:32px;border-top:1px solid #F3F4F6;padding-top:16px">— Deepwoods Decarbonisation Portal · Automated notification</p>
 </body></html>
 HTML;
         $smtp->send($adminEmail, "Payment request: {$client['name']} is ready", $htmlBody);

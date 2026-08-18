@@ -10,7 +10,6 @@
 
 declare(strict_types=1);
 require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/Smtp.php';
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -33,29 +32,34 @@ $method = $_SERVER['REQUEST_METHOD'];
 // ── GET — list all clients ────────────────────────────────────────────────────
 
 if ($method === 'GET') {
-    $stmt = $pdo->query(
-        "SELECT c.id, c.name, c.slug, c.logo_url, c.primary_color,
-                c.currency, c.reporting_period, c.is_active, c.activated_at, c.created_at,
-                (SELECT cc.config_value FROM client_config cc
-                 WHERE cc.client_id = c.id AND cc.config_key = 'setup_complete') AS setup_complete,
-                (SELECT cc.config_value FROM client_config cc
-                 WHERE cc.client_id = c.id AND cc.config_key = 'industry') AS industry,
-                (SELECT cc.config_value FROM client_config cc
-                 WHERE cc.client_id = c.id AND cc.config_key = 'consolidation_approach') AS consolidation_approach,
-                (SELECT COUNT(*) FROM users u WHERE u.client_id = c.id) AS user_count,
-                (SELECT COUNT(*) FROM client_entities ce WHERE ce.client_id = c.id) AS entity_count
-         FROM clients c
-         ORDER BY c.created_at DESC"
-    );
-    $rows = $stmt->fetchAll();
-    foreach ($rows as &$r) {
-        $r['id']           = (int)$r['id'];
-        $r['is_active']    = (bool)$r['is_active'];
-        $r['user_count']   = (int)$r['user_count'];
-        $r['entity_count'] = (int)$r['entity_count'];
+    try {
+        $stmt = $pdo->query(
+            "SELECT c.id, c.name, c.slug, c.logo_url, c.primary_color,
+                    c.currency, c.reporting_period, c.is_active, c.activated_at, c.created_at,
+                    (SELECT cc.config_value FROM client_config cc
+                     WHERE cc.client_id = c.id AND cc.config_key = 'setup_complete') AS setup_complete,
+                    (SELECT cc.config_value FROM client_config cc
+                     WHERE cc.client_id = c.id AND cc.config_key = 'industry') AS industry,
+                    (SELECT cc.config_value FROM client_config cc
+                     WHERE cc.client_id = c.id AND cc.config_key = 'consolidation_approach') AS consolidation_approach,
+                    (SELECT COUNT(*) FROM users u WHERE u.client_id = c.id) AS user_count,
+                    (SELECT COUNT(*) FROM client_entities ce WHERE ce.client_id = c.id) AS entity_count
+             FROM clients c
+             ORDER BY c.created_at DESC"
+        );
+        $rows = $stmt->fetchAll();
+        foreach ($rows as &$r) {
+            $r['id']           = (int)$r['id'];
+            $r['is_active']    = (bool)$r['is_active'];
+            $r['user_count']   = (int)$r['user_count'];
+            $r['entity_count'] = (int)$r['entity_count'];
+        }
+        unset($r);
+        dolphin_send_json($rows);
+    } catch (PDOException $e) {
+        error_log('clients.php GET error: ' . $e->getMessage());
+        dolphin_send_json(['error' => 'clients GET failed: ' . $e->getMessage()], 500);
     }
-    unset($r);
-    dolphin_send_json($rows);
 }
 
 // ── POST — create new client ──────────────────────────────────────────────────
@@ -173,21 +177,22 @@ if ($method === 'POST') {
 
         if (!empty($smtpCfg['host']) && !empty($smtpCfg['username']) && !empty($smtpCfg['app_password'])) {
             try {
+                require_once __DIR__ . '/Smtp.php';
                 $smtp = new Smtp(
                     $smtpCfg['host'],
                     (int)($smtpCfg['port'] ?? 587),
                     $smtpCfg['username'],
                     $smtpCfg['app_password'],
                     $smtpCfg['from_email'] ?? $smtpCfg['username'],
-                    $smtpCfg['from_name']  ?? 'Deepwoods GHG Portal',
+                    $smtpCfg['from_name']  ?? 'Deepwoods Decarbonisation Portal',
                 );
                 $clientNameHtml = htmlspecialchars($name);
                 $emailHtml = htmlspecialchars($inviteEmail);
                 $htmlBody = <<<HTML
 <html><body style="font-family:Arial,sans-serif;color:#1a1a1a;max-width:560px;margin:0 auto;padding:24px">
-<h2 style="color:#1E6F5C;margin-top:0">Welcome to the Deepwoods GHG Portal</h2>
+<h2 style="color:#1E6F5C;margin-top:0">Welcome to the Deepwoods Decarbonisation Portal</h2>
 <p>Hello,</p>
-<p>Your GHG Portal account for <strong>{$clientNameHtml}</strong> is ready. Here are your login credentials:</p>
+<p>your Decarbonisation Portal account for <strong>{$clientNameHtml}</strong> is ready. Here are your login credentials:</p>
 <table style="border-collapse:collapse;width:100%;font-size:14px;margin:16px 0">
   <tr><td style="padding:8px 12px;background:#F3F4F6;border-radius:4px 4px 0 0;font-weight:600;color:#374151">Login email</td><td style="padding:8px 12px;background:#F9FAFB">{$emailHtml}</td></tr>
   <tr><td style="padding:8px 12px;background:#F3F4F6;font-weight:600;color:#374151">Temporary password</td><td style="padding:8px 12px;background:#F9FAFB;font-family:monospace">{$tempPassword}</td></tr>
@@ -196,10 +201,10 @@ if ($method === 'POST') {
 <p style="margin-top:24px">
   <a href="{$baseUrl}" style="display:inline-block;background:#1E6F5C;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px">Open your portal</a>
 </p>
-<p style="font-size:12px;color:#9CA3AF;margin-top:32px;border-top:1px solid #F3F4F6;padding-top:16px">— Deepwoods GHG Portal · This is an automated message.</p>
+<p style="font-size:12px;color:#9CA3AF;margin-top:32px;border-top:1px solid #F3F4F6;padding-top:16px">— Deepwoods Decarbonisation Portal · This is an automated message.</p>
 </body></html>
 HTML;
-                $smtp->send($inviteEmail, "Your GHG Portal account is ready — {$name}", $htmlBody);
+                $smtp->send($inviteEmail, "your Decarbonisation Portal account is ready — {$name}", $htmlBody);
                 $emailSent = true;
             } catch (Throwable $e) {
                 error_log('clients.php welcome email failed: ' . $e->getMessage());

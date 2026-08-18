@@ -9,7 +9,6 @@
 
 declare(strict_types=1);
 require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/Smtp.php';
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -93,27 +92,28 @@ if ($method === 'PATCH') {
         $smtpCfg = $cfg['smtp'] ?? [];
         if (!empty($smtpCfg['host']) && !empty($smtpCfg['username']) && !empty($smtpCfg['app_password'])) {
             try {
+                require_once __DIR__ . '/Smtp.php';
                 $smtp = new Smtp(
                     $smtpCfg['host'],
                     (int)($smtpCfg['port'] ?? 587),
                     $smtpCfg['username'],
                     $smtpCfg['app_password'],
                     $smtpCfg['from_email'] ?? $smtpCfg['username'],
-                    $smtpCfg['from_name']  ?? 'Deepwoods GHG Portal',
+                    $smtpCfg['from_name']  ?? 'Deepwoods Decarbonisation Portal',
                 );
                 $contactName = htmlspecialchars($reqRow['name'] ?? 'there');
                 $companyName = htmlspecialchars($reqRow['company'] ?? '');
                 $htmlBody = <<<HTML
 <html><body style="font-family:Arial,sans-serif;color:#1a1a1a;max-width:560px;margin:0 auto;padding:24px">
-<h2 style="color:#1E6F5C;margin-top:0">Your registration request — Deepwoods GHG Portal</h2>
+<h2 style="color:#1E6F5C;margin-top:0">Your registration request — Deepwoods Decarbonisation Portal</h2>
 <p>Hello {$contactName},</p>
-<p>Thank you for your interest in the <strong>Deepwoods GHG Portal</strong> for <strong>{$companyName}</strong>.</p>
+<p>Thank you for your interest in the <strong>Deepwoods Decarbonisation Portal</strong> for <strong>{$companyName}</strong>.</p>
 <p>After reviewing your registration request, we are unable to proceed at this time. This may be because the portal isn't the right fit for your current stage, or we may already be in conversations with another contact at your organisation.</p>
 <p>If you believe this is an error or would like to discuss further, please reach out to your Deepwoods account manager directly.</p>
-<p style="font-size:12px;color:#9CA3AF;margin-top:32px;border-top:1px solid #F3F4F6;padding-top:16px">— Deepwoods GHG Portal · This is an automated message, please do not reply.</p>
+<p style="font-size:12px;color:#9CA3AF;margin-top:32px;border-top:1px solid #F3F4F6;padding-top:16px">— Deepwoods Decarbonisation Portal · This is an automated message, please do not reply.</p>
 </body></html>
 HTML;
-                $smtp->send($reqRow['email'], "Your Deepwoods GHG Portal registration request", $htmlBody);
+                $smtp->send($reqRow['email'], "Your Deepwoods Decarbonisation Portal registration request", $htmlBody);
                 $emailSent = true;
             } catch (Throwable $e) {
                 error_log('client-requests rejection email failed for ' . $reqRow['email'] . ': ' . $e->getMessage());
@@ -271,13 +271,14 @@ if ($method === 'POST') {
 
             if ($smtpHost && $smtpUser && $smtpPass) {
                 try {
+                    require_once __DIR__ . '/Smtp.php';
                     $smtp = new Smtp(
                         $smtpHost,
                         (int)($smtpCfg['port'] ?? 587),
                         $smtpUser,
                         $smtpPass,
                         $smtpCfg['from_email'] ?? $smtpUser,
-                        $smtpCfg['from_name']  ?? 'Deepwoods GHG Portal',
+                        $smtpCfg['from_name']  ?? 'Deepwoods Decarbonisation Portal',
                     );
                     $clientNameHtml = htmlspecialchars($name);
                     $htmlBody = <<<HTML

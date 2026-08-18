@@ -121,7 +121,7 @@ if ($method === 'POST') {
                 $smtpCfg['username'],
                 $smtpCfg['app_password'],
                 $smtpCfg['from_email'] ?? $smtpCfg['username'],
-                $smtpCfg['from_name'] ?? 'Deepwoods GHG Portal',
+                $smtpCfg['from_name'] ?? 'Deepwoods Decarbonisation Portal',
             );
 
             $roleLabel = [
@@ -132,9 +132,9 @@ if ($method === 'POST') {
 
             $htmlBody = <<<HTML
 <html><body style="font-family:Arial,sans-serif;color:#1a1a1a;max-width:560px;margin:0 auto;padding:24px">
-<h2 style="color:#1E6F5C;margin-top:0">You've been invited to the GHG Portal</h2>
+<h2 style="color:#1E6F5C;margin-top:0">You've been invited to the Decarbonisation Portal</h2>
 <p>Hello,</p>
-<p>You have been added to the <strong>{$clientName}</strong> workspace on the GHG Portal as <strong>{$roleLabel}</strong>. Use the credentials below to log in for the first time.</p>
+<p>You have been added to the <strong>{$clientName}</strong> workspace on the Decarbonisation Portal as <strong>{$roleLabel}</strong>. Use the credentials below to log in for the first time.</p>
 <table style="border-collapse:collapse;margin:20px 0;width:100%">
   <tr style="border-bottom:1px solid #E5E7EB">
     <td style="padding:10px 16px 10px 0;color:#6B7280;font-size:14px;white-space:nowrap">Login URL</td>
@@ -153,11 +153,11 @@ if ($method === 'POST') {
   <strong>Important:</strong> You will be asked to set a new password on your first login. Please do this immediately.
 </div>
 <p style="font-size:13px;color:#6B7280">If you were not expecting this invitation, please contact your team administrator.</p>
-<p style="font-size:12px;color:#9CA3AF;margin-top:32px;border-top:1px solid #F3F4F6;padding-top:16px">— Deepwoods GHG Portal · This is an automated message, please do not reply.</p>
+<p style="font-size:12px;color:#9CA3AF;margin-top:32px;border-top:1px solid #F3F4F6;padding-top:16px">— Deepwoods Decarbonisation Portal · This is an automated message, please do not reply.</p>
 </body></html>
 HTML;
 
-            $smtp->send($email, "You've been invited to the GHG Portal", $htmlBody);
+            $smtp->send($email, "You've been invited to the Decarbonisation Portal", $htmlBody);
             $emailSent = true;
         } catch (Throwable $e) {
             error_log('team.php invite email failed for ' . $email . ': ' . $e->getMessage());

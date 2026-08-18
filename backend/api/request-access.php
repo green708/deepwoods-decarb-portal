@@ -143,7 +143,7 @@ try {
 }
 
 // ── Send emails ──────────────────────────────────────────────────────────────
-$platformName = $config['platform_name'] ?? 'Deepwoods GHG Portal';
+$platformName = $config['platform_name'] ?? 'Deepwoods Decarbonisation Portal';
 $adminEmail   = $config['admin_email']   ?? ($config['smtp']['username'] ?? null);
 
 $smtpReady = !empty($config['smtp']['host'])

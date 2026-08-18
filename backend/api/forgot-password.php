@@ -32,7 +32,7 @@ if ($user) {
 
     $resetUrl = rtrim($config['app_base_url'], '/') . '/reset-password?token=' . urlencode($token);
 
-    $platformName = $config['platform_name'] ?? 'GHG Portal';
+    $platformName = $config['platform_name'] ?? 'Decarbonisation Portal';
     $html = "
         <p>Someone requested a password reset for your {$platformName} account ({$user['email']}).</p>
         <p><a href=\"{$resetUrl}\">Click here to set a new password</a> — this link expires in 1 hour.</p>

@@ -1,8 +1,8 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   ChevronLeft, ChevronRight, Check, Loader2, Plus, Trash2,
-  Building2, MapPin, Users, CreditCard, ClipboardCheck, Layers, Upload, X,
+  Building2, MapPin, Users, CreditCard, ClipboardCheck, X,
 } from "lucide-react";
 import { authFetch } from "@/lib/auth";
 import { useClientContext, clearClientContext } from "@/lib/client-context";
@@ -19,7 +19,6 @@ const HAIRLINE = "#E2E8E4";
 const MINT     = "#ECF7F3";
 const CTINT    = "#FEF2F2";
 const FOREST   = "#1E4D2B";
-const MUTED    = "#94A3B8";
 
 const INDUSTRIES = [
   "Manufacturing", "Textiles & Apparel", "Chemicals", "Food & Beverage",
@@ -36,9 +35,6 @@ const ORG_TYPES_LEGAL = [
 
 interface Facility { name: string; address: string; }
 interface TeamMember { name: string; email: string; role: string; }
-interface Subsidiary { name: string; country: string; }
-
-type ReportingModel = "consolidated" | "separate" | "mixed" | null;
 
 interface WizardState {
   // Step 1 — Company Details
@@ -53,13 +49,9 @@ interface WizardState {
   legal_address:  string;
   website:        string;
   logo_preview:   string | null;
-  // Step 2 — Reporting Structure
-  has_subsidiaries:  boolean | null;
-  reporting_model:   ReportingModel;
-  subsidiaries:      Subsidiary[];
-  // Step 3 — Facilities
+  // Step 2 — Facilities
   facilities:     Facility[];
-  // Step 4 — Team
+  // Step 3 — Team
   team:           TeamMember[];
 }
 
@@ -67,19 +59,16 @@ const INIT: WizardState = {
   is_india: true, gstin: "",
   legalName: "", operatingName: "", industry: "", org_type: "", is_msme: false, udyam_number: "",
   legal_address: "", website: "", logo_preview: null,
-  has_subsidiaries: null, reporting_model: null,
-  subsidiaries: [{ name: "", country: "India" }],
   facilities: [{ name: "Head Office", address: "" }],
   team: [{ name: "", email: "", role: "viewer" }],
 };
 
 const STEPS = [
-  { label: "Company Details",      short: "Company",     icon: Building2 },
-  { label: "Reporting Structure",  short: "Structure",   icon: Layers },
-  { label: "Facilities",           short: "Facilities",  icon: MapPin },
-  { label: "Manage Team",          short: "Team",        icon: Users },
-  { label: "Payment",              short: "Payment",     icon: CreditCard },
-  { label: "Submit",               short: "Submit",      icon: ClipboardCheck },
+  { label: "Company Details", short: "Company",    icon: Building2 },
+  { label: "Facilities",      short: "Facilities", icon: MapPin },
+  { label: "Manage Team",     short: "Team",       icon: Users },
+  { label: "Payment",         short: "Payment",    icon: CreditCard },
+  { label: "Submit",          short: "Submit",     icon: ClipboardCheck },
 ];
 
 function makeCode(s: string): string {
@@ -89,19 +78,22 @@ function makeCode(s: string): string {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 function EntitySetupPage() {
-  const navigate  = useNavigate();
-  const ctx       = useClientContext();
+  const ctx = useClientContext();
+
+  // config.setup_complete arrives as boolean true (PHP json_decode) or string "true"
+  const isFirstSetup = ctx.config.setup_complete !== true && ctx.config.setup_complete !== "true";
 
   const [step, setStep]       = useState(0);
-  const [data, setData]       = useState<WizardState>({ ...INIT, legalName: ctx.client.name ?? "" });
+  const [data, setData]       = useState<WizardState>({ ...INIT, legalName: isFirstSetup ? (ctx.client.name ?? "") : "" });
   const [loading, setLoading] = useState(false);
-  const [prefilling, setPrefilling] = useState(true);
+  const [prefilling, setPrefilling] = useState(isFirstSetup);
   const [error, setError]     = useState<string | null>(null);
 
   const update = (patch: Partial<WizardState>) => setData(p => ({ ...p, ...patch }));
 
-  // ── Prefill from request-access submission ─────────────────────────────────
+  // Prefill from request-access only on first-time setup
   useEffect(() => {
+    if (!isFirstSetup) return;
     authFetch("request-access.php")
       .then((d: Record<string, string | number | null> | null) => {
         if (!d) return;
@@ -130,11 +122,6 @@ function EntitySetupPage() {
       return data.legalName.trim() !== "" && data.industry !== "" && data.legal_address.trim() !== "";
     }
     if (step === 1) {
-      if (data.has_subsidiaries === null) return false;
-      if (data.has_subsidiaries && data.reporting_model === null) return false;
-      return true;
-    }
-    if (step === 2) {
       return data.facilities.length > 0 && data.facilities.every(f => f.name.trim() !== "");
     }
     return true;
@@ -144,10 +131,8 @@ function EntitySetupPage() {
     setError(null);
     setLoading(true);
     try {
-      const parentCode    = makeCode(data.legalName);
-      const reportingModel = data.has_subsidiaries
-        ? (data.reporting_model ?? "consolidated")
-        : "consolidated";
+      const parentCode     = makeCode(data.legalName);
+      const reportingModel = "consolidated";
 
       const entities = [
         { code: parentCode, name: data.legalName,
@@ -156,7 +141,8 @@ function EntitySetupPage() {
 
       const legalEntities = [
         { code: parentCode, country: data.is_india ? "India" : "Other",
-          registration_no: "", tax_id: data.gstin, org_type: "parent",
+          registration_no: "", tax_id: data.gstin,
+          org_type: data.org_type || "other",
           legal_address: data.legal_address },
       ];
 
@@ -167,23 +153,29 @@ function EntitySetupPage() {
           reporting_entity_code: parentCode },
       ];
 
+      const teamMembers = data.team
+        .filter(m => m.email.trim() !== "")
+        .map(m => ({ name: m.name.trim(), email: m.email.trim().toLowerCase(), role: m.role }));
+
       await authFetch("client-setup.php", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          company_name: data.legalName,
-          industry:     data.industry,
-          country:      data.is_india ? "India" : "Other",
+          company_name:    data.legalName,
+          industry:        data.industry,
+          country:         data.is_india ? "India" : "Other",
           reporting_model: reportingModel,
-          logo_url:     data.logo_preview || undefined,
+          logo_url:        data.logo_preview || undefined,
+          facility_count:  data.facilities.length,
           entities,
-          legal_entities: legalEntities,
+          legal_entities:        legalEntities,
           reporting_engagements: reportingEngagements,
+          team_members:          teamMembers,
         }),
       });
 
       clearClientContext();
-      navigate({ to: "/register" });
+      window.location.href = "/register";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submission failed. Please try again.");
       setLoading(false);
@@ -268,12 +260,11 @@ function EntitySetupPage() {
           borderRadius: 16, padding: "36px 40px",
           boxShadow: "0 2px 12px rgba(30,79,60,0.06), 0 1px 3px rgba(0,0,0,0.04)",
         }}>
-          {step === 0 && <CompanyDetailsStep    data={data} update={update} />}
-          {step === 1 && <ReportingStructureStep data={data} update={update} />}
-          {step === 2 && <FacilitiesStep        data={data} update={update} />}
-          {step === 3 && <TeamStep              data={data} update={update} />}
-          {step === 4 && <PaymentStep />}
-          {step === 5 && <SubmitStep            data={data} />}
+          {step === 0 && <CompanyDetailsStep data={data} update={update} />}
+          {step === 1 && <FacilitiesStep     data={data} update={update} onBackToCompany={() => setStep(0)} />}
+          {step === 2 && <TeamStep           data={data} update={update} />}
+          {step === 3 && <PaymentStep />}
+          {step === 4 && <SubmitStep         data={data} />}
         </div>
 
         {error && (
@@ -492,222 +483,140 @@ function CompanyDetailsStep({ data, update }: { data: WizardState; update: (p: P
   );
 }
 
-// ── Step 2: Reporting Structure ───────────────────────────────────────────────
+// ── Step 2: Facilities ────────────────────────────────────────────────────────
 
-function ReportingStructureStep({ data, update }: { data: WizardState; update: (p: Partial<WizardState>) => void }) {
-  const patchSub = (i: number, p: Partial<Subsidiary>) =>
-    update({ subsidiaries: data.subsidiaries.map((s, j) => j === i ? { ...s, ...p } : s) });
+function FacilitiesStep({ data, update, onBackToCompany }: {
+  data: WizardState;
+  update: (p: Partial<WizardState>) => void;
+  onBackToCompany: () => void;
+}) {
+  const additional = data.facilities.slice(1);
+  const [countStr, setCountStr] = useState(String(additional.length));
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-      <p style={{ margin: 0, fontSize: 13, color: SLATE, lineHeight: 1.6 }}>
-        This determines how GHG emissions are reported across your legal structure. The right approach depends
-        on whether you have subsidiaries and how ownership control is exercised.
-      </p>
+  const applyCount = (raw: string) => {
+    const n = Math.min(10, Math.max(0, parseInt(raw) || 0));
+    setCountStr(String(n));
+    const curr = data.facilities.slice(1);
+    if (n > curr.length) {
+      const blanks: Facility[] = Array.from({ length: n - curr.length }, () => ({ name: "", address: "" }));
+      update({ facilities: [data.facilities[0], ...curr, ...blanks] });
+    } else if (n < curr.length) {
+      update({ facilities: [data.facilities[0], ...curr.slice(0, n)] });
+    }
+  };
 
-      {/* Q1: Subsidiaries? */}
-      <div>
-        <p style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 600, color: INK }}>
-          Does <strong>{data.legalName || "your organisation"}</strong> have subsidiaries or group companies?
-        </p>
-        <div style={{ display: "flex", gap: 12 }}>
-          {[
-            { key: true,  label: "Yes — we are a holding company or have subsidiaries",
-              desc: "You'll set a reporting approach for the group." },
-            { key: false, label: "No — standalone entity",
-              desc: "A single consolidated report covers the whole organisation." },
-          ].map(opt => {
-            const active = data.has_subsidiaries === opt.key;
-            return (
-              <button key={String(opt.key)} type="button"
-                onClick={() => update({
-                  has_subsidiaries: opt.key,
-                  reporting_model: opt.key ? data.reporting_model : "consolidated",
-                })}
-                style={{
-                  flex: 1, textAlign: "left", padding: "18px 20px", borderRadius: 12,
-                  border: `${active ? "2.5" : "1.5"}px solid ${active ? CANOPY : HAIRLINE}`,
-                  background: active ? MINT : "white",
-                  cursor: "pointer", transition: "all 0.2s",
-                  boxShadow: active ? "0 4px 16px rgba(30,79,60,0.18)" : "0 1px 3px rgba(0,0,0,0.04)",
-                  transform: active ? "translateY(-1px)" : "none",
-                }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <div style={{
-                    width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
-                    border: `2px solid ${active ? CANOPY : HAIRLINE}`,
-                    background: active ? CANOPY : "white",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>
-                    {active && <Check style={{ width: 10, height: 10, color: "white" }} />}
-                  </div>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>{opt.label}</span>
-                </div>
-                <p style={{ margin: 0, paddingLeft: 26, fontSize: 12, color: SLATE, lineHeight: 1.5 }}>{opt.desc}</p>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Q2: Reporting model (only if has subsidiaries) */}
-      {data.has_subsidiaries === true && (
-        <div style={{ borderTop: `1px solid ${HAIRLINE}`, paddingTop: 24 }}>
-          <p style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 600, color: INK }}>
-            How will GHG emissions be reported across the group?
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {[
-              { key: "consolidated" as const,
-                label: "Consolidated",
-                desc: "One combined GHG report for the parent and all subsidiaries together. Scope boundaries are set at the group level." },
-              { key: "separate" as const,
-                label: "Separate",
-                desc: "Each legal entity reports independently. Emissions are not aggregated at the group level." },
-              { key: "mixed" as const,
-                label: "Mixed",
-                desc: "Some subsidiaries are consolidated into the parent report; others report separately. You'll define the scope for each entity." },
-            ].map(opt => {
-              const active = data.reporting_model === opt.key;
-              return (
-                <button key={opt.key} type="button"
-                  onClick={() => update({ reporting_model: opt.key })}
-                  style={{
-                    textAlign: "left", padding: "16px 20px", borderRadius: 12,
-                    border: `${active ? "2.5" : "1.5"}px solid ${active ? CANOPY : HAIRLINE}`,
-                    background: active ? MINT : "white",
-                    cursor: "pointer", transition: "all 0.2s",
-                    boxShadow: active ? "0 4px 16px rgba(30,79,60,0.18)" : "0 1px 3px rgba(0,0,0,0.04)",
-                    transform: active ? "translateY(-1px)" : "none",
-                  }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <div style={{
-                      width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
-                      border: `2px solid ${active ? CANOPY : HAIRLINE}`,
-                      background: active ? CANOPY : "white",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}>
-                      {active && <Check style={{ width: 9, height: 9, color: "white" }} />}
-                    </div>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>{opt.label}</span>
-                  </div>
-                  <p style={{ margin: 0, paddingLeft: 24, fontSize: 12, color: SLATE, lineHeight: 1.5 }}>
-                    {opt.desc}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Q3: Subsidiaries list (if has_subsidiaries and model chosen) */}
-      {data.has_subsidiaries === true && data.reporting_model !== null && (
-        <div style={{ borderTop: `1px solid ${HAIRLINE}`, paddingTop: 24 }}>
-          <p style={{ margin: "0 0 6px", fontSize: 14, fontWeight: 600, color: INK }}>
-            List your subsidiary companies
-          </p>
-          <p style={{ margin: "0 0 16px", fontSize: 12, color: SLATE, lineHeight: 1.6 }}>
-            You can add full details for each entity in subsequent steps. For now, just name each subsidiary.
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {data.subsidiaries.map((s, i) => (
-              <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                <div style={{
-                  width: 26, height: 26, borderRadius: "50%", flexShrink: 0, marginTop: 8,
-                  background: `linear-gradient(135deg, ${FOREST}, ${CANOPY})`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 10, fontWeight: 700, color: "white",
-                }}>
-                  {i + 1}
-                </div>
-                <input className="lov-input" style={{ flex: 1 }}
-                  value={s.name}
-                  onChange={e => patchSub(i, { name: e.target.value })}
-                  placeholder={`Subsidiary ${i + 1} name`} />
-                <input className="lov-input" style={{ width: 140 }}
-                  value={s.country}
-                  onChange={e => patchSub(i, { country: e.target.value })}
-                  placeholder="Country" />
-                {i > 0 && (
-                  <button type="button"
-                    onClick={() => update({ subsidiaries: data.subsidiaries.filter((_, j) => j !== i) })}
-                    style={{ background: "none", border: "none", color: SLATE, cursor: "pointer", padding: "8px 4px" }}>
-                    <Trash2 style={{ width: 14, height: 14 }} />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-          <button type="button"
-            onClick={() => update({ subsidiaries: [...data.subsidiaries, { name: "", country: "India" }] })}
-            className="lov-add-link" style={{ marginTop: 12 }}>
-            <Plus style={{ width: 14, height: 14 }} /> Add subsidiary
-          </button>
-        </div>
-      )}
-
-      {/* Standalone confirmation */}
-      {data.has_subsidiaries === false && (
-        <div style={{
-          padding: "14px 18px", borderRadius: 10,
-          background: MINT, border: `1px solid oklch(0.85 0.05 155)`,
-          fontSize: 13, color: CANOPY, lineHeight: 1.6,
-        }}>
-          <strong>Single-entity consolidated report.</strong>{" "}
-          Your GHG inventory will cover {data.legalName || "your organisation"} as a single legal and operating entity.
-          All facilities added in the next step are included within this scope.
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Step 3: Facilities ────────────────────────────────────────────────────────
-
-function FacilitiesStep({ data, update }: { data: WizardState; update: (p: Partial<WizardState>) => void }) {
   const patchFacility = (i: number, p: Partial<Facility>) =>
     update({ facilities: data.facilities.map((f, j) => j === i ? { ...f, ...p } : f) });
 
-  const addFacility = () =>
-    update({ facilities: [...data.facilities, { name: "", address: "" }] });
+  const addFacility = () => {
+    const next = [...data.facilities, { name: "", address: "" }];
+    update({ facilities: next });
+    setCountStr(String(next.length - 1));
+  };
 
-  const removeFacility = (i: number) =>
-    update({ facilities: data.facilities.filter((_, j) => j !== i) });
+  const removeFacility = (i: number) => {
+    const next = data.facilities.filter((_, j) => j !== i);
+    update({ facilities: next });
+    setCountStr(String(next.length - 1));
+  };
+
+  const headOffice = data.facilities[0] ?? { name: "Head Office", address: "" };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <p style={{ margin: 0, fontSize: 13, color: SLATE, lineHeight: 1.6 }}>
-        Include every physical location where this organisation operates. Facility 1 is auto-filled from your registered address.
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      <p style={{ margin: 0, fontSize: 13, color: SLATE, lineHeight: 1.65 }}>
+        Include every physical location where this organisation operates — factories, offices, warehouses, retail sites, and so on.
+        Your registered head office is already added below as Facility 1, using the address you gave in Company Details.
       </p>
 
-      {data.facilities.map((f, i) => (
-        <div key={i} style={{ border: `1px solid ${HAIRLINE}`, borderRadius: 10, padding: "20px 24px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-            <div style={{ width: 24, height: 24, borderRadius: "50%", background: CANOPY, flexShrink: 0,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 10, fontWeight: 700, color: "white" }}>
-              {i + 1}
+      {/* ── Head Office (locked address) ── */}
+      <div style={{ border: `1px solid ${HAIRLINE}`, borderRadius: 12, overflow: "hidden" }}>
+        <div style={{
+          padding: "10px 20px", borderBottom: `1px solid ${HAIRLINE}`,
+          background: "#FAFCFB",
+          fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: SLATE,
+        }}>
+          Facility 1 · Head Office
+        </div>
+        <div style={{ padding: "20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <Field label="Facility name">
+            <input className="lov-input" value={headOffice.name}
+              onChange={e => patchFacility(0, { name: e.target.value })}
+              placeholder="Head Office" />
+            <p style={{ margin: "6px 0 0", fontSize: 12, color: SLATE, lineHeight: 1.5 }}>
+              Editable — how this site is labelled in the portal.
+            </p>
+          </Field>
+          <Field label="Facility location / address">
+            <div style={{
+              padding: "10px 14px", border: `1.5px solid ${HAIRLINE}`, borderRadius: 9,
+              fontSize: 14, color: data.legal_address ? INK : SLATE,
+              background: "#F9FAFB", minHeight: 44, lineHeight: 1.55,
+              whiteSpace: "pre-wrap", wordBreak: "break-word",
+            }}>
+              {data.legal_address || "No address entered"}
             </div>
-            <span style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: INK }}>
-              {i === 0 ? "Head Office" : `Facility ${i + 1}`}
-            </span>
-            {i > 0 && (
-              <button type="button" onClick={() => removeFacility(i)}
-                style={{ marginLeft: "auto", background: "none", border: "none", color: SLATE, cursor: "pointer" }}>
-                <Trash2 style={{ width: 14, height: 14 }} />
+            <div style={{ marginTop: 6 }}>
+              <button type="button" onClick={onBackToCompany}
+                style={{ fontSize: 12, color: CANOPY, background: "none", border: "none",
+                  padding: 0, cursor: "pointer", fontWeight: 600, fontFamily: "inherit" }}>
+                Edit in Company Details →
               </button>
-            )}
+              <p style={{ margin: "2px 0 0", fontSize: 12, color: SLATE, lineHeight: 1.5 }}>
+                Taken from your Legal Address.
+              </p>
+            </div>
+          </Field>
+        </div>
+      </div>
+
+      {/* ── Additional facility count ── */}
+      <Field label="How many additional facilities do you have?" required
+        hint="Count every site besides your head office — you'll fill in a name and address for each one next.">
+        <input
+          className="lov-input"
+          type="number"
+          min={0}
+          max={10}
+          value={countStr}
+          style={{ maxWidth: 200 }}
+          onChange={e => {
+            const v = e.target.value;
+            const n = parseInt(v) || 0;
+            setCountStr(String(Math.min(10, Math.max(0, n))));
+          }}
+          onBlur={() => applyCount(countStr)}
+          onKeyDown={e => { if (e.key === "Enter") applyCount(countStr); }}
+        />
+      </Field>
+
+      {/* ── Additional facility cards ── */}
+      {data.facilities.slice(1).map((f, i) => (
+        <div key={i + 1} style={{ border: `1px solid ${HAIRLINE}`, borderRadius: 12, overflow: "hidden" }}>
+          <div style={{
+            padding: "10px 20px", borderBottom: `1px solid ${HAIRLINE}`,
+            background: "#FAFCFB",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+          }}>
+            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.1em",
+              textTransform: "uppercase", color: SLATE }}>
+              Facility {i + 2}
+            </span>
+            <button type="button" onClick={() => removeFacility(i + 1)}
+              style={{ background: "none", border: "none", color: SLATE, cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontFamily: "inherit" }}>
+              <Trash2 style={{ width: 13, height: 13 }} /> Remove
+            </button>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div style={{ padding: "20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
             <Field label="Facility name" required>
               <input className="lov-input" value={f.name}
-                onChange={e => patchFacility(i, { name: e.target.value })}
-                placeholder={i === 0 ? "Head Office" : "Facility name"} />
+                onChange={e => patchFacility(i + 1, { name: e.target.value })}
+                placeholder={`Facility ${i + 2} name`} />
             </Field>
-            <Field label="Facility address">
+            <Field label="Facility location / address">
               <textarea className="lov-textarea" rows={2} value={f.address}
-                onChange={e => patchFacility(i, { address: e.target.value })}
+                onChange={e => patchFacility(i + 1, { address: e.target.value })}
                 placeholder="Full physical address" />
             </Field>
           </div>
@@ -721,7 +630,7 @@ function FacilitiesStep({ data, update }: { data: WizardState; update: (p: Parti
   );
 }
 
-// ── Step 4: Manage Team ───────────────────────────────────────────────────────
+// ── Step 3: Manage Team ───────────────────────────────────────────────────────
 
 function TeamStep({ data, update }: { data: WizardState; update: (p: Partial<WizardState>) => void }) {
   const patchMember = (i: number, p: Partial<TeamMember>) =>
@@ -736,7 +645,8 @@ function TeamStep({ data, update }: { data: WizardState; update: (p: Partial<Wiz
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <p style={{ margin: 0, fontSize: 13, color: SLATE, lineHeight: 1.6 }}>
-        Add people who should have access to this entity. Access is scoped to this entity only.
+        Add team members who need access to the portal. Each person you add here will receive a welcome
+        email with their login credentials once your registration is submitted.
       </p>
 
       {data.team.map((m, i) => (
@@ -766,7 +676,6 @@ function TeamStep({ data, update }: { data: WizardState; update: (p: Partial<Wiz
             <Field label="Role">
               <select className="lov-select" value={m.role}
                 onChange={e => patchMember(i, { role: e.target.value })}>
-                <option value="admin">Account Admin</option>
                 <option value="sustainability_team">Sustainability Team</option>
                 <option value="client_uploader">Data Contributor</option>
                 <option value="client_leadership">Viewer</option>
@@ -783,7 +692,7 @@ function TeamStep({ data, update }: { data: WizardState; update: (p: Partial<Wiz
   );
 }
 
-// ── Step 5: Payment ───────────────────────────────────────────────────────────
+// ── Step 4: Payment ───────────────────────────────────────────────────────────
 
 function PaymentStep() {
   return (
@@ -827,15 +736,9 @@ function PaymentStep() {
   );
 }
 
-// ── Step 6: Submit / Review ───────────────────────────────────────────────────
+// ── Step 5: Submit / Review ───────────────────────────────────────────────────
 
 function SubmitStep({ data }: { data: WizardState }) {
-  const modelLabel: Record<string, string> = {
-    consolidated: "Consolidated (single report for all entities)",
-    separate: "Separate (each entity reports independently)",
-    mixed: "Mixed (consolidated + separate, by entity)",
-  };
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <p style={{ margin: 0, fontSize: 13, color: SLATE, lineHeight: 1.6 }}>
@@ -852,16 +755,6 @@ function SubmitStep({ data }: { data: WizardState }) {
         <RR label="MSME"          value={data.is_msme ? "Yes" : "No"} />
         <RR label="Legal address" value={data.legal_address || "—"} />
         {data.website && <RR label="Website" value={data.website} />}
-      </ReviewSection>
-
-      <ReviewSection title="Reporting Structure">
-        <RR label="Has subsidiaries"    value={data.has_subsidiaries === null ? "—" : data.has_subsidiaries ? "Yes" : "No"} />
-        {data.reporting_model && (
-          <RR label="Reporting model" value={modelLabel[data.reporting_model] ?? data.reporting_model} />
-        )}
-        {data.has_subsidiaries && data.subsidiaries.some(s => s.name) && data.subsidiaries.map((s, i) => (
-          <RR key={i} label={`Subsidiary ${i + 1}`} value={[s.name, s.country].filter(Boolean).join(" — ")} />
-        ))}
       </ReviewSection>
 
       <ReviewSection title="Facilities">
@@ -885,7 +778,8 @@ function SubmitStep({ data }: { data: WizardState }) {
         fontSize: 13, color: SLATE, lineHeight: 1.6,
       }}>
         <strong style={{ color: INK }}>What happens next:</strong> Your registration will be submitted to Deepwoods for
-        review. Once confirmed and payment is processed at the account level, your full workspace is unlocked.
+        review. Team members you added will receive an email with their login credentials. Once confirmed and payment
+        is processed, the full workspace is unlocked.
       </div>
     </div>
   );

@@ -452,7 +452,7 @@ function TeamPage() {
       <PageHeader
         eyebrow="Team Management"
         title="My Team"
-        description="Manage who has access to your GHG portal. Team changes take effect immediately."
+        description="Manage who has access to your Decarbonisation Portal. Team changes take effect immediately."
       />
       <PageBody>
         {/* ── Action bar ─────────────────────────────────────────────── */}
@@ -465,7 +465,7 @@ function TeamPage() {
           </div>
           <div className="flex items-center gap-2">
             <Link
-              to="/workstreams"
+              to="/home"
               className="rounded-lg border border-[var(--border)] px-3.5 py-2 text-xs font-medium text-[var(--navy)] hover:bg-slate-50"
             >
               Back to workspace

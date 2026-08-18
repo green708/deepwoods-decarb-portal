@@ -23,9 +23,11 @@ import { Route as AppCreditsRouteImport } from './routes/_app.credits'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
 import { Route as AppEntitySetupRouteImport } from './routes/_app.entity-setup'
 import { Route as AppGreenFinanceRouteImport } from './routes/_app.green-finance'
+import { Route as AppHomeRouteImport } from './routes/_app.home'
 import { Route as AppHotspotsRouteImport } from './routes/_app.hotspots'
 import { Route as AppInteractiveInventoryRouteImport } from './routes/_app.interactive-inventory'
 import { Route as AppInventoryRouteImport } from './routes/_app.inventory'
+import { Route as AppInventoryBoundaryRouteImport } from './routes/_app.inventory-boundary'
 import { Route as AppInventorySetupRouteImport } from './routes/_app.inventory-setup'
 import { Route as AppMethodologyRouteImport } from './routes/_app.methodology'
 import { Route as AppNotificationsRouteImport } from './routes/_app.notifications'
@@ -40,7 +42,6 @@ import { Route as AppSubmissionsRouteImport } from './routes/_app.submissions'
 import { Route as AppTeamRouteImport } from './routes/_app.team'
 import { Route as AppTrendsRouteImport } from './routes/_app.trends'
 import { Route as AppVaultRouteImport } from './routes/_app.vault'
-import { Route as AppWorkstreamsRouteImport } from './routes/_app.workstreams'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -111,6 +112,11 @@ const AppGreenFinanceRoute = AppGreenFinanceRouteImport.update({
   path: '/green-finance',
   getParentRoute: () => AppRoute,
 } as any)
+const AppHomeRoute = AppHomeRouteImport.update({
+  id: '/home',
+  path: '/home',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppHotspotsRoute = AppHotspotsRouteImport.update({
   id: '/hotspots',
   path: '/hotspots',
@@ -124,6 +130,11 @@ const AppInteractiveInventoryRoute = AppInteractiveInventoryRouteImport.update({
 const AppInventoryRoute = AppInventoryRouteImport.update({
   id: '/inventory',
   path: '/inventory',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppInventoryBoundaryRoute = AppInventoryBoundaryRouteImport.update({
+  id: '/inventory-boundary',
+  path: '/inventory-boundary',
   getParentRoute: () => AppRoute,
 } as any)
 const AppInventorySetupRoute = AppInventorySetupRouteImport.update({
@@ -196,11 +207,6 @@ const AppVaultRoute = AppVaultRouteImport.update({
   path: '/vault',
   getParentRoute: () => AppRoute,
 } as any)
-const AppWorkstreamsRoute = AppWorkstreamsRouteImport.update({
-  id: '/workstreams',
-  path: '/workstreams',
-  getParentRoute: () => AppRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -216,9 +222,11 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AppDashboardRoute
   '/entity-setup': typeof AppEntitySetupRoute
   '/green-finance': typeof AppGreenFinanceRoute
+  '/home': typeof AppHomeRoute
   '/hotspots': typeof AppHotspotsRoute
   '/interactive-inventory': typeof AppInteractiveInventoryRoute
   '/inventory': typeof AppInventoryRoute
+  '/inventory-boundary': typeof AppInventoryBoundaryRoute
   '/inventory-setup': typeof AppInventorySetupRoute
   '/methodology': typeof AppMethodologyRoute
   '/notifications': typeof AppNotificationsRoute
@@ -233,7 +241,6 @@ export interface FileRoutesByFullPath {
   '/team': typeof AppTeamRoute
   '/trends': typeof AppTrendsRoute
   '/vault': typeof AppVaultRoute
-  '/workstreams': typeof AppWorkstreamsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -249,9 +256,11 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AppDashboardRoute
   '/entity-setup': typeof AppEntitySetupRoute
   '/green-finance': typeof AppGreenFinanceRoute
+  '/home': typeof AppHomeRoute
   '/hotspots': typeof AppHotspotsRoute
   '/interactive-inventory': typeof AppInteractiveInventoryRoute
   '/inventory': typeof AppInventoryRoute
+  '/inventory-boundary': typeof AppInventoryBoundaryRoute
   '/inventory-setup': typeof AppInventorySetupRoute
   '/methodology': typeof AppMethodologyRoute
   '/notifications': typeof AppNotificationsRoute
@@ -266,7 +275,6 @@ export interface FileRoutesByTo {
   '/team': typeof AppTeamRoute
   '/trends': typeof AppTrendsRoute
   '/vault': typeof AppVaultRoute
-  '/workstreams': typeof AppWorkstreamsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -284,9 +292,11 @@ export interface FileRoutesById {
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/entity-setup': typeof AppEntitySetupRoute
   '/_app/green-finance': typeof AppGreenFinanceRoute
+  '/_app/home': typeof AppHomeRoute
   '/_app/hotspots': typeof AppHotspotsRoute
   '/_app/interactive-inventory': typeof AppInteractiveInventoryRoute
   '/_app/inventory': typeof AppInventoryRoute
+  '/_app/inventory-boundary': typeof AppInventoryBoundaryRoute
   '/_app/inventory-setup': typeof AppInventorySetupRoute
   '/_app/methodology': typeof AppMethodologyRoute
   '/_app/notifications': typeof AppNotificationsRoute
@@ -301,7 +311,6 @@ export interface FileRoutesById {
   '/_app/team': typeof AppTeamRoute
   '/_app/trends': typeof AppTrendsRoute
   '/_app/vault': typeof AppVaultRoute
-  '/_app/workstreams': typeof AppWorkstreamsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -319,9 +328,11 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/entity-setup'
     | '/green-finance'
+    | '/home'
     | '/hotspots'
     | '/interactive-inventory'
     | '/inventory'
+    | '/inventory-boundary'
     | '/inventory-setup'
     | '/methodology'
     | '/notifications'
@@ -336,7 +347,6 @@ export interface FileRouteTypes {
     | '/team'
     | '/trends'
     | '/vault'
-    | '/workstreams'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -352,9 +362,11 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/entity-setup'
     | '/green-finance'
+    | '/home'
     | '/hotspots'
     | '/interactive-inventory'
     | '/inventory'
+    | '/inventory-boundary'
     | '/inventory-setup'
     | '/methodology'
     | '/notifications'
@@ -369,7 +381,6 @@ export interface FileRouteTypes {
     | '/team'
     | '/trends'
     | '/vault'
-    | '/workstreams'
   id:
     | '__root__'
     | '/'
@@ -386,9 +397,11 @@ export interface FileRouteTypes {
     | '/_app/dashboard'
     | '/_app/entity-setup'
     | '/_app/green-finance'
+    | '/_app/home'
     | '/_app/hotspots'
     | '/_app/interactive-inventory'
     | '/_app/inventory'
+    | '/_app/inventory-boundary'
     | '/_app/inventory-setup'
     | '/_app/methodology'
     | '/_app/notifications'
@@ -403,7 +416,6 @@ export interface FileRouteTypes {
     | '/_app/team'
     | '/_app/trends'
     | '/_app/vault'
-    | '/_app/workstreams'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -516,6 +528,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGreenFinanceRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/home': {
+      id: '/_app/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof AppHomeRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/hotspots': {
       id: '/_app/hotspots'
       path: '/hotspots'
@@ -535,6 +554,13 @@ declare module '@tanstack/react-router' {
       path: '/inventory'
       fullPath: '/inventory'
       preLoaderRoute: typeof AppInventoryRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/inventory-boundary': {
+      id: '/_app/inventory-boundary'
+      path: '/inventory-boundary'
+      fullPath: '/inventory-boundary'
+      preLoaderRoute: typeof AppInventoryBoundaryRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/inventory-setup': {
@@ -635,13 +661,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppVaultRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/workstreams': {
-      id: '/_app/workstreams'
-      path: '/workstreams'
-      fullPath: '/workstreams'
-      preLoaderRoute: typeof AppWorkstreamsRouteImport
-      parentRoute: typeof AppRoute
-    }
   }
 }
 
@@ -653,9 +672,11 @@ interface AppRouteChildren {
   AppDashboardRoute: typeof AppDashboardRoute
   AppEntitySetupRoute: typeof AppEntitySetupRoute
   AppGreenFinanceRoute: typeof AppGreenFinanceRoute
+  AppHomeRoute: typeof AppHomeRoute
   AppHotspotsRoute: typeof AppHotspotsRoute
   AppInteractiveInventoryRoute: typeof AppInteractiveInventoryRoute
   AppInventoryRoute: typeof AppInventoryRoute
+  AppInventoryBoundaryRoute: typeof AppInventoryBoundaryRoute
   AppInventorySetupRoute: typeof AppInventorySetupRoute
   AppMethodologyRoute: typeof AppMethodologyRoute
   AppNotificationsRoute: typeof AppNotificationsRoute
@@ -670,7 +691,6 @@ interface AppRouteChildren {
   AppTeamRoute: typeof AppTeamRoute
   AppTrendsRoute: typeof AppTrendsRoute
   AppVaultRoute: typeof AppVaultRoute
-  AppWorkstreamsRoute: typeof AppWorkstreamsRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -681,9 +701,11 @@ const AppRouteChildren: AppRouteChildren = {
   AppDashboardRoute: AppDashboardRoute,
   AppEntitySetupRoute: AppEntitySetupRoute,
   AppGreenFinanceRoute: AppGreenFinanceRoute,
+  AppHomeRoute: AppHomeRoute,
   AppHotspotsRoute: AppHotspotsRoute,
   AppInteractiveInventoryRoute: AppInteractiveInventoryRoute,
   AppInventoryRoute: AppInventoryRoute,
+  AppInventoryBoundaryRoute: AppInventoryBoundaryRoute,
   AppInventorySetupRoute: AppInventorySetupRoute,
   AppMethodologyRoute: AppMethodologyRoute,
   AppNotificationsRoute: AppNotificationsRoute,
@@ -698,7 +720,6 @@ const AppRouteChildren: AppRouteChildren = {
   AppTeamRoute: AppTeamRoute,
   AppTrendsRoute: AppTrendsRoute,
   AppVaultRoute: AppVaultRoute,
-  AppWorkstreamsRoute: AppWorkstreamsRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

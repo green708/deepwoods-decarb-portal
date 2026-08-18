@@ -64,7 +64,7 @@ export function LoginForm({ onNavigate }: { onNavigate: (v: AuthView) => void })
 
   const handleDemo = () => {
     loginDemo();
-    navigate({ to: "/workstreams" });
+    navigate({ to: "/home" });
   };
 
   return (

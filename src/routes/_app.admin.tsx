@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PageBody, PageHeader, LockedState } from "@/components/portal";
 import { getRole, ROLE_META, authFetch } from "@/lib/auth";
-import { CheckCircle2, XCircle, RefreshCw, ListChecks, ScrollText, Users, Lock, Unlock, ChevronDown, ChevronRight, Building2, Clock, FileCheck, AlertCircle, Loader2, Search, Zap, Plus, X, Workflow, UserPlus, FileText, ClipboardList, Copy, Check, Paintbrush } from "lucide-react";
+import { CheckCircle2, XCircle, RefreshCw, ListChecks, ScrollText, Users, Lock, Unlock, ChevronDown, ChevronRight, Building2, Clock, FileCheck, AlertCircle, Loader2, Search, Zap, Plus, X, Workflow, UserPlus, FileText, ClipboardList, Copy, Check, Paintbrush, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 import { useActivationClients, useUpdateClientInvoice, useClients, type ApiClient, type ActivationClient } from "@/lib/api";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
@@ -461,9 +461,208 @@ function InvoiceModal({ client, open, onClose }: {
   );
 }
 
+// ── Payments tab ─────────────────────────────────────────────────────────────
+
+function PaymentsTab() {
+  const { data: clients = [], isLoading, refetch } = useActivationClients();
+  const updateInvoice = useUpdateClientInvoice();
+  const [invoiceTarget, setInvoiceTarget] = useState<ActivationClient | null>(null);
+  const [search, setSearch] = useState("");
+
+  const filtered = clients.filter(c =>
+    c.name.toLowerCase().includes(search.toLowerCase()) ||
+    c.slug.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const pending = filtered.filter(c => c.payment_status === "pending" || !c.payment_status);
+  const completed = filtered.filter(c => c.payment_status === "paid" || c.payment_status === "waived");
+
+  const quickMark = async (c: ActivationClient, status: "paid" | "waived" | "pending") => {
+    try {
+      const result = await updateInvoice.mutateAsync({ client_id: c.id, payment_status: status });
+      if (result?.was_activation) {
+        toast.success(status === "paid"
+          ? "Payment confirmed — portal unlocked and activation email sent."
+          : "Waiver applied — portal unlocked and activation email sent.");
+      } else {
+        toast.success(`Payment status set to ${status}`);
+      }
+      refetch();
+    } catch (e) {
+      toast.error((e as Error).message ?? "Update failed");
+    }
+  };
+
+  const PAY_CFG: Record<string, { label: string; bg: string; text: string; border: string }> = {
+    paid:    { label: "Paid",    bg: "bg-[#E6F4EF]", text: "text-[#1E6F5C]", border: "border-[#A8D5BD]" },
+    waived:  { label: "Waived", bg: "bg-[#EFF6FF]",  text: "text-[#1D4ED8]", border: "border-[#93C5FD]" },
+    pending: { label: "Pending",bg: "bg-amber-50",    text: "text-amber-700", border: "border-amber-200" },
+  };
+
+  function PayStatusPill({ status }: { status: string }) {
+    const cfg = PAY_CFG[status] ?? PAY_CFG.pending;
+    return (
+      <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${cfg.bg} ${cfg.text} ${cfg.border}`}>
+        {cfg.label}
+      </span>
+    );
+  }
+
+  function ClientPayRow({ c }: { c: ActivationClient }) {
+    const isPaid = c.payment_status === "paid" || c.payment_status === "waived";
+    return (
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-white px-5 py-4 shadow-sm"
+        style={{ borderColor: "var(--border)" }}>
+        {/* Avatar */}
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white text-xs font-bold"
+          style={{ background: "var(--deepwoods-green, #1E6F5C)" }}>
+          {c.slug.slice(0, 2).toUpperCase()}
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <p className="truncate text-sm font-semibold" style={{ color: "var(--navy)" }}>{c.name}</p>
+          <p className="text-[11px]" style={{ color: "var(--navy-2)" }}>
+            {c.slug}
+            {c.invoice_ref ? ` · ${c.invoice_ref}` : ""}
+            {c.payment_date ? ` · ${new Date(c.payment_date).toLocaleDateString("en-IN")}` : ""}
+          </p>
+        </div>
+
+        {/* Status pill */}
+        <PayStatusPill status={c.payment_status ?? "pending"} />
+
+        {/* Portal access badge */}
+        {c.is_active ? (
+          <span className="flex items-center gap-1 rounded-full bg-[#E6F4EF] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1E6F5C]">
+            <Unlock className="h-3 w-3" /> Portal active
+          </span>
+        ) : (
+          <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+            <Lock className="h-3 w-3" /> Locked
+          </span>
+        )}
+
+        {/* Actions */}
+        <div className="flex items-center gap-2">
+          {!isPaid && (
+            <>
+              <button
+                onClick={() => quickMark(c, "paid")}
+                disabled={updateInvoice.isPending}
+                className="flex items-center gap-1.5 rounded-lg bg-[#1E6F5C] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-50"
+              >
+                <CheckCircle2 className="h-3 w-3" /> Mark Paid
+              </button>
+              <button
+                onClick={() => quickMark(c, "waived")}
+                disabled={updateInvoice.isPending}
+                className="flex items-center gap-1.5 rounded-lg border border-[#93C5FD] bg-[#EFF6FF] px-3 py-1.5 text-xs font-semibold text-[#1D4ED8] hover:bg-[#DBEAFE] disabled:opacity-50"
+              >
+                Waive
+              </button>
+            </>
+          )}
+          {isPaid && (
+            <button
+              onClick={() => quickMark(c, "pending")}
+              disabled={updateInvoice.isPending}
+              className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-slate-50 disabled:opacity-50"
+              style={{ borderColor: "var(--border)", color: "var(--navy-2)" }}
+            >
+              <XCircle className="h-3 w-3" /> Revert to Pending
+            </button>
+          )}
+          <button
+            onClick={() => setInvoiceTarget(c)}
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-slate-50"
+            style={{ borderColor: "var(--border)", color: "var(--navy)" }}
+          >
+            <FileText className="h-3 w-3" /> Details
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <InvoiceModal client={invoiceTarget} open={invoiceTarget !== null} onClose={() => setInvoiceTarget(null)} />
+
+      <div className="max-w-4xl space-y-5">
+        {/* Summary strip */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Total clients",     value: clients.length,    color: "var(--navy)" },
+            { label: "Payment pending",   value: clients.filter(c => !c.payment_status || c.payment_status === "pending").length, color: "#D97706" },
+            { label: "Payment complete",  value: clients.filter(c => c.payment_status === "paid" || c.payment_status === "waived").length, color: "#1E6F5C" },
+          ].map(s => (
+            <div key={s.label} className="rounded-xl border bg-white px-4 py-3 shadow-sm" style={{ borderColor: "var(--border)" }}>
+              <p className="text-xs font-medium" style={{ color: "var(--navy-2)" }}>{s.label}</p>
+              <p className="text-2xl font-bold mt-0.5" style={{ color: s.color }}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Search */}
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search clients…"
+            className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm"
+            style={{ borderColor: "var(--border)" }} />
+        </div>
+
+        {isLoading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading clients…
+          </div>
+        )}
+
+        {/* Pending section */}
+        {pending.length > 0 && (
+          <section>
+            <div className="mb-2 flex items-center gap-2">
+              <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-600">
+                Payment Pending ({pending.length})
+              </span>
+            </div>
+            <div className="space-y-2">
+              {pending.map(c => <ClientPayRow key={c.id} c={c} />)}
+            </div>
+          </section>
+        )}
+
+        {/* Completed section */}
+        {completed.length > 0 && (
+          <section>
+            <div className="mb-2 flex items-center gap-2">
+              <CheckCircle2 className="h-3.5 w-3.5 text-[#1E6F5C]" />
+              <span className="text-xs font-bold uppercase tracking-wider text-[#1E6F5C]">
+                Payment Complete ({completed.length})
+              </span>
+            </div>
+            <div className="space-y-2">
+              {completed.map(c => <ClientPayRow key={c.id} c={c} />)}
+            </div>
+          </section>
+        )}
+
+        {!isLoading && clients.length === 0 && (
+          <div className="rounded-xl border border-dashed px-6 py-10 text-center text-sm text-slate-400"
+            style={{ borderColor: "var(--border)" }}>
+            No clients found.
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-type AdminTab = "activation" | "clients" | "queue" | "screening" | "log" | "requests" | "branding";
+type AdminTab = "activation" | "clients" | "queue" | "screening" | "log" | "requests" | "branding" | "payments";
 
 // ── Access Requests tab ───────────────────────────────────────────────────────
 
@@ -889,8 +1088,8 @@ function BrandingTab() {
 
   const clients: BrandingClient[] = raw.map(c => ({
     id: c.id, name: c.name,
-    logo_url: (c as Record<string, unknown>).logo_url as string | null ?? null,
-    primary_color: (c as Record<string, unknown>).primary_color as string ?? "#1E6F5C",
+    logo_url: ((c as unknown) as BrandingClient).logo_url ?? null,
+    primary_color: ((c as unknown) as BrandingClient).primary_color ?? "#1E6F5C",
   }));
 
   const openEdit = (c: BrandingClient) => {
@@ -1342,6 +1541,7 @@ function Admin() {
 
   const TABS: {id:AdminTab;label:string;icon:React.ReactNode}[] = [
     {id:"requests",  label:"Access Requests",     icon:<ClipboardList className="w-4 h-4"/>},
+    {id:"payments",  label:"Payment Requests",    icon:<CreditCard className="w-4 h-4"/>},
     {id:"activation",label:"Client Activation",  icon:<Zap className="w-4 h-4"/>},
     {id:"clients",   label:"Engagements",         icon:<Users className="w-4 h-4"/>},
     {id:"queue",     label:"Submissions Queue",   icon:<ListChecks className="w-4 h-4"/>},
@@ -1398,6 +1598,9 @@ function Admin() {
       <PageBody>
         {/* ── Access Requests tab ── */}
         {tab==="requests" && <RequestsTab />}
+
+        {/* ── Payment Requests tab ── */}
+        {tab==="payments" && <PaymentsTab />}
 
         {/* ── Activation tab ── */}
         {tab==="activation" && <ActivationTab />}

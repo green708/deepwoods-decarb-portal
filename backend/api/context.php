@@ -57,7 +57,7 @@ if (!$client) { http_response_code(404); echo json_encode(['error' => 'Client no
 // ── 2. Entities ───────────────────────────────────────────────────────────────
 $stmt = $pdo->prepare(
     "SELECT code, name, short_name AS short, is_consolidated,
-            consolidates, sort_order
+            consolidates, sort_order, org_type
      FROM client_entities WHERE client_id = ? ORDER BY sort_order"
 );
 $stmt->execute([$client_id]);
@@ -76,12 +76,17 @@ if (!empty($user['entity_scope'])) {
 }
 
 // ── 3. Reporting years ────────────────────────────────────────────────────────
-$stmt = $pdo->prepare(
-    "SELECT DISTINCT year FROM ghg_inventory
-     WHERE client_id = ? ORDER BY year ASC"
-);
-$stmt->execute([$client_id]);
-$years = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'year');
+$years = [];
+try {
+    $stmt = $pdo->prepare(
+        "SELECT DISTINCT year FROM ghg_inventory
+         WHERE client_id = ? ORDER BY year ASC"
+    );
+    $stmt->execute([$client_id]);
+    $years = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'year');
+} catch (PDOException $e) {
+    // ghg_inventory table missing on fresh install — fall through to config fallback
+}
 
 // If no inventory yet, fall back to client_config
 if (empty($years)) {
@@ -148,6 +153,15 @@ try {
 } catch (PDOException $e) {
     // Migration 002 not yet applied — return empty array
     $reporting_engagements = [];
+}
+
+// ── Team member count ────────────────────────────────────────────────────────
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE client_id = ?");
+    $stmt->execute([$client_id]);
+    $config['team_count'] = (int)$stmt->fetchColumn();
+} catch (PDOException $e) {
+    $config['team_count'] = 0;
 }
 
 // ── 9. Assemble response ─────────────────────────────────────────────────────

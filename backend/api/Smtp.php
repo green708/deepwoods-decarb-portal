@@ -1,19 +1,31 @@
 <?php
-declare(strict_types=1);
-
 // Minimal SMTP client using plain sockets — no external library. Sends mail
 // via Gmail's SMTP relay (smtp.gmail.com:587, STARTTLS, AUTH LOGIN) using an
 // account + App Password. Same "no Composer needed" approach as GoogleDrive.php.
 
 class Smtp {
+    private string $host;
+    private int $port;
+    private string $username;
+    private string $password;
+    private string $fromEmail;
+    private string $fromName;
+
     public function __construct(
-        private string $host,
-        private int $port,
-        private string $username,
-        private string $password,
-        private string $fromEmail,
-        private string $fromName = 'Deepwoods GHG Portal'
-    ) {}
+        string $host,
+        int $port,
+        string $username,
+        string $password,
+        string $fromEmail,
+        string $fromName = 'Deepwoods Decarbonisation Portal'
+    ) {
+        $this->host      = $host;
+        $this->port      = $port;
+        $this->username  = $username;
+        $this->password  = $password;
+        $this->fromEmail = $fromEmail;
+        $this->fromName  = $fromName;
+    }
 
     public function send(string $to, string $subject, string $htmlBody): void {
         $socket = fsockopen($this->host, $this->port, $errno, $errstr, 15);

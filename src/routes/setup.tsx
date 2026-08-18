@@ -837,7 +837,7 @@ function ReviewStep({ data, onEdit }: {
       <div className="mt-5 rounded-xl border border-[#C5E4D0] bg-[#F0FAF5] px-5 py-4">
         <p className="text-sm font-semibold text-[#1E4D2B]">Ready to activate your workspace</p>
         <p className="mt-1 text-xs leading-relaxed text-[#1E6F5C]">
-          Confirming will configure your GHG portal based on these settings. Your dashboards and
+          Confirming will configure your Decarbonisation Portal based on these settings. Your dashboards and
           data submission forms will be ready immediately after activation.
         </p>
       </div>
@@ -996,7 +996,7 @@ function Setup() {
     }
   };
 
-  const handleDashboard = () => navigate({ to: "/workstreams" });
+  const handleDashboard = () => navigate({ to: "/home" });
   const handleDataCollection = () => navigate({ to: "/submissions" });
 
   if (!token) return null;

@@ -101,7 +101,7 @@ function InventorySetupPage() {
         }),
       });
       clearClientContext();
-      window.location.href = "/workstreams";
+      window.location.href = "/home";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save. Please try again.");
       setLoading(false);

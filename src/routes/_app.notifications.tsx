@@ -183,7 +183,7 @@ function NotificationsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="GHG Portal"
+        eyebrow="Decarbonisation Portal"
         title="Notifications"
         description={
           GHG_LIVE

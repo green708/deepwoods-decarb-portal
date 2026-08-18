@@ -99,14 +99,14 @@ if (
             $smtpCfg['username'],
             $smtpCfg['app_password'],
             $smtpCfg['from_email'] ?? $smtpCfg['username'],
-            $smtpCfg['from_name'] ?? 'Deepwoods GHG Portal',
+            $smtpCfg['from_name'] ?? 'Deepwoods Decarbonisation Portal',
         );
 
         $htmlBody = <<<HTML
 <html><body style="font-family:Arial,sans-serif;color:#1a1a1a;max-width:560px;margin:0 auto;padding:24px">
-<h2 style="color:#1E6F5C;margin-top:0">Your GHG Portal access is ready</h2>
+<h2 style="color:#1E6F5C;margin-top:0">your Decarbonisation Portal access is ready</h2>
 <p>Hello,</p>
-<p>A Deepwoods consultant has created your account on the <strong>GHG Portal</strong>. You can log in using the credentials below.</p>
+<p>A Deepwoods consultant has created your account on the <strong>Decarbonisation Portal</strong>. You can log in using the credentials below.</p>
 <table style="border-collapse:collapse;margin:20px 0;width:100%">
   <tr style="border-bottom:1px solid #E5E7EB">
     <td style="padding:10px 16px 10px 0;color:#6B7280;font-size:14px;white-space:nowrap">Login URL</td>
@@ -125,11 +125,11 @@ if (
   <strong>Important:</strong> You will be prompted to set a new password on your first login. Please do this immediately after signing in.
 </div>
 <p style="font-size:13px;color:#6B7280">If you were not expecting this invitation, please ignore this email or contact your Deepwoods consultant.</p>
-<p style="font-size:12px;color:#9CA3AF;margin-top:32px;border-top:1px solid #F3F4F6;padding-top:16px">— Deepwoods GHG Portal · This is an automated message, please do not reply.</p>
+<p style="font-size:12px;color:#9CA3AF;margin-top:32px;border-top:1px solid #F3F4F6;padding-top:16px">— Deepwoods Decarbonisation Portal · This is an automated message, please do not reply.</p>
 </body></html>
 HTML;
 
-        $smtp->send($email, 'Your GHG Portal access is ready', $htmlBody);
+        $smtp->send($email, 'your Decarbonisation Portal access is ready', $htmlBody);
         $emailSent = true;
     } catch (Throwable $e) {
         // SMTP failure is non-fatal — user was already created, admin has the temp password

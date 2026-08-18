@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 declare(strict_types=1);
 // Google redirects here after you click "Allow" on the consent screen.
 // Exchanges the one-time authorization code for a refresh token and saves
@@ -42,7 +42,7 @@ if ($status !== 200 || empty($data['refresh_token'])) {
     if ($status === 200 && empty($data['refresh_token'])) {
         echo "Google returned an access token but no refresh token — this happens when the app was\n";
         echo "already authorized before. Go to https://myaccount.google.com/permissions , remove access\n";
-        echo "for 'Deepwoods GHG Portal', then visit the authorization link again:\n\n" . authUrl($config);
+        echo "for 'Deepwoods Decarbonisation Portal', then visit the authorization link again:\n\n" . authUrl($config);
     }
     exit;
 }
