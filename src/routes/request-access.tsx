@@ -218,7 +218,7 @@ function RequestAccessPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
 
             {/* Q1: GHG done before */}
-            <Field label="Have you done your GHG Reporting before?" required>
+            <Field label="A1. Have you done your GHG Reporting before?" required>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <div className="ra-toggle">
                   <button type="button" className={`ra-toggle-btn${form.ghg_done_before ? " active" : ""}`}
@@ -227,7 +227,7 @@ function RequestAccessPage() {
                     onClick={() => set("ghg_done_before", false)}>No</button>
                 </div>
                 {form.ghg_done_before && (
-                  <Field label="If yes, please specify your requirement"
+                  <Field label="A1a. If yes, please specify your requirement"
                     hint="Tell us about your previous reporting standard, base year, and what you'd like to carry forward or improve.">
                     <textarea className="ra-textarea" rows={3}
                       value={form.ghg_requirement}
@@ -239,7 +239,7 @@ function RequestAccessPage() {
             </Field>
 
             {/* Q2: Services needed */}
-            <Field label="What are you looking for?" required
+            <Field label="A2. What are you looking for?" required
               hint="Select all that apply — this helps us tailor the right plan and assign the right consultant.">
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 24px", marginTop: 4 }}>
                 {SERVICES.map(s => {
@@ -287,7 +287,7 @@ function RequestAccessPage() {
 
             {/* India + GSTIN */}
             <div className="ra-grid-2">
-              <Field label="Is your organisation registered in India?"
+              <Field label="B1. Is your organisation registered in India?"
                 hint="This determines whether we ask for a GSTIN or a general business registration / tax ID.">
                 <div className="ra-toggle">
                   <button type="button" className={`ra-toggle-btn${form.is_india ? " active" : ""}`}
@@ -296,7 +296,7 @@ function RequestAccessPage() {
                     onClick={() => set("is_india", false)}>No</button>
                 </div>
               </Field>
-              <Field label="GSTIN"
+              <Field label="B2. GSTIN"
                 hint="Your 15-character GST Identification Number, as shown on your GST registration certificate.">
                 <input className="ra-input" value={form.gstin}
                   onChange={e => set("gstin", e.target.value.toUpperCase())}
@@ -308,13 +308,13 @@ function RequestAccessPage() {
 
             {/* Legal name + Operating name */}
             <div className="ra-grid-2">
-              <Field label="Legal name of the organisation" required
+              <Field label="B3. Legal name of the organisation" required
                 hint="The exact registered name on your incorporation or registration certificate — this is what will appear on official reports.">
                 <input className="ra-input" value={form.legal_name}
                   onChange={e => set("legal_name", e.target.value)}
                   placeholder="Exact registered name" />
               </Field>
-              <Field label="Operating name (if different from legal name)"
+              <Field label="B4. Operating name (if different from legal name)"
                 hint="Name as you want it displayed across the portal and any reports.">
                 <input className="ra-input" value={form.operating_name}
                   onChange={e => set("operating_name", e.target.value)}
@@ -324,7 +324,7 @@ function RequestAccessPage() {
 
             {/* Industry + Org type */}
             <div className="ra-grid-2">
-              <Field label="Industry" required
+              <Field label="B5. Industry" required
                 hint="Choose the sector closest to your primary business activity — this affects the default emission factors used in your calculations.">
                 <select className="ra-select" value={form.industry}
                   onChange={e => set("industry", e.target.value)}>
@@ -332,7 +332,7 @@ function RequestAccessPage() {
                   {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
                 </select>
               </Field>
-              <Field label="Organisational Type" required
+              <Field label="B6. Organisational Type" required
                 hint="Your legal structure, as stated on your registration documents.">
                 <select className="ra-select" value={form.org_type}
                   onChange={e => set("org_type", e.target.value)}>
@@ -344,7 +344,7 @@ function RequestAccessPage() {
 
             {/* MSME */}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <Field label="Is your organisation registered as an MSME?"
+              <Field label="B7. Is your organisation registered as an MSME?"
                 hint="Select Yes if you hold an Udyam (or equivalent) MSME registration.">
                 <div className="ra-toggle">
                   <button type="button" className={`ra-toggle-btn${form.is_msme ? " active" : ""}`}
@@ -354,7 +354,7 @@ function RequestAccessPage() {
                 </div>
               </Field>
               {form.is_msme && (
-                <Field label="Udyam Registration Number"
+                <Field label="B7a. Udyam Registration Number"
                   hint="Your 19-character Udyam number (e.g. UDYAM-XX-00-0000000). Found on your Udyam Registration Certificate.">
                   <input className="ra-input" value={form.udyam_number}
                     onChange={e => set("udyam_number", e.target.value.toUpperCase())}
@@ -364,7 +364,7 @@ function RequestAccessPage() {
             </div>
 
             {/* Legal address */}
-            <Field label="Legal Address" required
+            <Field label="B8. Legal Address" required
               hint="Your registered head office address. This will automatically become your first facility in the next step.">
               <textarea className="ra-textarea" rows={3} value={form.legal_address}
                 onChange={e => set("legal_address", e.target.value)}
@@ -373,14 +373,14 @@ function RequestAccessPage() {
 
             {/* Website + Logo */}
             <div className="ra-grid-2">
-              <Field label="Organisation Website"
+              <Field label="B9. Organisation Website"
                 hint="Include https:// — this is used on client-facing reports.">
                 <input className="ra-input" type="url" value={form.website}
                   onChange={e => set("website", e.target.value)}
                   placeholder="https://www.company.com" />
               </Field>
 
-              <Field label="Upload Company Logo"
+              <Field label="B10. Upload Company Logo"
                 hint="PNG or SVG with a transparent background works best. Used on your reports and in the portal header.">
                 <input ref={logoRef} type="file"
                   accept="image/png,image/jpeg,image/svg+xml,image/webp"
@@ -432,12 +432,12 @@ function RequestAccessPage() {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
             <div className="ra-grid-2">
-              <Field label="Your full name" required>
+              <Field label="C1. Your full name" required>
                 <input className="ra-input" value={form.name}
                   onChange={e => set("name", e.target.value)}
                   placeholder="Jane Smith" />
               </Field>
-              <Field label="Designation" required
+              <Field label="C2. Designation" required
                 hint="Your job title or role in the organisation.">
                 <input className="ra-input" value={form.designation}
                   onChange={e => set("designation", e.target.value)}
@@ -446,12 +446,12 @@ function RequestAccessPage() {
             </div>
 
             <div className="ra-grid-2">
-              <Field label="Work email" required>
+              <Field label="C3. Work email" required>
                 <input className="ra-input" type="email" value={form.email}
                   onChange={e => set("email", e.target.value)}
                   placeholder="jane@company.com" />
               </Field>
-              <Field label="Mobile number" required
+              <Field label="C4. Mobile number" required
                 hint="We may call to verify your request or clarify details.">
                 <input className="ra-input" type="tel" value={form.phone}
                   onChange={e => set("phone", e.target.value)}

@@ -224,8 +224,16 @@ if ($smtpReady && $adminEmail) {
     <p style='font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#1E6F5C;margin:18px 0 10px'>Primary Contact</p>
     <table style='width:100%;border-collapse:collapse;font-size:13.5px'>
       {$row('Name', $name)}
+      {$row('Designation', $designation)}
       {$row('Email', $email)}
       {$row('Phone', $phone)}
+    </table>
+    <p style='font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#1E6F5C;margin:18px 0 10px'>KYC — GHG Reporting</p>
+    <table style='width:100%;border-collapse:collapse;font-size:13.5px'>
+      {$row('GHG reported before', $ghgDoneBefore === null ? '—' : ($ghgDoneBefore ? 'Yes' : 'No'))}
+      {$row('Requirement / notes', $ghgRequirement ?: '—')}
+      {$row('Looking for', $servicesNeeded ? implode(', ', json_decode($servicesNeeded, true)) : '—')}
+      {$row('Other details', $servicesOther ?: '—')}
     </table>
     <div style='margin-top:20px;padding:12px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:13px;color:#92400e'>
       Login credentials and status emails go to: <strong>" . htmlspecialchars($email) . "</strong>

@@ -97,6 +97,7 @@ try {
                                      ? (string)(int)$body['facility_count'] : null,
         'setup_complete'          => 'true',
         'primary_contact_email'   => $user['email'],  // used to gate /register to primary contact only
+        'selected_plan'           => trim($body['selected_plan'] ?? 'professional') ?: 'professional',
     ];
 
     // reporting_model (consolidated / separate / mixed)
@@ -317,6 +318,64 @@ HTML;
     }
 
     $pdo->commit();
+
+    // ── Admin notification email — setup complete ─────────────────────────────
+    $planMap = [
+        'starter'      => 'Starter — ₹75,000/year',
+        'growth'       => 'Growth — ₹1,75,000/year',
+        'professional' => 'Professional — ₹3,50,000/year (Most Popular)',
+        'enterprise'   => 'Enterprise — Custom pricing',
+    ];
+    $selectedPlan = trim($body['selected_plan'] ?? 'professional') ?: 'professional';
+    $planLabel    = $planMap[$selectedPlan] ?? ucfirst($selectedPlan);
+    $adminCfg     = dolphin_config();
+    $adminEmail   = $adminCfg['admin_email'] ?? ($adminCfg['smtp']['username'] ?? null);
+    $smtpCfg      = $adminCfg['smtp'] ?? [];
+    if ($adminEmail && !empty($smtpCfg['host']) && !empty($smtpCfg['username']) && !empty($smtpCfg['app_password'])) {
+        try {
+            require_once __DIR__ . '/Smtp.php';
+            $smtp = new Smtp(
+                $smtpCfg['host'],
+                (int)($smtpCfg['port'] ?? 587),
+                $smtpCfg['username'],
+                $smtpCfg['app_password'],
+                $smtpCfg['from_email'] ?? $smtpCfg['username'],
+                $smtpCfg['from_name']  ?? 'Deepwoods Decarbonisation Portal',
+            );
+            $cName    = htmlspecialchars($body['company_name'] ?? '');
+            $industry = htmlspecialchars($body['industry']     ?? '—');
+            $country  = htmlspecialchars($body['country']      ?? '—');
+            $contact  = htmlspecialchars($user['email']        ?? '');
+            $fCount   = (int)($body['facility_count'] ?? 1);
+            $planHtml = htmlspecialchars($planLabel);
+            $setupHtml = <<<HTML
+<html><body style="font-family:Arial,sans-serif;color:#1a1a1a;max-width:600px;margin:0 auto;padding:0">
+<div style="background:#1E6F5C;padding:24px 32px;border-radius:8px 8px 0 0">
+  <p style="margin:0;font-size:20px;font-weight:700;color:#fff">Deepwoods Decarb Portal</p>
+  <p style="margin:6px 0 0;font-size:13px;color:rgba(255,255,255,0.8)">New client setup completed</p>
+</div>
+<div style="background:#f9fafb;padding:24px 32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
+  <table width="100%" cellpadding="0" cellspacing="0" style="font-size:13.5px;border-collapse:collapse">
+    <tr><td style="padding:8px 0;color:#6b7280;width:160px">Company</td><td style="padding:8px 0;font-weight:600">{$cName}</td></tr>
+    <tr><td style="padding:8px 0;color:#6b7280">Industry</td><td style="padding:8px 0">{$industry}</td></tr>
+    <tr><td style="padding:8px 0;color:#6b7280">Country</td><td style="padding:8px 0">{$country}</td></tr>
+    <tr><td style="padding:8px 0;color:#6b7280">Facilities</td><td style="padding:8px 0">{$fCount}</td></tr>
+    <tr><td style="padding:8px 0;color:#6b7280">Primary contact</td><td style="padding:8px 0">{$contact}</td></tr>
+  </table>
+  <div style="margin-top:16px;padding:14px 18px;background:#ECF7F3;border:1px solid #C5E4D0;border-radius:8px">
+    <p style="margin:0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#1E6F5C;margin-bottom:4px">Selected Plan</p>
+    <p style="margin:0;font-size:16px;font-weight:700;color:#1E4D2B">{$planHtml}</p>
+  </div>
+  <p style="margin:20px 0 0;font-size:12px;color:#9CA3AF">Log in to the admin panel to review and approve this registration.</p>
+</div>
+</body></html>
+HTML;
+            $smtp->send($adminEmail, "New setup complete — {$cName} selected {$planLabel}", $setupHtml);
+        } catch (Throwable $e) {
+            error_log('client-setup admin notify email failed: ' . $e->getMessage());
+        }
+    }
+
     dolphin_send_json(['ok' => true, 'setup_complete' => true]);
 
 } catch (PDOException $e) {

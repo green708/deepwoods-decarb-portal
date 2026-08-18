@@ -261,11 +261,10 @@ function OrgCard({
                 )}
               </div>
             </div>
-            <a
-              href="mailto:accounts@deepwoodsgreen.com?subject=Invoice Request"
-              style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, color: ACCENT, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
-              View invoices <ArrowRight style={{ width: 13, height: 13 }} />
-            </a>
+            <p style={{ margin: 0, fontSize: 12, color: SLATE, flexShrink: 0, textAlign: "right" as const }}>
+              For invoice copies, contact your<br />
+              <strong style={{ color: INK }}>Deepwoods account manager</strong>
+            </p>
           </div>
         </div>
       )}

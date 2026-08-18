@@ -48,6 +48,8 @@ interface WizardState {
   udyam_number:   string;
   legal_address:  string;
   website:        string;
+  // Step 4 — Plan
+  selected_plan:  string;
   logo_preview:   string | null;
   // Step 2 — Facilities
   facilities:     Facility[];
@@ -61,6 +63,7 @@ const INIT: WizardState = {
   legal_address: "", website: "", logo_preview: null,
   facilities: [{ name: "Head Office", address: "" }],
   team: [{ name: "", email: "", role: "viewer" }],
+  selected_plan: "professional",
 };
 
 const STEPS = [
@@ -167,6 +170,7 @@ function EntitySetupPage() {
           reporting_model: reportingModel,
           logo_url:        data.logo_preview || undefined,
           facility_count:  data.facilities.length,
+          selected_plan:   data.selected_plan,
           entities,
           legal_entities:        legalEntities,
           reporting_engagements: reportingEngagements,
@@ -263,7 +267,7 @@ function EntitySetupPage() {
           {step === 0 && <CompanyDetailsStep data={data} update={update} />}
           {step === 1 && <FacilitiesStep     data={data} update={update} onBackToCompany={() => setStep(0)} />}
           {step === 2 && <TeamStep           data={data} update={update} />}
-          {step === 3 && <PaymentStep />}
+          {step === 3 && <PaymentStep selectedPlan={data.selected_plan} onPlanChange={p => update({ selected_plan: p })} />}
           {step === 4 && <SubmitStep         data={data} />}
         </div>
 
@@ -694,44 +698,240 @@ function TeamStep({ data, update }: { data: WizardState; update: (p: Partial<Wiz
 
 // ── Step 4: Payment ───────────────────────────────────────────────────────────
 
-function PaymentStep() {
+function PaymentStep({ selectedPlan, onPlanChange }: { selectedPlan: string; onPlanChange: (p: string) => void }) {
+  const MINT3 = "#3DA882";
+  const plans = [
+    {
+      key: "starter",
+      name: "Starter",
+      tagline: "Begin your GHG journey",
+      price: "₹75,000",
+      period: "/year",
+      popular: false,
+      features: [
+        "Scope 1 & 2 GHG Inventory",
+        "Up to 2 facilities",
+        "Annual GHG Report (GHG Protocol)",
+        "Carbon footprint dashboard",
+        "Data submission portal",
+        "Email support",
+      ],
+    },
+    {
+      key: "growth",
+      name: "Growth",
+      tagline: "Deepen your sustainability footprint",
+      price: "₹1,75,000",
+      period: "/year",
+      popular: false,
+      features: [
+        "Scope 1, 2 & 3 GHG Inventory",
+        "Up to 5 facilities",
+        "Assurance-ready reporting",
+        "Decarbonisation roadmap",
+        "Action plan & priority tracker",
+        "Hotspot analysis",
+        "Dedicated coordinator",
+      ],
+    },
+    {
+      key: "professional",
+      name: "Professional",
+      tagline: "The complete decarbonisation platform",
+      price: "₹3,50,000",
+      period: "/year",
+      popular: true,
+      features: [
+        "Full Scope 1, 2 & 3 + Assurance",
+        "Unlimited facilities & entities",
+        "SBTi Target Setting support",
+        "Green Finance / Carbon P&L module",
+        "Peer benchmarking",
+        "I-REC & renewables tracking",
+        "Board-ready report library",
+        "Priority consultant access",
+      ],
+    },
+    {
+      key: "enterprise",
+      name: "Enterprise",
+      tagline: "Bespoke engagement at scale",
+      price: "Custom",
+      period: "",
+      popular: false,
+      features: [
+        "Everything in Professional",
+        "Multi-entity & group reporting",
+        "Regulatory disclosure (BRSR, CDP, GRI)",
+        "Custom emission factor library",
+        "On-site workshops & training",
+        "Named consultant team",
+      ],
+    },
+  ] as const;
+
   return (
-    <div style={{ maxWidth: 580 }}>
+    <div style={{ maxWidth: 900 }}>
+      <style>{`
+        @keyframes ps-fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+        .ps-card{transition:transform 0.18s,box-shadow 0.18s;cursor:default;}
+        .ps-card:hover{transform:translateY(-3px);box-shadow:0 14px 40px rgba(30,79,60,0.15),0 4px 10px rgba(0,0,0,0.06)!important;}
+      `}</style>
+
+      {/* Hero band */}
       <div style={{
-        border: `1px solid ${HAIRLINE}`, borderRadius: 10, overflow: "hidden",
-        marginBottom: 20,
+        background: `linear-gradient(135deg,${FOREST} 0%,${CANOPY} 60%,${MINT3} 100%)`,
+        borderRadius: 14, padding: "28px 32px", marginBottom: 24,
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+        boxShadow: "0 6px 24px rgba(30,79,60,0.22)",
+        animation: "ps-fade 0.4s ease both",
       }}>
-        <div style={{ height: 4, background: `linear-gradient(90deg, ${FOREST}, ${CANOPY})` }} />
-        <div style={{ padding: "24px 28px" }}>
-          <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, textTransform: "uppercase",
-            letterSpacing: "0.07em", color: SLATE }}>
-            Plan
+        <div>
+          <p style={{ margin: "0 0 5px", fontSize: 10, fontWeight: 800, letterSpacing: "0.12em",
+            textTransform: "uppercase", color: "rgba(255,255,255,0.65)" }}>
+            Select a plan
           </p>
-          <h2 style={{ margin: "0 0 16px", fontSize: 18, fontWeight: 700, color: INK }}>
-            Deepwoods Decarb Portal — Annual Access
-          </h2>
-          <ul style={{ margin: "0 0 16px", padding: "0 0 0 18px", fontSize: 13, lineHeight: 1.9, color: SLATE }}>
-            <li>Full Scope 1, 2 and 3 GHG inventory for this entity</li>
-            <li>Facility-level data submission and document vault</li>
-            <li>Annual assured GHG report package</li>
-            <li>Decarbonisation pathway and peer benchmarking modules</li>
-            <li>Carbon footprint dashboards and intensity metrics</li>
-          </ul>
-          <div style={{
-            padding: "12px 16px", borderRadius: 8,
-            background: MINT, border: `1px solid oklch(0.85 0.05 155)`,
-            fontSize: 13, color: CANOPY, lineHeight: 1.6,
-          }}>
-            <strong>Pricing is confirmed manually.</strong> A Deepwoods consultant will review your registration
-            and confirm the engagement terms. Nothing is charged automatically.
-          </div>
+          <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em" }}>
+            Choose your decarbonisation engagement
+          </p>
+          <p style={{ margin: "6px 0 0", fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.6, maxWidth: 420 }}>
+            Nothing is charged now — a Deepwoods consultant will confirm the plan and send an invoice after reviewing your registration.
+          </p>
+        </div>
+        <div style={{
+          flexShrink: 0, padding: "8px 18px", borderRadius: 10,
+          background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.25)",
+          fontSize: 12, fontWeight: 700, color: "#fff", whiteSpace: "nowrap" as const,
+        }}>
+          No payment now
         </div>
       </div>
 
-      <p style={{ margin: 0, fontSize: 13, color: SLATE, lineHeight: 1.65 }}>
-        Once your registration is reviewed and payment is confirmed at the account level,
-        the entire workspace is unlocked for all users on this account.
-      </p>
+      {/* Plan grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 20 }}>
+        {plans.map(plan => {
+          const isSelected = selectedPlan === plan.key;
+          return (
+          <div key={plan.key}
+            className="ps-card"
+            onClick={() => onPlanChange(plan.key)}
+            style={{
+              position: "relative" as const,
+              borderRadius: 14,
+              background: plan.popular
+                ? `linear-gradient(155deg,${FOREST} 0%,${CANOPY} 100%)`
+                : "#fff",
+              border: isSelected
+                ? `2.5px solid #3DA882`
+                : plan.popular ? "2px solid transparent" : `1.5px solid ${HAIRLINE}`,
+              boxShadow: plan.popular
+                ? "0 10px 32px rgba(30,79,60,0.24)"
+                : isSelected ? "0 0 0 4px rgba(61,168,130,0.15)" : "0 2px 10px rgba(30,79,60,0.06)",
+              transform: plan.popular ? "translateY(-6px)" : "none",
+              paddingBottom: 20,
+            }}>
+
+            {plan.popular && (
+              <div style={{
+                position: "absolute" as const, top: -12, left: "50%", transform: "translateX(-50%)",
+                padding: "3px 14px", borderRadius: 20,
+                background: `linear-gradient(90deg,#A7F3D0,${MINT3})`,
+                fontSize: 9, fontWeight: 800, color: FOREST, letterSpacing: "0.1em",
+                textTransform: "uppercase" as const, whiteSpace: "nowrap" as const,
+                boxShadow: "0 2px 6px rgba(61,168,130,0.4)",
+              }}>
+                Most Popular
+              </div>
+            )}
+
+            <div style={{ padding: "22px 18px 16px" }}>
+              <p style={{ margin: "0 0 2px", fontSize: 9, fontWeight: 800, letterSpacing: "0.12em",
+                textTransform: "uppercase" as const,
+                color: plan.popular ? "rgba(255,255,255,0.55)" : SLATE }}>
+                {plan.name}
+              </p>
+              <p style={{ margin: "0 0 10px", fontSize: 11, lineHeight: 1.4,
+                color: plan.popular ? "rgba(255,255,255,0.75)" : SLATE }}>
+                {plan.tagline}
+              </p>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 3, marginBottom: 14 }}>
+                <span style={{ fontSize: plan.price === "Custom" ? 22 : 20, fontWeight: 900,
+                  letterSpacing: "-0.03em",
+                  color: plan.popular ? "#fff" : INK }}>
+                  {plan.price}
+                </span>
+                {plan.period && (
+                  <span style={{ fontSize: 11, color: plan.popular ? "rgba(255,255,255,0.55)" : SLATE }}>
+                    {plan.period}
+                  </span>
+                )}
+              </div>
+              <div style={{ height: 1, background: plan.popular ? "rgba(255,255,255,0.15)" : HAIRLINE, marginBottom: 14 }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                {plan.features.map(f => (
+                  <div key={f} style={{ display: "flex", alignItems: "flex-start", gap: 7 }}>
+                    <div style={{
+                      width: 14, height: 14, borderRadius: "50%", flexShrink: 0, marginTop: 1,
+                      background: plan.popular ? "rgba(167,243,208,0.2)" : MINT,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      <svg width="7" height="7" viewBox="0 0 7 7" fill="none">
+                        <path d="M1 3.5L3 5.5L6 1.5" stroke={plan.popular ? "#A7F3D0" : CANOPY} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span style={{ fontSize: 11, lineHeight: 1.45,
+                      color: plan.popular ? "rgba(255,255,255,0.85)" : SLATE }}>
+                      {f}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Selected indicator */}
+            {isSelected && (
+              <div style={{
+                position: "absolute" as const, top: 10, right: 10,
+                width: 20, height: 20, borderRadius: "50%",
+                background: plan.popular ? "rgba(255,255,255,0.9)" : "#3DA882",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 5L4 7L8 3" stroke={plan.popular ? CANOPY : "#fff"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+            )}
+          </div>
+        ); })}
+      </div>
+
+      {/* Selected plan summary + footer */}
+      <div style={{
+        padding: "12px 18px", borderRadius: 10, marginBottom: 12,
+        background: "#ECF7F3", border: "1px solid #C5E4D0",
+        display: "flex", alignItems: "center", gap: 8,
+        fontSize: 13, color: CANOPY,
+      }}>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M2.5 7L5.5 10L11.5 4" stroke={CANOPY} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        <span>
+          Selected: <strong>{plans.find(p => p.key === selectedPlan)?.name ?? "Professional"}</strong>
+          {" "}— {plans.find(p => p.key === selectedPlan)?.price ?? "₹3,50,000"}
+          {plans.find(p => p.key === selectedPlan)?.period ?? "/year"}
+        </span>
+      </div>
+
+      {/* Footer note */}
+      <div style={{
+        padding: "14px 18px", borderRadius: 10,
+        background: MINT, border: `1px solid #C5E4D0`,
+        fontSize: 13, color: CANOPY, lineHeight: 1.65,
+      }}>
+        <strong>Pricing is confirmed manually.</strong> A Deepwoods consultant will review your registration
+        and confirm the engagement terms. Nothing is charged automatically. Once confirmed, the entire
+        workspace unlocks for all users on this account.
+      </div>
     </div>
   );
 }
@@ -755,6 +955,16 @@ function SubmitStep({ data }: { data: WizardState }) {
         <RR label="MSME"          value={data.is_msme ? "Yes" : "No"} />
         <RR label="Legal address" value={data.legal_address || "—"} />
         {data.website && <RR label="Website" value={data.website} />}
+      </ReviewSection>
+
+      <ReviewSection title="Selected Plan">
+        <RR label="Plan" value={
+          data.selected_plan === "starter"      ? "Starter — ₹75,000/year" :
+          data.selected_plan === "growth"       ? "Growth — ₹1,75,000/year" :
+          data.selected_plan === "professional" ? "Professional — ₹3,50,000/year (Most Popular)" :
+          data.selected_plan === "enterprise"   ? "Enterprise — Custom pricing" :
+          data.selected_plan
+        } />
       </ReviewSection>
 
       <ReviewSection title="Facilities">
