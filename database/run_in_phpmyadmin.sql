@@ -84,6 +84,14 @@ ALTER TABLE client_requests ADD COLUMN legal_address   TEXT          NULL;
 ALTER TABLE client_requests ADD COLUMN website         VARCHAR(300)  NULL;
 ALTER TABLE client_requests ADD COLUMN logo_url        MEDIUMTEXT    NULL;
 
+-- KYC + notes fields (migration 008 — Aug 2026)
+ALTER TABLE client_requests ADD COLUMN designation      VARCHAR(200)  NULL;
+ALTER TABLE client_requests ADD COLUMN ghg_done_before  TINYINT(1)    NULL;
+ALTER TABLE client_requests ADD COLUMN ghg_requirement  TEXT          NULL;
+ALTER TABLE client_requests ADD COLUMN services_needed  JSON          NULL;
+ALTER TABLE client_requests ADD COLUMN services_other   TEXT          NULL;
+ALTER TABLE client_requests ADD COLUMN internal_notes   JSON          NULL;
+
 
 -- ── SECTION 5: org_entities table (create if missing) ───────────────────────
 

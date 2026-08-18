@@ -437,13 +437,14 @@ function RegisterEntityPage() {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => navigate({ to: "/entity-setup" })}
-            style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0, padding: "10px 18px", borderRadius: 10, border: "none", background: `linear-gradient(135deg, ${FOREST} 0%, ${MOSS} 100%)`, color: WHITE, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 3px 10px rgba(30,111,92,0.3)", fontFamily: "inherit" }}>
-            <Plus style={{ width: 14, height: 14 }} />
-            + Register entity
-          </button>
+          {allOrgs.length > 0 && (
+            <button
+              type="button"
+              onClick={() => navigate({ to: "/entity-setup" })}
+              style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0, padding: "10px 18px", borderRadius: 10, border: "none", background: `linear-gradient(135deg, ${FOREST} 0%, ${MOSS} 100%)`, color: WHITE, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 3px 10px rgba(30,111,92,0.3)", fontFamily: "inherit" }}>
+              Register entity
+            </button>
+          )}
         </div>
 
         {/* ── Search + filter ── */}

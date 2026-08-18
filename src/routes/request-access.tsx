@@ -26,27 +26,45 @@ const ORG_TYPES = [
   "Private Limited", "Public Limited", "LLP", "Partnership",
   "Sole Proprietorship", "Trust / NGO", "Government Body", "Other",
 ];
+const SERVICES = [
+  "Scope 1 & Scope 2",
+  "Scope 1 & 2 with Assurance",
+  "SBTi Target Setting",
+  "Scope 1, 2 & 3",
+  "Scope 1, 2 & 3 with Assurance",
+  "Other — Specify",
+];
 
 /* ── Component ──────────────────────────────────────────────────────────────── */
 
 function RequestAccessPage() {
   const [form, setForm] = useState({
+    // KYC
+    ghg_done_before: false,
+    ghg_requirement: "",
+    services_other: "",
+    // Org
     legal_name: "", operating_name: "", industry: "", org_type: "",
-    is_india: true, gstin: "", is_msme: false, udyam_number: "", legal_address: "", website: "",
-    name: "", email: "", phone: "",
-    // legacy field kept for backend compat
+    is_india: true, gstin: "", is_msme: false, udyam_number: "",
+    legal_address: "", website: "",
+    // Contact
+    name: "", designation: "", email: "", phone: "",
     company: "",
   });
-
+  const [servicesNeeded, setServicesNeeded] = useState<string[]>([]);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoName, setLogoName]       = useState<string | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
-
   const [loading, setLoading]     = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError]         = useState<string | null>(null);
 
   const set = (k: string, v: string | boolean) => setForm(p => ({ ...p, [k]: v }));
+
+  const toggleService = (s: string) =>
+    setServicesNeeded(prev =>
+      prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
+    );
 
   const handleLogo = (file: File) => {
     setLogoName(file.name);
@@ -58,8 +76,11 @@ function RequestAccessPage() {
   const canSubmit =
     form.legal_name.trim() !== "" &&
     form.name.trim() !== "" &&
+    form.designation.trim() !== "" &&
     form.email.trim() !== "" &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email);
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email) &&
+    form.phone.trim() !== "" &&
+    servicesNeeded.length > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,21 +92,26 @@ function RequestAccessPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name:           form.name,
-          company:        form.legal_name,
-          email:          form.email,
-          phone:          form.phone   || null,
-          industry:       form.industry || null,
-          is_india:       form.is_india,
-          gstin:          form.gstin   || null,
-          legal_name:     form.legal_name || null,
-          operating_name: form.operating_name || null,
-          org_type:       form.org_type || null,
-          is_msme:        form.is_msme,
-          udyam_number:   form.udyam_number || null,
-          legal_address:  form.legal_address || null,
-          website:        form.website || null,
-          logo_url:       logoPreview || null,
+          name:             form.name,
+          designation:      form.designation || null,
+          company:          form.legal_name,
+          email:            form.email,
+          phone:            form.phone || null,
+          industry:         form.industry || null,
+          is_india:         form.is_india,
+          gstin:            form.gstin   || null,
+          legal_name:       form.legal_name || null,
+          operating_name:   form.operating_name || null,
+          org_type:         form.org_type || null,
+          is_msme:          form.is_msme,
+          udyam_number:     form.udyam_number || null,
+          legal_address:    form.legal_address || null,
+          website:          form.website || null,
+          logo_url:         logoPreview || null,
+          ghg_done_before:  form.ghg_done_before,
+          ghg_requirement:  form.ghg_requirement || null,
+          services_needed:  servicesNeeded,
+          services_other:   form.services_other || null,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -98,7 +124,7 @@ function RequestAccessPage() {
     }
   };
 
-  /* ── Success screen ───────────────────────────────────────────────────────── */
+  /* ── Success screen ─────────────────────────────────────────────────────── */
   if (submitted) {
     return (
       <div style={{ minHeight: "100vh", background: BG, fontFamily: "'Inter',system-ui,sans-serif",
@@ -130,7 +156,7 @@ function RequestAccessPage() {
     );
   }
 
-  /* ── Main form ────────────────────────────────────────────────────────────── */
+  /* ── Main form ──────────────────────────────────────────────────────────── */
   return (
     <div style={{ minHeight: "100vh", background: BG,
       fontFamily: "'Inter',system-ui,sans-serif", color: INK }}>
@@ -159,18 +185,103 @@ function RequestAccessPage() {
         <h1 style={{ margin: "0 0 10px", fontSize: 30, fontWeight: 800, color: INK, letterSpacing: "-0.03em" }}>
           Request portal access
         </h1>
-        <p style={{ margin: 0, fontSize: 15, color: SLATE, lineHeight: 1.6, maxWidth: 560 }}>
-          Tell us about your organisation and we'll be in touch within 2 business days with your login credentials.
+        <p style={{ margin: "0 0 6px", fontSize: 15, color: SLATE, lineHeight: 1.6, maxWidth: 560 }}>
+          Tell us about your organisation and GHG reporting needs.
+          We'll be in touch within 2 business days with your login credentials.
         </p>
+        {/* Step pills */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 20, marginBottom: 8 }}>
+          {["A. KYC – GHG Reporting", "B. Organisation Information", "C. Your Contact Details"].map((s, i) => (
+            <div key={s} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 14px", borderRadius: 20,
+                background: WHITE, border: `1.5px solid ${BORDER}`, fontSize: 12, fontWeight: 600, color: INK }}>
+                <span style={{ width: 18, height: 18, borderRadius: "50%", background: `linear-gradient(135deg,${FOREST},${MOSS})`,
+                  color: WHITE, fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  {i + 1}
+                </span>
+                {s}
+              </div>
+              {i < 2 && <div style={{ width: 18, height: 1.5, background: BORDER }} />}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* ── Form ── */}
-      <form onSubmit={handleSubmit} style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 48px 80px",
+      <form onSubmit={handleSubmit} style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 48px 80px",
         display: "flex", flexDirection: "column", gap: 24 }}>
 
-        {/* ── Organisation Information ── */}
+        {/* ══ SECTION A — KYC – GHG Reporting ══ */}
         <div className="ra-card">
-          <div className="ra-section-label">Organisation Information</div>
+          <div className="ra-section-label">A. KYC – GHG Reporting</div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+
+            {/* Q1: GHG done before */}
+            <Field label="Have you done your GHG Reporting before?" required>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div className="ra-toggle">
+                  <button type="button" className={`ra-toggle-btn${form.ghg_done_before ? " active" : ""}`}
+                    onClick={() => set("ghg_done_before", true)}>Yes</button>
+                  <button type="button" className={`ra-toggle-btn${!form.ghg_done_before ? " active" : ""}`}
+                    onClick={() => set("ghg_done_before", false)}>No</button>
+                </div>
+                {form.ghg_done_before && (
+                  <Field label="If yes, please specify your requirement"
+                    hint="Tell us about your previous reporting standard, base year, and what you'd like to carry forward or improve.">
+                    <textarea className="ra-textarea" rows={3}
+                      value={form.ghg_requirement}
+                      onChange={e => set("ghg_requirement", e.target.value)}
+                      placeholder="e.g. We prepared a GHG inventory for FY24 under GHG Protocol. Looking to improve Scope 3 coverage and prepare an assurance-ready report." />
+                  </Field>
+                )}
+              </div>
+            </Field>
+
+            {/* Q2: Services needed */}
+            <Field label="What are you looking for?" required
+              hint="Select all that apply — this helps us tailor the right plan and assign the right consultant.">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 24px", marginTop: 4 }}>
+                {SERVICES.map(s => {
+                  const checked = servicesNeeded.includes(s);
+                  return (
+                    <label key={s} style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+                      <div
+                        onClick={() => toggleService(s)}
+                        style={{
+                          width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginTop: 1,
+                          border: `2px solid ${checked ? MOSS : BORDER}`,
+                          background: checked ? MOSS : WHITE,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          cursor: "pointer", transition: "all 0.15s",
+                        }}>
+                        {checked && <Check style={{ width: 11, height: 11, color: WHITE }} />}
+                      </div>
+                      <span
+                        onClick={() => toggleService(s)}
+                        style={{ fontSize: 14, color: INK, lineHeight: 1.4, userSelect: "none" }}>
+                        {s}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              {servicesNeeded.includes("Other — Specify") && (
+                <div style={{ marginTop: 12 }}>
+                  <input className="ra-input"
+                    value={form.services_other}
+                    onChange={e => set("services_other", e.target.value)}
+                    placeholder="Please describe what you're looking for…" />
+                </div>
+              )}
+            </Field>
+
+          </div>
+        </div>
+
+        {/* ══ SECTION B — Organisation Information ══ */}
+        <div className="ra-card">
+          <div className="ra-section-label">B. Organisation Information</div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
 
@@ -203,8 +314,8 @@ function RequestAccessPage() {
                   onChange={e => set("legal_name", e.target.value)}
                   placeholder="Exact registered name" />
               </Field>
-              <Field label="Operating name of the organisation (if different)"
-                hint="Name as you want it displayed across the portal and any reports, if different from the legal name above.">
+              <Field label="Operating name (if different from legal name)"
+                hint="Name as you want it displayed across the portal and any reports.">
                 <input className="ra-input" value={form.operating_name}
                   onChange={e => set("operating_name", e.target.value)}
                   placeholder="Name as it appears on the portal and reports" />
@@ -254,7 +365,7 @@ function RequestAccessPage() {
 
             {/* Legal address */}
             <Field label="Legal Address" required
-              hint="Your registered head office address. This will automatically become your first facility in the next step, so double-check it here.">
+              hint="Your registered head office address. This will automatically become your first facility in the next step.">
               <textarea className="ra-textarea" rows={3} value={form.legal_address}
                 onChange={e => set("legal_address", e.target.value)}
                 placeholder="Full registered head-office address" />
@@ -262,7 +373,7 @@ function RequestAccessPage() {
 
             {/* Website + Logo */}
             <div className="ra-grid-2">
-              <Field label="Organisation Website" required
+              <Field label="Organisation Website"
                 hint="Include https:// — this is used on client-facing reports.">
                 <input className="ra-input" type="url" value={form.website}
                   onChange={e => set("website", e.target.value)}
@@ -312,19 +423,27 @@ function RequestAccessPage() {
           </div>
         </div>
 
-        {/* ── Contact Details ── */}
+        {/* ══ SECTION C — Your Contact Details ══ */}
         <div className="ra-card">
-          <div className="ra-section-label">Your Contact Details</div>
+          <div className="ra-section-label">C. Your Contact Details</div>
           <p style={{ margin: "0 0 24px", fontSize: 14, color: SLATE, lineHeight: 1.6 }}>
             Login credentials and status updates will be sent to the email address below.
           </p>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            <Field label="Your full name" required>
-              <input className="ra-input" value={form.name}
-                onChange={e => set("name", e.target.value)}
-                placeholder="Jane Smith" />
-            </Field>
+            <div className="ra-grid-2">
+              <Field label="Your full name" required>
+                <input className="ra-input" value={form.name}
+                  onChange={e => set("name", e.target.value)}
+                  placeholder="Jane Smith" />
+              </Field>
+              <Field label="Designation" required
+                hint="Your job title or role in the organisation.">
+                <input className="ra-input" value={form.designation}
+                  onChange={e => set("designation", e.target.value)}
+                  placeholder="e.g. Head of Sustainability, CFO, ESG Manager" />
+              </Field>
+            </div>
 
             <div className="ra-grid-2">
               <Field label="Work email" required>
@@ -332,7 +451,8 @@ function RequestAccessPage() {
                   onChange={e => set("email", e.target.value)}
                   placeholder="jane@company.com" />
               </Field>
-              <Field label="Mobile / phone">
+              <Field label="Mobile number" required
+                hint="We may call to verify your request or clarify details.">
                 <input className="ra-input" type="tel" value={form.phone}
                   onChange={e => set("phone", e.target.value)}
                   placeholder="+91 98765 43210" />
@@ -350,11 +470,17 @@ function RequestAccessPage() {
           </div>
         )}
 
+        {!canSubmit && (servicesNeeded.length === 0) && (form.legal_name || form.name) && (
+          <p style={{ fontSize: 12, color: MUTED }}>
+            Please select at least one service you're looking for in Section A.
+          </p>
+        )}
+
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: "0 4px" }}>
           <p style={{ margin: 0, fontSize: 12, color: MUTED, maxWidth: 440, lineHeight: 1.6 }}>
             By submitting this form you agree to Deepwoods Green processing your organisation's details
-            to evaluate your request.
+            to evaluate your request. Fields marked with <span style={{ color: CORAL }}>●</span> are required.
           </p>
           <button type="submit" disabled={!canSubmit || loading} className="ra-submit">
             {loading && <Loader2 style={{ width: 16, height: 16, animation: "ra-spin 1s linear infinite" }} />}
@@ -422,6 +548,9 @@ const CSS = `
   grid-template-columns: 1fr 1fr;
   gap: 24px;
 }
+@media (max-width: 640px) {
+  .ra-grid-2 { grid-template-columns: 1fr; }
+}
 .ra-input, .ra-select, .ra-textarea {
   width: 100%;
   padding: 10px 14px;
@@ -450,7 +579,7 @@ const CSS = `
 }
 .ra-toggle {
   display: inline-flex;
-  background: ${BG};
+  background: #EEF3F0;
   border: 1.5px solid ${BORDER};
   border-radius: 9px;
   padding: 3px;

@@ -667,11 +667,15 @@ type AdminTab = "activation" | "clients" | "queue" | "screening" | "log" | "requ
 // ── Access Requests tab ───────────────────────────────────────────────────────
 
 type ReqStatus = "new" | "contacted" | "converted" | "rejected";
+interface InternalNote { text: string; added_at: string; }
 interface ClientReq {
   id: number; name: string; company: string; email: string;
-  phone: string; employees: string; message: string; industry: string;
+  phone: string; designation: string; employees: string; message: string; industry: string;
   is_india: number; gstin: string; legal_name: string; operating_name: string;
   org_type: string; is_msme: number | null; legal_address: string; website: string;
+  ghg_done_before: boolean | null; ghg_requirement: string | null;
+  services_needed: string[] | null; services_other: string | null;
+  internal_notes: InternalNote[] | null;
   status: ReqStatus; created_at: string; updated_at: string;
 }
 interface ConvResult { slug: string; inviteEmail: string; tempPassword: string | null; emailSent: boolean; smtpDiag: string | null; }
@@ -695,6 +699,11 @@ function RequestsTab() {
   const [convertTarget, setConvertTarget] = useState<ClientReq | null>(null);
   const [convertResult, setConvertResult] = useState<ConvResult | null>(null);
   const [emailResults, setEmailResults] = useState<Map<number, boolean>>(new Map());
+  const [noteTexts, setNoteTexts] = useState<Map<number, string>>(new Map());
+  const [emailTexts, setEmailTexts] = useState<Map<number, string>>(new Map());
+  const [showEmailBox, setShowEmailBox] = useState<Set<number>>(new Set());
+  const [sendingEmail, setSendingEmail] = useState<number | null>(null);
+  const [emailSentFor, setEmailSentFor] = useState<Set<number>>(new Set());
 
   const { data: requests = [], isLoading, error } = useQuery<ClientReq[]>({
     queryKey: ["client-requests"],
@@ -712,11 +721,49 @@ function RequestsTab() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const addNote = useMutation({
+    mutationFn: ({ id, note }: { id: number; note: string }) =>
+      authFetch("client-requests.php", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, note }),
+      }),
+    onSuccess: (_data, variables) => {
+      setNoteTexts(prev => { const m = new Map(prev); m.set(variables.id, ""); return m; });
+      qc.invalidateQueries({ queryKey: ["client-requests"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const toggleExpand = (id: number) =>
     setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  const toggleEmailBox = (id: number) =>
+    setShowEmailBox(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const sendEmail = async (req: ClientReq) => {
+    const msg = (emailTexts.get(req.id) ?? "").trim();
+    if (!msg) return;
+    setSendingEmail(req.id);
+    try {
+      await authFetch("client-requests.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send_email", id: req.id, message: msg }),
+      });
+      setEmailSentFor(prev => new Set(prev).add(req.id));
+      setEmailTexts(prev => { const m = new Map(prev); m.set(req.id, ""); return m; });
+      setShowEmailBox(prev => { const n = new Set(prev); n.delete(req.id); return n; });
+      toast.success("Email sent to " + req.email);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSendingEmail(null);
+    }
+  };
+
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="max-w-5xl space-y-4">
       {isLoading && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading requests…
@@ -738,6 +785,11 @@ function RequestsTab() {
             const isOpen = expanded.has(req.id);
             const sc = REQ_STATUS[req.status];
             const canAct = req.status !== "converted" && req.status !== "rejected";
+            const notes = req.internal_notes ?? [];
+            const noteText = noteTexts.get(req.id) ?? "";
+            const emailText = emailTexts.get(req.id) ?? "";
+            const isEmailOpen = showEmailBox.has(req.id);
+            const services = req.services_needed ?? [];
             return (
               <div key={req.id} className={idx > 0 ? "border-t border-[var(--border)]" : ""}>
                 <button
@@ -753,8 +805,23 @@ function RequestsTab() {
                       <span className="text-sm font-semibold text-[var(--navy)]">{req.company}</span>
                       <span className="text-xs text-muted-foreground">·</span>
                       <span className="text-xs text-muted-foreground">{req.name}</span>
+                      {req.designation && (
+                        <span className="text-xs text-muted-foreground">· {req.designation}</span>
+                      )}
                     </div>
-                    <div className="text-xs text-muted-foreground">{req.email}</div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="text-xs text-muted-foreground">{req.email}</span>
+                      {notes.length > 0 && (
+                        <span className="text-[10px] rounded-full px-2 py-0.5 bg-amber-50 border border-amber-200 text-amber-700 font-semibold">
+                          {notes.length} note{notes.length > 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {services.length > 0 && (
+                        <span className="text-[10px] rounded-full px-2 py-0.5 bg-[#E6F4EF] border border-[#C5E4D0] text-[#1E6F5C] font-semibold">
+                          {services.length} service{services.length > 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${sc.cls}`}>{sc.label}</span>
                   <span className="shrink-0 text-[11px] text-muted-foreground hidden sm:block">
@@ -763,43 +830,101 @@ function RequestsTab() {
                 </button>
 
                 {isOpen && (
-                  <div className="border-t border-[var(--border)] bg-[#FAFAFA] px-6 py-5">
-                    <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-3 text-sm mb-5">
-                      {[
-                        ["Company", req.company],
-                        ["Legal name", req.legal_name || "—"],
-                        ["Operating name", req.operating_name || "—"],
-                        ["Contact", req.name],
-                        ["Email", req.email],
-                        ["Phone", req.phone || "—"],
-                        ["Industry", req.industry || "—"],
-                        ["Org type", req.org_type || "—"],
-                        ["Registered in India", req.is_india ? "Yes" : "No"],
-                        ["GSTIN", req.gstin || "—"],
-                        ["MSME", req.is_msme === null ? "—" : req.is_msme ? "Yes" : "No"],
-                        ["Website", req.website || "—"],
-                        ["Submitted", new Date(req.created_at).toLocaleString()],
-                      ].map(([label, value]) => (
+                  <div className="border-t border-[var(--border)] bg-[#FAFAFA] px-6 py-5 space-y-6">
+
+                    {/* ── KYC Section ── */}
+                    {(services.length > 0 || req.ghg_done_before !== null) && (
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-[#1E6F5C] mb-3 flex items-center gap-2">
+                          <span className="inline-block w-0.5 h-3.5 rounded bg-[#1E6F5C]" />
+                          KYC — GHG Reporting
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          {req.ghg_done_before !== null && (
+                            <div>
+                              <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">GHG Reported Before</div>
+                              <div className="text-sm text-[var(--navy)]">{req.ghg_done_before ? "Yes" : "No"}</div>
+                              {req.ghg_requirement && (
+                                <p className="text-sm text-[var(--navy)] mt-1 leading-relaxed whitespace-pre-wrap">{req.ghg_requirement}</p>
+                              )}
+                            </div>
+                          )}
+                          {services.length > 0 && (
+                            <div>
+                              <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Looking For</div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {services.map(s => (
+                                  <span key={s} className="rounded-full px-2.5 py-1 bg-[#ECF7F3] text-[#1E6F5C] text-xs font-semibold border border-[#C5E4D0]">
+                                    {s}
+                                  </span>
+                                ))}
+                                {req.services_other && (
+                                  <span className="text-xs text-muted-foreground self-center">· {req.services_other}</span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── Org Details ── */}
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-[#1E6F5C] mb-3 flex items-center gap-2">
+                        <span className="inline-block w-0.5 h-3.5 rounded bg-[#1E6F5C]" />
+                        Organisation Information
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-3 text-sm">
+                        {[
+                          ["Company", req.company],
+                          ["Legal name", req.legal_name || "—"],
+                          ["Operating name", req.operating_name || "—"],
+                          ["Industry", req.industry || "—"],
+                          ["Org type", req.org_type || "—"],
+                          ["Registered in India", req.is_india ? "Yes" : "No"],
+                          ["GSTIN", req.gstin || "—"],
+                          ["MSME", req.is_msme === null ? "—" : req.is_msme ? "Yes" : "No"],
+                          ["Website", req.website || "—"],
+                          ["Submitted", new Date(req.created_at).toLocaleString()],
+                        ].map(([label, value]) => (
                           <div key={label}>
                             <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">{label}</div>
                             <div className="text-sm text-[var(--navy)]">{value}</div>
                           </div>
                         ))}
-                      {req.legal_address && (
-                        <div className="col-span-full">
-                          <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Legal Address</div>
-                          <p className="text-sm text-[var(--navy)] leading-relaxed whitespace-pre-wrap">{req.legal_address}</p>
-                        </div>
-                      )}
-                      {req.message && (
-                        <div className="col-span-full">
-                          <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Message</div>
-                          <p className="text-sm text-[var(--navy)] leading-relaxed whitespace-pre-wrap">{req.message}</p>
-                        </div>
-                      )}
+                        {req.legal_address && (
+                          <div className="col-span-full">
+                            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Legal Address</div>
+                            <p className="text-sm text-[var(--navy)] leading-relaxed whitespace-pre-wrap">{req.legal_address}</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
+
+                    {/* ── Contact ── */}
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-[#1E6F5C] mb-3 flex items-center gap-2">
+                        <span className="inline-block w-0.5 h-3.5 rounded bg-[#1E6F5C]" />
+                        Contact Details
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-3 text-sm">
+                        {[
+                          ["Name", req.name],
+                          ["Designation", req.designation || "—"],
+                          ["Email", req.email],
+                          ["Phone", req.phone || "—"],
+                        ].map(([label, value]) => (
+                          <div key={label}>
+                            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">{label}</div>
+                            <div className="text-sm text-[var(--navy)]">{value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* ── Actions ── */}
                     {canAct && (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 pt-1">
                         {req.status === "new" && (
                           <button
                             type="button"
@@ -810,6 +935,13 @@ function RequestsTab() {
                             <Check className="h-3.5 w-3.5" /> Mark contacted
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => toggleEmailBox(req.id)}
+                          className="flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100"
+                        >
+                          <FileText className="h-3.5 w-3.5" /> {isEmailOpen ? "Hide" : "Send email"}
+                        </button>
                         <button
                           type="button"
                           onClick={() => patchStatus.mutate({ id: req.id, status: "rejected" })}
@@ -829,6 +961,80 @@ function RequestsTab() {
                         )}
                       </div>
                     )}
+
+                    {/* ── Send email panel ── */}
+                    {isEmailOpen && (
+                      <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-3">
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-violet-700">
+                          Send email to {req.name} ({req.email})
+                        </div>
+                        <textarea
+                          rows={4}
+                          value={emailText}
+                          onChange={e => setEmailTexts(prev => { const m = new Map(prev); m.set(req.id, e.target.value); return m; })}
+                          placeholder="Type your message to the contact here. We'll send it as a branded email from Deepwoods."
+                          className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm text-[var(--navy)] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-300 resize-none"
+                        />
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => sendEmail(req)}
+                            disabled={!emailText.trim() || sendingEmail === req.id}
+                            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                          >
+                            {sendingEmail === req.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                            Send email
+                          </button>
+                          {emailSentFor.has(req.id) && (
+                            <span className="text-xs text-violet-700 font-semibold flex items-center gap-1">
+                              <Check className="h-3.5 w-3.5" /> Sent
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── Internal notes thread ── */}
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-2">
+                        <span className="inline-block w-0.5 h-3.5 rounded bg-amber-400" />
+                        Internal Notes
+                        {notes.length > 0 && <span className="text-[10px] font-normal">({notes.length})</span>}
+                      </div>
+
+                      {notes.length > 0 && (
+                        <div className="space-y-2 mb-3">
+                          {notes.map((n, ni) => (
+                            <div key={ni} className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3">
+                              <p className="text-sm text-[var(--navy)] leading-relaxed whitespace-pre-wrap">{n.text}</p>
+                              <p className="text-[10px] text-muted-foreground mt-1.5">
+                                {new Date(n.added_at).toLocaleString()}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex gap-2 items-end">
+                        <textarea
+                          rows={2}
+                          value={noteText}
+                          onChange={e => setNoteTexts(prev => { const m = new Map(prev); m.set(req.id, e.target.value); return m; })}
+                          placeholder="Add an internal note visible only to Deepwoods staff…"
+                          className="flex-1 rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--navy)] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1E6F5C]/30 resize-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => { if (noteText.trim()) addNote.mutate({ id: req.id, note: noteText.trim() }); }}
+                          disabled={!noteText.trim() || addNote.isPending}
+                          className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50 self-end"
+                        >
+                          {addNote.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                          Add note
+                        </button>
+                      </div>
+                    </div>
+
                     {req.status === "rejected" && (
                       <p className="text-xs text-muted-foreground">Rejection email sent. No account was created.</p>
                     )}
@@ -839,10 +1045,10 @@ function RequestsTab() {
                           : emailResults.get(req.id) ? "#1E6F5C" : "#B45309",
                       }}>
                         {!emailResults.has(req.id)
-                          ? "Email delivery status unavailable."
+                          ? "Converted to client — email delivery status unavailable."
                           : emailResults.get(req.id)
-                            ? "Invitation email sent successfully."
-                            : "Invitation email could not be sent."}
+                            ? "Converted — invitation email sent successfully."
+                            : "Converted — invitation email could not be sent."}
                       </p>
                     )}
                   </div>

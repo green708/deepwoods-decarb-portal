@@ -34,12 +34,13 @@ $config = dolphin_config();
 $body   = dolphin_json_body();
 
 // ── Validate required fields ─────────────────────────────────────────────────
-$name    = trim($body['name']    ?? '');
-$company = trim($body['company'] ?? '');
-$email   = trim(strtolower($body['email'] ?? ''));
-$phone   = trim($body['phone']   ?? '');
+$name        = trim($body['name']        ?? '');
+$company     = trim($body['company']     ?? '');
+$email       = trim(strtolower($body['email'] ?? ''));
+$phone       = trim($body['phone']       ?? '');
+$designation = trim($body['designation'] ?? '');
 
-// Extended fields (migration 004)
+// Org fields (migration 004+)
 $industry      = trim($body['industry']       ?? '');
 $isIndia       = isset($body['is_india'])     ? (int)(bool)$body['is_india'] : 1;
 $gstin         = strtoupper(trim($body['gstin']         ?? ''));
@@ -51,6 +52,13 @@ $udyamNumber   = trim($body['udyam_number']   ?? '');
 $legalAddress  = trim($body['legal_address']  ?? '');
 $website       = trim($body['website']        ?? '');
 $logoUrl       = isset($body['logo_url']) && is_string($body['logo_url']) ? $body['logo_url'] : '';
+
+// KYC fields (migration 008)
+$ghgDoneBefore  = isset($body['ghg_done_before'])  ? (int)(bool)$body['ghg_done_before'] : null;
+$ghgRequirement = trim($body['ghg_requirement']     ?? '');
+$servicesNeeded = isset($body['services_needed']) && is_array($body['services_needed'])
+                  ? json_encode($body['services_needed']) : null;
+$servicesOther  = trim($body['services_other']      ?? '');
 
 $errors = [];
 if ($name === '')    $errors[] = 'Your name is required.';
@@ -65,36 +73,70 @@ if ($errors) {
 // ── Insert into DB ───────────────────────────────────────────────────────────
 $pdo = dolphin_db();
 
+function ra_is_unknown_col(PDOException $e): bool {
+    return str_contains($e->getMessage(), 'Unknown column') || $e->getCode() === '42S22';
+}
+
 try {
-    // Try with all columns (migration 007). Falls back through 005 → 004 → 003 → base.
+    // Try with all columns (migration 008 — KYC fields).
     try {
         $stmt = $pdo->prepare(
             'INSERT INTO client_requests
-               (name, company, email, phone, industry,
+               (name, company, email, phone, designation, industry,
                 is_india, gstin, legal_name, operating_name,
-                org_type, is_msme, udyam_number, legal_address, website, logo_url)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+                org_type, is_msme, udyam_number, legal_address, website, logo_url,
+                ghg_done_before, ghg_requirement, services_needed, services_other)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
         );
         $stmt->execute([
-            $name,
-            $company,
-            $email,
-            $phone        ?: null,
-            $industry     ?: null,
+            $name, $company, $email,
+            $phone          ?: null,
+            $designation    ?: null,
+            $industry       ?: null,
             $isIndia,
-            $gstin        ?: null,
-            $legalName    ?: null,
-            $operatingName ?: null,
-            $orgType      ?: null,
+            $gstin          ?: null,
+            $legalName      ?: null,
+            $operatingName  ?: null,
+            $orgType        ?: null,
             $isMsme,
-            $udyamNumber  ?: null,
-            $legalAddress ?: null,
-            $website      ?: null,
-            $logoUrl      ?: null,
+            $udyamNumber    ?: null,
+            $legalAddress   ?: null,
+            $website        ?: null,
+            $logoUrl        ?: null,
+            $ghgDoneBefore,
+            $ghgRequirement ?: null,
+            $servicesNeeded,
+            $servicesOther  ?: null,
         ]);
     } catch (PDOException $colErr) {
-        // logo_url column not yet applied — fall back to migration 005 (no logo_url).
-        if (str_contains($colErr->getMessage(), 'Unknown column') || $colErr->getCode() === '42S22') {
+        if (!ra_is_unknown_col($colErr)) throw $colErr;
+        // KYC columns not yet applied — fall back to migration 007 (logo_url, no KYC).
+        try {
+            $stmt = $pdo->prepare(
+                'INSERT INTO client_requests
+                   (name, company, email, phone, industry,
+                    is_india, gstin, legal_name, operating_name,
+                    org_type, is_msme, udyam_number, legal_address, website, logo_url)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+            );
+            $stmt->execute([
+                $name, $company, $email,
+                $phone         ?: null,
+                $industry      ?: null,
+                $isIndia,
+                $gstin         ?: null,
+                $legalName     ?: null,
+                $operatingName ?: null,
+                $orgType       ?: null,
+                $isMsme,
+                $udyamNumber   ?: null,
+                $legalAddress  ?: null,
+                $website       ?: null,
+                $logoUrl       ?: null,
+            ]);
+        } catch (PDOException $e2) {
+            if (!ra_is_unknown_col($e2)) throw $e2;
+            // logo_url not yet applied — migration 005 (no logo_url).
             try {
                 $stmt = $pdo->prepare(
                     'INSERT INTO client_requests
@@ -105,36 +147,28 @@ try {
                 );
                 $stmt->execute([
                     $name, $company, $email,
-                    $phone        ?: null,
-                    $industry     ?: null,
+                    $phone         ?: null,
+                    $industry      ?: null,
                     $isIndia,
-                    $gstin        ?: null,
-                    $legalName    ?: null,
+                    $gstin         ?: null,
+                    $legalName     ?: null,
                     $operatingName ?: null,
-                    $orgType      ?: null,
+                    $orgType       ?: null,
                     $isMsme,
-                    $udyamNumber  ?: null,
-                    $legalAddress ?: null,
-                    $website      ?: null,
+                    $udyamNumber   ?: null,
+                    $legalAddress  ?: null,
+                    $website       ?: null,
                 ]);
-            } catch (PDOException $e2) {
-                // Last resort: base schema (no industry column)
-                if (str_contains($e2->getMessage(), 'Unknown column') || $e2->getCode() === '42S22') {
-                    $stmt = $pdo->prepare(
-                        'INSERT INTO client_requests (name, company, email, phone)
-                         VALUES (?,?,?,?)'
-                    );
-                    $stmt->execute([$name, $company, $email, $phone ?: null]);
-                } else {
-                    throw $e2;
-                }
+            } catch (PDOException $e3) {
+                if (!ra_is_unknown_col($e3)) throw $e3;
+                // Last resort: base schema.
+                $pdo->prepare('INSERT INTO client_requests (name, company, email, phone) VALUES (?,?,?,?)')
+                    ->execute([$name, $company, $email, $phone ?: null]);
             }
-        } else {
-            throw $colErr;
         }
     }
 } catch (PDOException $e) {
-    // Duplicate email (23xxx) — return success to avoid info leak
+    // Duplicate email (23xxx) — return success to avoid info leak.
     if (str_starts_with((string)$e->getCode(), '23')) {
         dolphin_send_json(['ok' => true, 'message' => 'Request received']);
     }

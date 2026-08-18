@@ -4,8 +4,9 @@
 //
 // GET                                → list all client_requests rows (admin + coordinator)
 // PATCH { id, status }               → update status: new|contacted|rejected (admin + coordinator)
-// POST  { action:"convert", id, name, slug, currency?, reporting_period? }
-//                                    → create client + mark request as converted (admin only)
+// PATCH { id, note }                 → append an internal note (admin + coordinator)
+// POST  { action:"convert", id, ... }→ create client + mark request as converted (admin only)
+// POST  { action:"send_email", id, message } → send custom email to contact (admin only)
 
 declare(strict_types=1);
 require_once __DIR__ . '/db.php';
@@ -33,7 +34,9 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET') {
     $stmt = $pdo->query(
-        "SELECT id, name, company, email, phone, employees, message,
+        "SELECT id, name, company, email, phone,
+                COALESCE(designation,     '') AS designation,
+                employees, message,
                 COALESCE(industry,        '') AS industry,
                 COALESCE(is_india,        1)  AS is_india,
                 COALESCE(gstin,           '') AS gstin,
@@ -43,25 +46,61 @@ if ($method === 'GET') {
                 is_msme,
                 COALESCE(legal_address,   '') AS legal_address,
                 COALESCE(website,         '') AS website,
+                ghg_done_before, ghg_requirement,
+                services_needed, services_other,
+                internal_notes,
                 status, created_at, updated_at
          FROM client_requests
          ORDER BY
            FIELD(status,'new','contacted','rejected','converted'),
            created_at DESC"
     );
-    dolphin_send_json($stmt->fetchAll(PDO::FETCH_ASSOC));
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rows as &$r) {
+        $r['is_india']        = (bool)$r['is_india'];
+        $r['ghg_done_before'] = isset($r['ghg_done_before']) ? (bool)$r['ghg_done_before'] : null;
+        $r['services_needed'] = $r['services_needed'] ? json_decode($r['services_needed'], true) : null;
+        $r['internal_notes']  = $r['internal_notes']  ? json_decode($r['internal_notes'],  true) : [];
+    }
+    unset($r);
+    dolphin_send_json($rows);
 }
 
 // ── PATCH — update request status ────────────────────────────────────────────
 
 if ($method === 'PATCH') {
-    $body   = dolphin_json_body();
-    $id     = (int)($body['id']     ?? 0);
-    $status = $body['status'] ?? '';
+    $body = dolphin_json_body();
+    $id   = (int)($body['id'] ?? 0);
 
     if ($id <= 0) {
         dolphin_send_json(['error' => 'id is required'], 422);
     }
+
+    // ── Add internal note ─────────────────────────────────────────────────────
+    if (isset($body['note'])) {
+        $noteText = trim($body['note']);
+        if ($noteText === '') {
+            dolphin_send_json(['error' => 'note cannot be empty'], 422);
+        }
+
+        $fetchNotes = $pdo->prepare("SELECT internal_notes FROM client_requests WHERE id = ?");
+        $fetchNotes->execute([$id]);
+        $row = $fetchNotes->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            dolphin_send_json(['error' => 'Request not found'], 404);
+        }
+
+        $notes   = $row['internal_notes'] ? json_decode($row['internal_notes'], true) : [];
+        $notes[] = ['text' => $noteText, 'added_at' => date('Y-m-d H:i:s')];
+
+        $pdo->prepare("UPDATE client_requests SET internal_notes = ? WHERE id = ?")
+            ->execute([json_encode($notes), $id]);
+
+        dolphin_send_json(['ok' => true, 'notes' => $notes]);
+    }
+
+    // ── Update status ─────────────────────────────────────────────────────────
+    $status = $body['status'] ?? '';
     if (!in_array($status, ['new', 'contacted', 'rejected'], true)) {
         dolphin_send_json(['error' => 'status must be new, contacted, or rejected'], 422);
     }
@@ -77,7 +116,6 @@ if ($method === 'PATCH') {
         dolphin_send_json(['error' => 'Cannot change status of a converted request'], 409);
     }
 
-    // Fetch request details before updating (needed for rejection email)
     $fetchReq = $pdo->prepare("SELECT name, company, email FROM client_requests WHERE id = ?");
     $fetchReq->execute([$id]);
     $reqRow = $fetchReq->fetch(PDO::FETCH_ASSOC);
@@ -85,7 +123,6 @@ if ($method === 'PATCH') {
     $pdo->prepare("UPDATE client_requests SET status = ? WHERE id = ?")
         ->execute([$status, $id]);
 
-    // Send rejection email if applicable
     $emailSent = false;
     if ($status === 'rejected' && $reqRow && filter_var($reqRow['email'] ?? '', FILTER_VALIDATE_EMAIL)) {
         $cfg     = dolphin_config();
@@ -134,8 +171,65 @@ if ($method === 'POST') {
     $body   = dolphin_json_body();
     $action = $body['action'] ?? '';
 
+    // ── Send custom email to contact ─────────────────────────────────────────
+    if ($action === 'send_email') {
+        $emailId  = (int)($body['id']      ?? 0);
+        $message  = trim($body['message']  ?? '');
+
+        if ($emailId <= 0 || $message === '') {
+            dolphin_send_json(['error' => 'id and message are required'], 422);
+        }
+
+        $fetchReq = $pdo->prepare("SELECT name, company, email FROM client_requests WHERE id = ?");
+        $fetchReq->execute([$emailId]);
+        $reqRow = $fetchReq->fetch(PDO::FETCH_ASSOC);
+        if (!$reqRow) {
+            dolphin_send_json(['error' => 'Request not found'], 404);
+        }
+        if (!filter_var($reqRow['email'], FILTER_VALIDATE_EMAIL)) {
+            dolphin_send_json(['error' => 'Invalid email address on record'], 422);
+        }
+
+        $cfg     = dolphin_config();
+        $smtpCfg = $cfg['smtp'] ?? [];
+        if (empty($smtpCfg['host']) || empty($smtpCfg['username']) || empty($smtpCfg['app_password'])) {
+            dolphin_send_json(['error' => 'SMTP not configured — cannot send email'], 503);
+        }
+
+        require_once __DIR__ . '/Smtp.php';
+        $smtp = new Smtp(
+            $smtpCfg['host'],
+            (int)($smtpCfg['port'] ?? 587),
+            $smtpCfg['username'],
+            $smtpCfg['app_password'],
+            $smtpCfg['from_email'] ?? $smtpCfg['username'],
+            $smtpCfg['from_name']  ?? 'Deepwoods Decarbonisation Portal',
+        );
+        $contactName  = htmlspecialchars($reqRow['name']    ?? 'there');
+        $companyName  = htmlspecialchars($reqRow['company'] ?? '');
+        $messageHtml  = nl2br(htmlspecialchars($message));
+        $htmlBody = <<<HTML
+<html><body style="font-family:Arial,sans-serif;color:#1a1a1a;max-width:560px;margin:0 auto;padding:24px">
+<h2 style="color:#1E6F5C;margin-top:0">Message from Deepwoods Decarbonisation Portal</h2>
+<p>Hello {$contactName},</p>
+<p style="line-height:1.7">{$messageHtml}</p>
+<p style="font-size:12px;color:#9CA3AF;margin-top:32px;border-top:1px solid #F3F4F6;padding-top:16px">
+  — Deepwoods Decarbonisation Portal<br>
+  This message was sent regarding your registration request for <strong>{$companyName}</strong>.
+</p>
+</body></html>
+HTML;
+        try {
+            $smtp->send($reqRow['email'], "Deepwoods Decarbonisation Portal — message for you", $htmlBody);
+            dolphin_send_json(['ok' => true, 'email_sent' => true]);
+        } catch (Throwable $e) {
+            error_log('client-requests send_email failed: ' . $e->getMessage());
+            dolphin_send_json(['error' => 'Email send failed: ' . $e->getMessage()], 502);
+        }
+    }
+
     if ($action !== 'convert') {
-        dolphin_send_json(['error' => 'Unknown action — expected "convert"'], 422);
+        dolphin_send_json(['error' => 'Unknown action — expected "convert" or "send_email"'], 422);
     }
 
     $id              = (int)($body['id']               ?? 0);

@@ -64,222 +64,355 @@ function PendingActivation() {
   );
 }
 
-// ── PaymentPending — shown after setup until Deepwoods confirms payment ───────
+// ── PaymentPending — pricing page shown after setup until payment is confirmed ─
 
 function PaymentPending({ ctx }: { ctx: ClientContext }) {
-  const MOSS   = "#1E6F5C";
   const FOREST = "#1E4D2B";
-  const INK    = "#111827";
+  const MOSS   = "#1E6F5C";
+  const MINT   = "#3DA882";
+  const INK    = "#0D1C12";
   const SLATE  = "#5A6872";
+  const MUTED  = "#94A3B8";
   const BORDER = "#E2E8E4";
-  const CANVAS = "#EEF3F0";
+  const BG     = "#EEF3F0";
   const WHITE  = "#FFFFFF";
 
   const [requested, setRequested] = useState(
     ctx.config.payment_requested === "true" || ctx.config.payment_requested === true,
   );
   const [sending, setSending] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string>("professional");
   const logout = async () => { await doLogout(); window.location.href = "/"; };
 
   const requestInvoice = async () => {
     setSending(true);
     try {
-      await authFetch("request-payment.php", { method: "POST" });
+      await authFetch("request-payment.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: selectedPlan }),
+      });
       setRequested(true);
-    } catch {
-      setRequested(true);
-    } finally { setSending(false); }
+    } catch { setRequested(true); }
+    finally { setSending(false); }
   };
 
-  const name   = ctx.client.name ?? "Your Organisation";
-  const words  = name.trim().split(/\s+/);
-  const initials = words.length === 1
-    ? words[0].slice(0, 2).toUpperCase()
-    : (words[0][0] + words[words.length - 1][0]).toUpperCase();
-
-  const steps = [
-    { done: true,  label: "Registration submitted",  desc: "Your company details have been received by Deepwoods." },
-    { done: false, label: "Deepwoods review",        desc: "Our team will review your registration and confirm the engagement." },
-    { done: false, label: "Payment confirmation",    desc: "Once confirmed, you'll receive an email and your portal unlocks immediately." },
-    { done: false, label: "Full portal access",      desc: "GHG inventory, dashboards, decarbonisation planning — all unlocked." },
-  ];
+  const plans = [
+    {
+      key: "starter",
+      name: "Starter",
+      tagline: "Begin your GHG journey",
+      price: "₹75,000",
+      period: "/year",
+      color: MOSS,
+      popular: false,
+      features: [
+        "Scope 1 & 2 GHG Inventory",
+        "Up to 2 facilities",
+        "Annual GHG Report (GHG Protocol)",
+        "Carbon footprint dashboard",
+        "Data submission portal",
+        "Email support",
+      ],
+    },
+    {
+      key: "growth",
+      name: "Growth",
+      tagline: "Deepen your sustainability footprint",
+      price: "₹1,75,000",
+      period: "/year",
+      color: FOREST,
+      popular: false,
+      features: [
+        "Scope 1, 2 & 3 GHG Inventory",
+        "Up to 5 facilities",
+        "Assurance-ready reporting",
+        "Decarbonisation roadmap",
+        "Action plan & priority tracker",
+        "Hotspot analysis",
+        "Dedicated coordinator",
+      ],
+    },
+    {
+      key: "professional",
+      name: "Professional",
+      tagline: "The complete decarbonisation platform",
+      price: "₹3,50,000",
+      period: "/year",
+      color: FOREST,
+      popular: true,
+      features: [
+        "Full Scope 1, 2 & 3 + Assurance",
+        "Unlimited facilities & entities",
+        "SBTi Target Setting support",
+        "Green Finance / Carbon P&L module",
+        "Peer benchmarking",
+        "I-REC & renewables tracking",
+        "Board-ready report library",
+        "Priority consultant access",
+      ],
+    },
+    {
+      key: "enterprise",
+      name: "Enterprise",
+      tagline: "Bespoke engagement at scale",
+      price: "Custom",
+      period: "",
+      color: INK,
+      popular: false,
+      features: [
+        "Everything in Professional",
+        "Multi-entity & group reporting",
+        "Regulatory disclosure (BRSR, CDP, GRI)",
+        "Custom emission factor library",
+        "API & data export integrations",
+        "On-site workshops & training",
+        "Named consultant team",
+      ],
+    },
+  ] as const;
 
   return (
-    <div style={{ minHeight: "100vh", background: CANVAS, fontFamily: "'Inter',system-ui,sans-serif", color: INK }}>
-      <style>{`@keyframes pp-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+    <div style={{ minHeight: "100vh", background: BG, fontFamily: "'Inter',system-ui,sans-serif", color: INK }}>
+      <style>{`
+        @keyframes pp-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+        @keyframes pp-fade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+        .pp-card{transition:transform 0.18s,box-shadow 0.18s;}
+        .pp-card:hover{transform:translateY(-4px);box-shadow:0 16px 48px rgba(30,79,60,0.16),0 4px 12px rgba(0,0,0,0.06)!important;}
+      `}</style>
 
-      {/* Top stripe */}
-      <div style={{ height: 4, background: `linear-gradient(90deg,${FOREST},${MOSS},#3DA882)` }} />
+      {/* Accent stripe */}
+      <div style={{ height: 4, background: `linear-gradient(90deg,${FOREST} 0%,${MOSS} 50%,${MINT} 100%)` }} />
 
       {/* Header */}
       <header style={{
         background: WHITE, borderBottom: `1px solid ${BORDER}`,
-        padding: "0 48px", height: 60,
+        padding: "0 40px", height: 60,
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
-        <img src="/deepwoods-logo.png" alt="Deepwoods Green" style={{ height: 34, width: "auto" }} />
-        <span style={{ fontSize: 13, color: SLATE, fontWeight: 500 }}>{name}</span>
+        <img src="/deepwoods-logo.png" alt="Deepwoods" style={{ height: 34, width: "auto" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button type="button" onClick={() => window.location.reload()}
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 14px",
+              borderRadius: 8, border: `1.5px solid ${BORDER}`, background: WHITE,
+              color: SLATE, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+            <RefreshCw style={{ width: 12, height: 12 }} /> Refresh
+          </button>
+          <button type="button" onClick={logout}
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 14px",
+              borderRadius: 8, border: `1.5px solid ${BORDER}`, background: WHITE,
+              color: SLATE, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+            <LogOut style={{ width: 12, height: 12 }} /> Sign out
+          </button>
+        </div>
       </header>
 
-      {/* Body */}
-      <div style={{ maxWidth: 720, margin: "0 auto", padding: "52px 32px 80px" }}>
-
-        {/* Title */}
-        <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em",
-          textTransform: "uppercase", color: MOSS }}>
-          Registration
-        </p>
-        <h1 style={{ margin: "0 0 10px", fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", color: INK }}>
-          Registration submitted
-        </h1>
-        <p style={{ margin: "0 0 32px", fontSize: 14, color: SLATE, lineHeight: 1.65, maxWidth: 480 }}>
-          Your details have been received. Deepwoods will review and confirm your access within 2 business days.
-        </p>
-
-        {/* Entity card */}
-        <div style={{
-          background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 16,
-          overflow: "hidden", marginBottom: 24,
-          boxShadow: "0 2px 12px rgba(30,79,60,0.06), 0 1px 3px rgba(0,0,0,0.04)",
-        }}>
-          {/* Card header */}
-          <div style={{
-            padding: "12px 24px", borderBottom: `1px solid ${BORDER}`,
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-          }}>
-            <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase",
-              letterSpacing: "0.08em", color: SLATE }}>
-              1 entity · 1 submitted · 0 confirmed
-            </span>
-          </div>
-
-          {/* Search bar */}
-          <div style={{ padding: "12px 24px", borderBottom: `1px solid ${BORDER}` }}>
-            <div style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: "8px 14px", background: CANVAS,
-              borderRadius: 8, border: `1px solid ${BORDER}`,
-              color: SLATE, fontSize: 13,
-            }}>
-              <Search style={{ width: 14, height: 14, flexShrink: 0 }} />
-              <span>Search by company name</span>
-            </div>
-          </div>
-
-          {/* Entity row */}
-          <div style={{
-            padding: "16px 24px",
-            display: "flex", alignItems: "center", gap: 14,
-          }}>
-            <div style={{
-              width: 38, height: 38, borderRadius: 9, flexShrink: 0,
-              background: `linear-gradient(135deg, ${FOREST}, ${MOSS})`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 13, fontWeight: 800, color: WHITE, letterSpacing: "-0.02em",
-            }}>
-              {initials}
-            </div>
-            <span style={{ fontSize: 14, fontWeight: 700, color: INK, flex: 1 }}>{name}</span>
-            <div style={{
-              padding: "4px 12px", borderRadius: 20,
-              background: "#FEF9C3", border: "1px solid #EAB308",
-              fontSize: 11, fontWeight: 700, color: "#713F12", letterSpacing: "0.04em",
-              display: "flex", alignItems: "center", gap: 5,
-            }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#CA8A04", display: "inline-block" }} />
-              IN REVIEW
-            </div>
-          </div>
+      {/* Hero */}
+      <div style={{
+        background: `linear-gradient(160deg,${FOREST} 0%,${MOSS} 55%,${MINT} 100%)`,
+        padding: "72px 40px 90px", textAlign: "center", position: "relative", overflow: "hidden",
+      }}>
+        {/* Decorative leaves */}
+        <div style={{ position: "absolute", top: 20, left: 60, opacity: 0.08, transform: "rotate(-20deg)" }}>
+          <Leaf style={{ width: 120, height: 120, color: WHITE }} />
+        </div>
+        <div style={{ position: "absolute", bottom: 10, right: 80, opacity: 0.06, transform: "rotate(30deg)" }}>
+          <Target style={{ width: 160, height: 160, color: WHITE }} />
+        </div>
+        <div style={{ position: "absolute", top: 40, right: 30, opacity: 0.05, transform: "rotate(-10deg)" }}>
+          <TrendingDown style={{ width: 80, height: 80, color: WHITE }} />
         </div>
 
-        {/* What happens next */}
-        <div style={{
-          background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 16,
-          padding: "24px 28px", marginBottom: 24,
-          boxShadow: "0 2px 12px rgba(30,79,60,0.04)",
-        }}>
-          <h2 style={{ margin: "0 0 18px", fontSize: 14, fontWeight: 700, color: INK }}>
-            What happens next
-          </h2>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {steps.map((s, i) => (
-              <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                <div style={{
-                  width: 22, height: 22, borderRadius: "50%", flexShrink: 0, marginTop: 1,
-                  background: s.done ? MOSS : BORDER,
-                  display: "flex", alignItems: "center", justifyContent: "center",
+        <div style={{ position: "relative", maxWidth: 640, margin: "0 auto", animation: "pp-fade 0.5s ease both" }}>
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 7, padding: "5px 16px",
+            borderRadius: 20, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.25)",
+            fontSize: 12, fontWeight: 700, color: WHITE, letterSpacing: "0.08em",
+            textTransform: "uppercase", marginBottom: 20,
+          }}>
+            <Check style={{ width: 13, height: 13 }} />
+            Registration received
+          </div>
+          <h1 style={{ margin: "0 0 16px", fontSize: 42, fontWeight: 900,
+            color: WHITE, letterSpacing: "-0.04em", lineHeight: 1.1 }}>
+            Choose your<br />
+            <span style={{ color: "#A7F3D0" }}>decarbonisation plan</span>
+          </h1>
+          <p style={{ margin: 0, fontSize: 16, color: "rgba(255,255,255,0.82)", lineHeight: 1.7, maxWidth: 500, marginInline: "auto" }}>
+            Your details are with our team. Select the engagement that fits your organisation's
+            scope and ambition — we'll reach out to confirm within 2 business days.
+          </p>
+        </div>
+      </div>
+
+      {/* Pricing cards */}
+      <div style={{ maxWidth: 1160, margin: "-48px auto 0", padding: "0 24px 80px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
+          {plans.map(plan => {
+            const isSelected = selectedPlan === plan.key;
+            const isPopular  = plan.popular;
+            return (
+              <div key={plan.key}
+                className="pp-card"
+                onClick={() => setSelectedPlan(plan.key)}
+                style={{
+                  position: "relative", borderRadius: 20, overflow: "visible",
+                  cursor: "pointer",
+                  background: isPopular
+                    ? `linear-gradient(160deg,${FOREST} 0%,${MOSS} 100%)`
+                    : WHITE,
+                  border: isSelected
+                    ? `2.5px solid ${MINT}`
+                    : isPopular ? "2.5px solid transparent" : `1.5px solid ${BORDER}`,
+                  boxShadow: isPopular
+                    ? "0 12px 40px rgba(30,79,60,0.28),0 4px 12px rgba(0,0,0,0.1)"
+                    : "0 2px 12px rgba(30,79,60,0.08)",
+                  transform: isPopular ? "translateY(-8px)" : "none",
+                  paddingBottom: 24,
                 }}>
-                  {s.done
-                    ? <Check style={{ width: 10, height: 10, color: WHITE }} />
-                    : <span style={{ fontSize: 9, fontWeight: 700, color: "#9CA3AF" }}>{i + 1}</span>}
-                </div>
-                <div>
-                  <p style={{ margin: "0 0 2px", fontSize: 13, fontWeight: 600,
-                    color: s.done ? INK : SLATE }}>{s.label}</p>
-                  <p style={{ margin: 0, fontSize: 12, color: SLATE, lineHeight: 1.55 }}>{s.desc}</p>
+
+                {/* Popular badge */}
+                {isPopular && (
+                  <div style={{
+                    position: "absolute", top: -14, left: "50%", transform: "translateX(-50%)",
+                    padding: "4px 16px", borderRadius: 20,
+                    background: `linear-gradient(90deg,#A7F3D0,${MINT})`,
+                    fontSize: 10, fontWeight: 800, color: FOREST, letterSpacing: "0.1em",
+                    textTransform: "uppercase", whiteSpace: "nowrap",
+                    boxShadow: "0 2px 8px rgba(61,168,130,0.4)",
+                  }}>
+                    Most Popular
+                  </div>
+                )}
+
+                {/* Selected check */}
+                {isSelected && (
+                  <div style={{
+                    position: "absolute", top: 14, right: 14,
+                    width: 22, height: 22, borderRadius: "50%",
+                    background: isPopular ? "rgba(255,255,255,0.9)" : MOSS,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <Check style={{ width: 12, height: 12, color: isPopular ? FOREST : WHITE }} />
+                  </div>
+                )}
+
+                {/* Card body */}
+                <div style={{ padding: "28px 24px 20px" }}>
+                  <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 800, letterSpacing: "0.12em",
+                    textTransform: "uppercase", color: isPopular ? "rgba(255,255,255,0.6)" : MUTED }}>
+                    {plan.name}
+                  </p>
+                  <p style={{ margin: "0 0 14px", fontSize: 13, fontWeight: 500, lineHeight: 1.4,
+                    color: isPopular ? "rgba(255,255,255,0.85)" : SLATE }}>
+                    {plan.tagline}
+                  </p>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginBottom: 20 }}>
+                    <span style={{ fontSize: plan.price === "Custom" ? 28 : 26, fontWeight: 900,
+                      color: isPopular ? WHITE : INK, letterSpacing: "-0.03em" }}>
+                      {plan.price}
+                    </span>
+                    {plan.period && (
+                      <span style={{ fontSize: 13, color: isPopular ? "rgba(255,255,255,0.6)" : MUTED, fontWeight: 500 }}>
+                        {plan.period}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ width: "100%", height: 1, background: isPopular ? "rgba(255,255,255,0.15)" : BORDER, marginBottom: 18 }} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {plan.features.map(f => (
+                      <div key={f} style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
+                        <div style={{
+                          width: 17, height: 17, borderRadius: "50%", flexShrink: 0, marginTop: 1,
+                          background: isPopular ? "rgba(167,243,208,0.25)" : "#ECF7F3",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>
+                          <Check style={{ width: 9, height: 9, color: isPopular ? "#A7F3D0" : MOSS }} />
+                        </div>
+                        <span style={{ fontSize: 13, lineHeight: 1.4,
+                          color: isPopular ? "rgba(255,255,255,0.88)" : SLATE }}>
+                          {f}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            ))}
+            );
+          })}
+        </div>
+
+        {/* CTA section */}
+        <div style={{
+          marginTop: 40, background: WHITE, border: `1.5px solid ${BORDER}`,
+          borderRadius: 20, padding: "32px 40px",
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24,
+          boxShadow: "0 4px 20px rgba(30,79,60,0.08)",
+          flexWrap: "wrap",
+        }}>
+          <div>
+            <p style={{ margin: "0 0 5px", fontSize: 18, fontWeight: 800, color: INK, letterSpacing: "-0.02em" }}>
+              Ready to get started?
+            </p>
+            <p style={{ margin: 0, fontSize: 14, color: SLATE, lineHeight: 1.6 }}>
+              You've selected the{" "}
+              <strong style={{ color: MOSS }}>
+                {plans.find(p => p.key === selectedPlan)?.name ?? "Professional"} plan
+              </strong>
+              . We'll send you a tailored proposal within 2 business days.
+            </p>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, flexShrink: 0 }}>
+            {requested ? (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8, padding: "12px 20px",
+                borderRadius: 12, background: "#F0FDF4", border: "1px solid #86EFAC",
+                fontSize: 13, color: "#15803D", fontWeight: 600,
+              }}>
+                <Check style={{ width: 15, height: 15 }} />
+                Request sent — we'll be in touch shortly.
+              </div>
+            ) : (
+              <button type="button" onClick={requestInvoice} disabled={sending}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 8,
+                  padding: "13px 32px", borderRadius: 12, border: "none",
+                  background: `linear-gradient(135deg,${FOREST},${MOSS})`,
+                  color: WHITE, fontSize: 14, fontWeight: 700,
+                  cursor: sending ? "not-allowed" : "pointer",
+                  opacity: sending ? 0.6 : 1,
+                  boxShadow: "0 4px 14px rgba(30,111,92,0.35)",
+                  fontFamily: "inherit",
+                }}>
+                {sending && <Loader2 style={{ width: 15, height: 15, animation: "pp-spin 1s linear infinite" }} />}
+                {sending ? "Requesting…" : "Request a proposal →"}
+              </button>
+            )}
+            <p style={{ margin: 0, fontSize: 11, color: MUTED }}>
+              No payment required now · We'll confirm scope before invoicing
+            </p>
           </div>
         </div>
 
-        {/* Invoice request */}
-        {requested ? (
-          <div style={{
-            padding: "14px 18px", borderRadius: 10, marginBottom: 16,
-            background: "#F0FDF4", border: "1px solid #86EFAC",
-            fontSize: 13, color: "#15803D", display: "flex", alignItems: "center", gap: 8,
-          }}>
-            <Check style={{ width: 15, height: 15, flexShrink: 0 }} />
-            Invoice requested — your Deepwoods consultant will be in touch shortly.
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={requestInvoice}
-            disabled={sending}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 8,
-              padding: "12px 28px", borderRadius: 10, border: "none", marginBottom: 16,
-              background: `linear-gradient(135deg, ${FOREST}, ${MOSS})`,
-              color: WHITE, fontSize: 14, fontWeight: 700, cursor: sending ? "not-allowed" : "pointer",
-              opacity: sending ? 0.6 : 1, boxShadow: "0 3px 10px rgba(30,111,92,0.3)",
-              fontFamily: "inherit",
-            }}
-          >
-            {sending && <Loader2 style={{ width: 15, height: 15, animation: "pp-spin 1s linear infinite" }} />}
-            {sending ? "Sending…" : "Request invoice"}
-          </button>
-        )}
-
-        {/* Actions row */}
-        <div style={{ display: "flex", gap: 10 }}>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              padding: "10px 20px", borderRadius: 9,
-              border: `1.5px solid ${BORDER}`, background: WHITE,
-              color: SLATE, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
-            <RefreshCw style={{ width: 13, height: 13 }} /> Refresh status
-          </button>
-          <button
-            type="button"
-            onClick={logout}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              padding: "10px 20px", borderRadius: 9,
-              border: `1.5px solid ${BORDER}`, background: WHITE,
-              color: SLATE, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
-            <LogOut style={{ width: 13, height: 13 }} /> Sign out
-          </button>
+        {/* Trust bar */}
+        <div style={{
+          marginTop: 28, display: "flex", justifyContent: "center", flexWrap: "wrap",
+          gap: "8px 32px",
+        }}>
+          {[
+            "GHG Protocol aligned",
+            "ISO 14064 compatible",
+            "SBTi ready",
+            "BRSR / CDP support",
+            "No lock-in contracts",
+          ].map(t => (
+            <div key={t} style={{ display: "flex", alignItems: "center", gap: 6,
+              fontSize: 12, color: SLATE, fontWeight: 600 }}>
+              <div style={{ width: 5, height: 5, borderRadius: "50%", background: MINT }} />
+              {t}
+            </div>
+          ))}
         </div>
-
       </div>
     </div>
   );
