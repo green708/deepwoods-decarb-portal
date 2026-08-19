@@ -29,7 +29,7 @@ function DonutActiveShape(props: any) {
         startAngle={startAngle} endAngle={endAngle} fill={fill}
         style={{ filter: "drop-shadow(0px 4px 10px rgba(30,64,175,0.35))", cursor: "pointer" }} />
       <text x={cx} y={cy - 14} textAnchor="middle" fill={INK} style={{ fontSize: 12, fontWeight: 700 }}>
-        {payload.name.replace(" LB", "")}
+        {payload.name}
       </text>
       <text x={cx} y={cy + 4} textAnchor="middle" fill="#1E6F5C" style={{ fontSize: 15, fontWeight: 800, fontFamily: "Inter,sans-serif" }}>
         {(percent * 100).toFixed(1)}%
@@ -373,7 +373,7 @@ function Overview() {
                   {donutData.map((d) => (
                     <div key={d.name}>
                       <div className="font-bold tabular-nums text-lg" style={{ color: INK }}>{((d.value / donutTotal) * 100).toFixed(1)}%</div>
-                      <div className="text-[11px] text-muted-foreground">{d.name.replace(" LB", "")}</div>
+                      <div className="text-[11px] text-muted-foreground">{d.name}</div>
                     </div>
                   ))}
                 </div>

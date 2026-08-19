@@ -149,7 +149,13 @@ function ProgressPage() {
         <CardHeader title="Committed actions tracker" subtitle="What moved from planned to committed" />
         <div className="divide-y">
           {COMMITTED.length === 0 ? (
-            <div className="p-6 text-center text-sm text-[color:var(--ink-muted)]">No committed actions in the database yet.</div>
+            <div className="flex flex-col items-center gap-3 p-8 text-center">
+              <p className="text-sm text-[color:var(--ink-muted)]">No actions have been committed yet.</p>
+              <p className="text-xs text-[color:var(--ink-muted)]">Select reduction levers in the Action Plan and save a scenario to start tracking progress here.</p>
+              <a href="/action-plan" className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity">
+                Go to Action Plan →
+              </a>
+            </div>
           ) : COMMITTED.map((a) => (
             <div key={a.title} className="grid grid-cols-1 items-center gap-3 p-5 md:grid-cols-6">
               <div className="md:col-span-2">

@@ -339,6 +339,18 @@ function EntitySetupPage() {
 
 function CompanyDetailsStep({ data, update }: { data: WizardState; update: (p: Partial<WizardState>) => void }) {
   const logoRef = useRef<HTMLInputElement>(null);
+  const [touched, setTouched] = useState({ legalName: false, industry: false, org_type: false, legal_address: false, gstin: false });
+  const touch = (k: keyof typeof touched) => setTouched(t => ({ ...t, [k]: true }));
+
+  const GSTIN_RE_LOCAL = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+  const errs = {
+    legalName:     touched.legalName     && !data.legalName.trim()     ? "Legal name is required" : "",
+    industry:      touched.industry      && !data.industry              ? "Please select an industry" : "",
+    org_type:      touched.org_type      && !data.org_type              ? "Please select an organisation type" : "",
+    legal_address: touched.legal_address && !data.legal_address.trim() ? "Legal address is required" : "",
+    gstin: touched.gstin && data.is_india && data.gstin.trim() && !GSTIN_RE_LOCAL.test(data.gstin.trim().toUpperCase())
+      ? "Enter a valid 15-character GSTIN (e.g. 27AAPFU0939F1ZV)" : "",
+  };
 
   const handleLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -369,9 +381,11 @@ function CompanyDetailsStep({ data, update }: { data: WizardState; update: (p: P
         </Field>
 
         <Field label="GSTIN" required={data.is_india}
-          hint="Your 15-character GST Identification Number, as shown on your GST registration certificate.">
-          <input className="lov-input" value={data.gstin}
+          hint="Your 15-character GST Identification Number, as shown on your GST registration certificate."
+          error={errs.gstin}>
+          <input className={`lov-input${errs.gstin ? " lov-input-error" : ""}`} value={data.gstin}
             onChange={e => update({ gstin: e.target.value.toUpperCase() })}
+            onBlur={() => touch("gstin")}
             placeholder={data.is_india ? "15-character GST Identification Number" : "Not applicable"}
             maxLength={15} disabled={!data.is_india} />
         </Field>
@@ -380,9 +394,11 @@ function CompanyDetailsStep({ data, update }: { data: WizardState; update: (p: P
       {/* Legal name + Operating name */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         <Field label="Legal name of the organisation" required
-          hint="The exact registered name on your incorporation or registration certificate — this is what will appear on official reports.">
-          <input className="lov-input" value={data.legalName}
+          hint="The exact registered name on your incorporation or registration certificate — this is what will appear on official reports."
+          error={errs.legalName}>
+          <input className={`lov-input${errs.legalName ? " lov-input-error" : ""}`} value={data.legalName}
             onChange={e => update({ legalName: e.target.value })}
+            onBlur={() => touch("legalName")}
             placeholder="Exact registered name" />
         </Field>
         <Field label="Operating name of the organisation (if different)"
@@ -396,17 +412,21 @@ function CompanyDetailsStep({ data, update }: { data: WizardState; update: (p: P
       {/* Industry + Org type */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         <Field label="Industry" required
-          hint="Choose the sector closest to your primary business activity — this affects the default emission factors used in your calculations.">
-          <select className="lov-select" value={data.industry}
-            onChange={e => update({ industry: e.target.value })}>
+          hint="Choose the sector closest to your primary business activity — this affects the default emission factors used in your calculations."
+          error={errs.industry}>
+          <select className={`lov-select${errs.industry ? " lov-input-error" : ""}`} value={data.industry}
+            onChange={e => update({ industry: e.target.value })}
+            onBlur={() => touch("industry")}>
             <option value="">Select an industry</option>
             {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
           </select>
         </Field>
         <Field label="Organisational Type" required
-          hint="Your legal structure, as stated on your registration documents.">
-          <select className="lov-select" value={data.org_type}
-            onChange={e => update({ org_type: e.target.value })}>
+          hint="Your legal structure, as stated on your registration documents."
+          error={errs.org_type}>
+          <select className={`lov-select${errs.org_type ? " lov-input-error" : ""}`} value={data.org_type}
+            onChange={e => update({ org_type: e.target.value })}
+            onBlur={() => touch("org_type")}>
             <option value="">Select a type</option>
             {ORG_TYPES_LEGAL.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
@@ -455,12 +475,14 @@ function CompanyDetailsStep({ data, update }: { data: WizardState; update: (p: P
 
       {/* Legal address */}
       <Field label="Legal Address" required
-        hint="Your registered head office address. This will automatically become your first facility in the next step, so double-check it here.">
-        <textarea className="lov-textarea" rows={3} value={data.legal_address}
+        hint="Your registered head office address. This will automatically become your first facility in the next step, so double-check it here."
+        error={errs.legal_address}>
+        <textarea className={`lov-textarea${errs.legal_address ? " lov-input-error" : ""}`} rows={3} value={data.legal_address}
           onChange={e => update({
             legal_address: e.target.value,
             facilities: [{ name: "Head Office", address: e.target.value }, ...data.facilities.slice(1)],
           })}
+          onBlur={() => touch("legal_address")}
           placeholder="Full registered head-office address" />
       </Field>
 
@@ -1037,8 +1059,8 @@ function SubmitStep({ data }: { data: WizardState }) {
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
-function Field({ label, required, hint, children }: {
-  label: string; required?: boolean; hint?: string; children: React.ReactNode;
+function Field({ label, required, hint, error, children }: {
+  label: string; required?: boolean; hint?: string; error?: string; children: React.ReactNode;
 }) {
   return (
     <div>
@@ -1047,9 +1069,11 @@ function Field({ label, required, hint, children }: {
         {required && <span style={{ fontSize: 10, color: CORAL }}>●</span>}
       </div>
       {children}
-      {hint && (
+      {error ? (
+        <p style={{ margin: "7px 0 0", fontSize: 12, color: CORAL, lineHeight: 1.6 }}>{error}</p>
+      ) : hint ? (
         <p style={{ margin: "7px 0 0", fontSize: 12, color: "#94A3B8", lineHeight: 1.6 }}>{hint}</p>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -1080,6 +1104,7 @@ function RR({ label, value }: { label: string; value: string }) {
 const LOV_CSS = `
 .lov-input,.lov-select,.lov-textarea{width:100%;padding:10px 14px;border:1.5px solid ${HAIRLINE};border-radius:9px;font-size:14px;color:${INK};background:white;font-family:inherit;outline:none;box-sizing:border-box;transition:border-color 0.15s,box-shadow 0.15s;appearance:auto}
 .lov-input:focus,.lov-select:focus,.lov-textarea:focus{border-color:${CANOPY};box-shadow:0 0 0 3px rgba(30,111,92,0.12)}
+.lov-input-error{border-color:${CORAL} !important}.lov-input-error:focus{box-shadow:0 0 0 3px rgba(220,38,38,0.12) !important}
 .lov-input::placeholder,.lov-textarea::placeholder{color:#BCC5BF}
 .lov-textarea{resize:vertical;min-height:80px;line-height:1.6}
 .lov-add-link{display:inline-flex;align-items:center;gap:6px;padding:0;background:none;border:none;color:${CANOPY};font-size:13px;font-weight:600;cursor:pointer;margin-top:4px}

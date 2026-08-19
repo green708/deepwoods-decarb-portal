@@ -713,7 +713,7 @@ function ActionPlanView({
             </div>
           </div>
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-[color:var(--ink-muted)]">Scope 2 · {entity} {fy}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-[color:var(--ink-muted)]">Scope 2 LB · {entity} {fy}</div>
             <div className="mt-1 font-medium text-[color:var(--ink)]">
               <span className="font-bold" style={{ fontFamily: "var(--font-mono)" }}>{fmt(s2, 2)}</span> tCO₂e — close residual grid with I-RECs
             </div>
