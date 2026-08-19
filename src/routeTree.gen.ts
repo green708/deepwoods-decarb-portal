@@ -38,6 +38,7 @@ import { Route as AppProgressRouteImport } from './routes/_app.progress'
 import { Route as AppRegisterRouteImport } from './routes/_app.register'
 import { Route as AppReportingRouteImport } from './routes/_app.reporting'
 import { Route as AppReportsRouteImport } from './routes/_app.reports'
+import { Route as AppDataTrackerRouteImport } from './routes/_app.data-tracker'
 import { Route as AppSubmissionsRouteImport } from './routes/_app.submissions'
 import { Route as AppTeamRouteImport } from './routes/_app.team'
 import { Route as AppTrendsRouteImport } from './routes/_app.trends'
@@ -95,6 +96,11 @@ const AppCompanyProfileRoute = AppCompanyProfileRouteImport.update({
 const AppCreditsRoute = AppCreditsRouteImport.update({
   id: '/credits',
   path: '/credits',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDataTrackerRoute = AppDataTrackerRouteImport.update({
+  id: '/data-tracker',
+  path: '/data-tracker',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDashboardRoute = AppDashboardRouteImport.update({
@@ -219,6 +225,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AppAdminRoute
   '/company-profile': typeof AppCompanyProfileRoute
   '/credits': typeof AppCreditsRoute
+  '/data-tracker': typeof AppDataTrackerRoute
   '/dashboard': typeof AppDashboardRoute
   '/entity-setup': typeof AppEntitySetupRoute
   '/green-finance': typeof AppGreenFinanceRoute
@@ -253,6 +260,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AppAdminRoute
   '/company-profile': typeof AppCompanyProfileRoute
   '/credits': typeof AppCreditsRoute
+  '/data-tracker': typeof AppDataTrackerRoute
   '/dashboard': typeof AppDashboardRoute
   '/entity-setup': typeof AppEntitySetupRoute
   '/green-finance': typeof AppGreenFinanceRoute
@@ -289,6 +297,7 @@ export interface FileRoutesById {
   '/_app/admin': typeof AppAdminRoute
   '/_app/company-profile': typeof AppCompanyProfileRoute
   '/_app/credits': typeof AppCreditsRoute
+  '/_app/data-tracker': typeof AppDataTrackerRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/entity-setup': typeof AppEntitySetupRoute
   '/_app/green-finance': typeof AppGreenFinanceRoute
@@ -325,6 +334,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/company-profile'
     | '/credits'
+    | '/data-tracker'
     | '/dashboard'
     | '/entity-setup'
     | '/green-finance'
@@ -507,6 +517,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCreditsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/data-tracker': {
+      id: '/_app/data-tracker'
+      path: '/data-tracker'
+      fullPath: '/data-tracker'
+      preLoaderRoute: typeof AppDataTrackerRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/dashboard': {
       id: '/_app/dashboard'
       path: '/dashboard'
@@ -669,6 +686,7 @@ interface AppRouteChildren {
   AppAdminRoute: typeof AppAdminRoute
   AppCompanyProfileRoute: typeof AppCompanyProfileRoute
   AppCreditsRoute: typeof AppCreditsRoute
+  AppDataTrackerRoute: typeof AppDataTrackerRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppEntitySetupRoute: typeof AppEntitySetupRoute
   AppGreenFinanceRoute: typeof AppGreenFinanceRoute
@@ -698,6 +716,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAdminRoute: AppAdminRoute,
   AppCompanyProfileRoute: AppCompanyProfileRoute,
   AppCreditsRoute: AppCreditsRoute,
+  AppDataTrackerRoute: AppDataTrackerRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppEntitySetupRoute: AppEntitySetupRoute,
   AppGreenFinanceRoute: AppGreenFinanceRoute,

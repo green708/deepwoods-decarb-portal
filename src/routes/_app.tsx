@@ -9,7 +9,7 @@ import {
   KeyRound, Loader2, Bell, LayoutDashboard, BarChart2, Leaf,
   ChevronDown, ChevronRight, PieChart, Target, Zap, FileText, TrendingDown,
   Landmark, ClipboardList, Bot, Users, Clock, Building2, CreditCard, Check,
-  Search, RefreshCw, Lock,
+  Search, RefreshCw, Lock, Table2,
 } from "lucide-react";
 import {
   ClientContextProvider, useClientContextSafe, useClientContext, type ClientContext,
@@ -785,6 +785,7 @@ const ALL_NAV_GROUPS: NavGroup[] = [
 ];
 
 const ALL_BOTTOM_SINGLES: NavItem[] = [
+  { to: "/data-tracker",     label: "Data Tracker",     icon: Table2,     pageKey: "data-tracker" },
   { to: "/submissions",      label: "Data Submission",  icon: Upload,     pageKey: "submissions" },
   { to: "/vault",            label: "Document Vault",   icon: FolderLock, pageKey: "vault" },
   { to: "/methodology",      label: "Methodology",      icon: BookOpen,   pageKey: "methodology" },
@@ -890,9 +891,10 @@ function AppLayout({ role }: { role: Role }) {
         .map((g) => ({ ...g, items: g.items.filter((i) => isEnabled(i.pageKey)) }))
     : ALL_NAV_GROUPS;
   const bottomSingles = ALL_BOTTOM_SINGLES.filter((i) => {
-    if (i.pageKey === "admin")    return DEEPWOODS_ROLES.includes(role);
-    if (i.pageKey === "team")     return role === "sustainability_team";
-    if (i.pageKey === "register") return DEEPWOODS_ROLES.includes(role);
+    if (i.pageKey === "admin")        return DEEPWOODS_ROLES.includes(role);
+    if (i.pageKey === "team")         return role === "sustainability_team";
+    if (i.pageKey === "register")     return DEEPWOODS_ROLES.includes(role);
+    if (i.pageKey === "data-tracker") return true; // always visible; DB enabled_pages migration pending
     return isEnabled(i.pageKey);
   });
 
