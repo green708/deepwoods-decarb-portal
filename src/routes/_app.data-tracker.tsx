@@ -283,7 +283,7 @@ function DataTrackerPage() {
   const { data: assets = [], isPending: assetsLoading } = useDecarbAssets(entity);
   const { data: facilities = [] } = useFacilities(entity);
 
-  const [scopeTab, setScopeTab] = useState<"s12" | "s3">("s12");
+  const [scopeTab, setScopeTab] = useState<"s1" | "s2" | "s3">("s1");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeFacility, setActiveFacility] = useState<string | null>(null);
   const [draft, setDraft] = useState<TrackerDraft>({});
@@ -341,8 +341,10 @@ function DataTrackerPage() {
 
   const filteredAssets = useMemo(
     () =>
-      scopeTab === "s12"
-        ? activeAssets.filter(a => a.scope === "Scope 1" || a.scope === "Scope 2")
+      scopeTab === "s1"
+        ? activeAssets.filter(a => a.scope === "Scope 1")
+        : scopeTab === "s2"
+        ? activeAssets.filter(a => a.scope === "Scope 2")
         : activeAssets.filter(a => a.scope === "Scope 3"),
     [activeAssets, scopeTab],
   );
@@ -571,7 +573,7 @@ function DataTrackerPage() {
                     <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                 )}
-                {(["s12", "s3"] as const).map(tab => (
+                {(["s1", "s2", "s3"] as const).map(tab => (
                   <button
                     key={tab}
                     type="button"
@@ -582,7 +584,7 @@ function DataTrackerPage() {
                         : "border-transparent text-muted-foreground hover:text-[var(--navy)]"
                     }`}
                   >
-                    {tab === "s12" ? "Scope 1 & 2 Tracker" : "Scope 3 Tracker"}
+                    {tab === "s1" ? "Scope 1" : tab === "s2" ? "Scope 2" : "Scope 3"}
                   </button>
                 ))}
                 {activeFacility && (
@@ -602,7 +604,7 @@ function DataTrackerPage() {
               {/* Grid or empty state */}
               {filteredAssets.length === 0 ? (
                 <div className="flex flex-1 items-center justify-center py-16 text-sm text-muted-foreground">
-                  No {scopeTab === "s12" ? "Scope 1 or Scope 2" : "Scope 3"} sources in the inventory.
+                  No {scopeTab === "s1" ? "Scope 1" : scopeTab === "s2" ? "Scope 2" : "Scope 3"} sources in the inventory.
                 </div>
               ) : (
                 <div className="flex-1 overflow-x-auto overflow-y-auto">
