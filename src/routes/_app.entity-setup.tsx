@@ -21,9 +21,29 @@ const CTINT    = "#FEF2F2";
 const FOREST   = "#1E4D2B";
 
 const INDUSTRIES = [
-  "Manufacturing", "Textiles & Apparel", "Chemicals", "Food & Beverage",
-  "IT / Technology", "Financial Services", "Real Estate & Construction",
-  "Logistics & Transportation", "Furniture Manufacturing", "Other",
+  "Agriculture & Forestry",
+  "Automotive & Mobility",
+  "Chemicals & Materials",
+  "Construction & Infrastructure",
+  "Consumer Goods & Retail",
+  "Education",
+  "Energy & Utilities",
+  "Financial Services",
+  "Food & Beverage",
+  "Healthcare & Pharmaceuticals",
+  "Hospitality & Tourism",
+  "IT / Technology & Software",
+  "Logistics & Transportation",
+  "Manufacturing — Discrete",
+  "Manufacturing — Process",
+  "Media & Entertainment",
+  "Mining & Metals",
+  "Professional Services",
+  "Real Estate",
+  "Telecommunications",
+  "Textiles & Apparel",
+  "Waste & Recycling",
+  "Other",
 ];
 
 const ORG_TYPES_LEGAL = [
@@ -38,28 +58,30 @@ interface TeamMember { name: string; email: string; role: string; }
 
 interface WizardState {
   // Step 1 — Company Details
-  is_india:       boolean;
-  gstin:          string;
-  legalName:      string;
-  operatingName:  string;
-  industry:       string;
-  org_type:       string;
-  is_msme:        boolean;
-  udyam_number:   string;
-  legal_address:  string;
-  website:        string;
+  is_india:          boolean;
+  gstin:             string;
+  legalName:         string;
+  operatingName:     string;
+  industry:          string;
+  org_type:          string;
+  reporting_model:   string;
+  is_msme:           boolean;
+  udyam_number:      string;
+  legal_address:     string;
+  website:           string;
   // Step 4 — Plan
-  selected_plan:  string;
-  logo_preview:   string | null;
+  selected_plan:     string;
+  logo_preview:      string | null;
   // Step 2 — Facilities
-  facilities:     Facility[];
+  facilities:        Facility[];
   // Step 3 — Team
-  team:           TeamMember[];
+  team:              TeamMember[];
 }
 
 const INIT: WizardState = {
   is_india: true, gstin: "",
-  legalName: "", operatingName: "", industry: "", org_type: "", is_msme: false, udyam_number: "",
+  legalName: "", operatingName: "", industry: "", org_type: "", reporting_model: "consolidated",
+  is_msme: false, udyam_number: "",
   legal_address: "", website: "", logo_preview: null,
   facilities: [{ name: "Head Office", address: "" }],
   team: [{ name: "", email: "", role: "viewer" }],
@@ -139,7 +161,7 @@ function EntitySetupPage() {
     setLoading(true);
     try {
       const parentCode     = makeCode(data.legalName);
-      const reportingModel = "consolidated";
+      const reportingModel = data.reporting_model || "consolidated";
 
       const entities = [
         { code: parentCode, name: data.legalName,
@@ -391,31 +413,45 @@ function CompanyDetailsStep({ data, update }: { data: WizardState; update: (p: P
         </Field>
       </div>
 
-      {/* MSME */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <Field label="Is your organisation registered as an MSME?"
-          hint="Select Yes if you hold an Udyam (or equivalent) MSME registration.">
-          <div className="lov-yn">
-            {["Yes", "No"].map(opt => {
-              const active = opt === "Yes" ? data.is_msme : !data.is_msme;
-              return (
-                <button key={opt} type="button" onClick={() => update({ is_msme: opt === "Yes", udyam_number: opt === "No" ? "" : data.udyam_number })}
-                  className={active ? "lov-yn-btn active" : "lov-yn-btn"}>
-                  {opt}
-                </button>
-              );
-            })}
-          </div>
-        </Field>
-        {data.is_msme && (
-          <Field label="Udyam Registration Number"
-            hint="Your 19-character Udyam number (e.g. UDYAM-XX-00-0000000). Found on your Udyam Registration Certificate.">
-            <input className="lov-input" value={data.udyam_number}
-              onChange={e => update({ udyam_number: e.target.value.toUpperCase() })}
-              placeholder="UDYAM-XX-00-0000000" maxLength={25} />
+      {/* Reporting model */}
+      <Field label="Consolidation / Reporting Approach" required
+        hint="How your organisation consolidates GHG emissions. Operational control is the most common approach for GHG Protocol compliance.">
+        <select className="lov-select" value={data.reporting_model}
+          onChange={e => update({ reporting_model: e.target.value })}>
+          <option value="consolidated">Operational Control (consolidated reporting)</option>
+          <option value="equity_share">Equity Share</option>
+          <option value="financial_control">Financial Control</option>
+          <option value="separate">Separate entities (no consolidated roll-up)</option>
+        </select>
+      </Field>
+
+      {/* MSME — India-specific */}
+      {data.is_india && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <Field label="Is your organisation registered as an MSME?"
+            hint="Select Yes if you hold an Udyam (or equivalent) MSME registration.">
+            <div className="lov-yn">
+              {["Yes", "No"].map(opt => {
+                const active = opt === "Yes" ? data.is_msme : !data.is_msme;
+                return (
+                  <button key={opt} type="button" onClick={() => update({ is_msme: opt === "Yes", udyam_number: opt === "No" ? "" : data.udyam_number })}
+                    className={active ? "lov-yn-btn active" : "lov-yn-btn"}>
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
           </Field>
-        )}
-      </div>
+          {data.is_msme && (
+            <Field label="Udyam Registration Number"
+              hint="Your 19-character Udyam number (e.g. UDYAM-XX-00-0000000). Found on your Udyam Registration Certificate.">
+              <input className="lov-input" value={data.udyam_number}
+                onChange={e => update({ udyam_number: e.target.value.toUpperCase() })}
+                placeholder="UDYAM-XX-00-0000000" maxLength={25} />
+            </Field>
+          )}
+        </div>
+      )}
 
       {/* Legal address */}
       <Field label="Legal Address" required
