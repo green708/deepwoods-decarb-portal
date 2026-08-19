@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/portal";
 import { useClientContext } from "@/lib/client-context";
 import { useDecarbAssets, useFacilities } from "@/lib/api";
@@ -7,7 +7,7 @@ import type { DecarbAsset, FacilityRow } from "@/lib/api";
 import { useEntity } from "@/lib/entity";
 import { useFiscalYear } from "@/lib/entity";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ChevronLeft, ChevronRight, Download, Paperclip, Save } from "lucide-react";
+import { ChevronDown, ChevronUp, Info, Paperclip, Save } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/data-tracker")({ component: DataTrackerPage });
@@ -27,17 +27,22 @@ function fyMonths(fy: string, period: "FY" | "CY"): string[] {
     .map((m, i) => `${m}-${String(i < 9 ? sy : endYear).slice(-2)}`);
 }
 
-type ScopeTag = { label: string; bg: string; fg: string };
+function fyLabel(fy: string, period: "FY" | "CY"): string {
+  const yy = parseInt(fy.replace(/[^0-9]/g, ""));
+  if (period === "CY") { const y = yy < 100 ? 2000 + yy : yy; return `${fy} (Jan ${y} – Dec ${y})`; }
+  const e = yy < 100 ? 2000 + yy : yy;
+  return `${fy} (Apr ${e - 1} – Mar ${e})`;
+}
 
+type ScopeTag = { label: string; bg: string; fg: string };
 function getScopeTag(a: DecarbAsset): ScopeTag {
   const st = (a.sub_type ?? "").toLowerCase();
   const sc = a.scope ?? "";
   if (sc === "Scope 1") {
     if (st === "fugitive" || st.includes("refrigerant") || st.includes("fire ext") || st.includes("welding"))
       return { label: "S1 — Fugitive", bg: "#FEF9C3", fg: "#854D0E" };
-    if (st.includes("process") || st.includes("calcination"))
-      return { label: "S1 — Process", bg: "#FFE4E6", fg: "#9F1239" };
-    return { label: "S1 — Stationary", bg: "#FEF3C7", fg: "#92400E" };
+    if (st.includes("process")) return { label: "S1 — Process", bg: "#FFE4E6", fg: "#9F1239" };
+    return { label: "S1 — Combustion", bg: "#FEF3C7", fg: "#92400E" };
   }
   if (sc === "Scope 2") {
     if (st.includes("solar") || st.includes("rooftop") || st.includes("wind"))
@@ -65,8 +70,20 @@ function isAnnualOnly(a: DecarbAsset): boolean {
   );
 }
 
+const AVATAR_PALETTE = [
+  "#1E3A5F","#5B21B6","#065F46","#92400E","#1E40AF","#831843","#374151","#0E7490",
+];
+function facilityColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+}
+function facilityInitials(name: string): string {
+  return name.split(/[\s\-_]+/).map(w => w[0] ?? "").filter(Boolean).join("").slice(0, 2).toUpperCase();
+}
+
 type TrackerDraft = Record<string, Record<string, string>>;
-type CellFiles = Record<string, Record<string, File[]>>;
+type CellFiles  = Record<string, Record<string, File[]>>;
 
 // ── MonthCell ─────────────────────────────────────────────────────────────────
 
@@ -76,37 +93,30 @@ interface MonthCellProps {
   fileCount: number;
   onFileAdd: (f: File) => void;
   disabled?: boolean;
-  annualPlaceholder?: boolean;
+  readOnly?: boolean;
 }
 
-function MonthCell({ value, onChange, fileCount, onFileAdd, disabled, annualPlaceholder }: MonthCellProps) {
+function MonthCell({ value, onChange, fileCount, onFileAdd, disabled, readOnly }: MonthCellProps) {
   const [editing, setEditing] = useState(false);
   const [hovered, setHovered] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const fileRef  = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (editing) setTimeout(() => inputRef.current?.select(), 0);
-  }, [editing]);
+  useEffect(() => { if (editing) setTimeout(() => inputRef.current?.select(), 0); }, [editing]);
 
-  if (disabled) {
-    return (
-      <div className="flex h-9 w-full items-center justify-center">
-        <span className="text-[11px] text-muted-foreground/50">—</span>
-      </div>
-    );
-  }
+  if (disabled) return (
+    <div className="flex h-9 w-full items-center justify-center">
+      <span className="text-[11px] text-gray-300">—</span>
+    </div>
+  );
 
-  if (annualPlaceholder) {
-    const num = parseFloat(value);
-    return (
-      <div className="flex h-9 w-full items-center justify-center">
-        <span className={`font-mono text-xs tabular-nums ${!isNaN(num) && num > 0 ? "font-semibold text-[var(--navy)]" : "text-muted-foreground/60"}`}>
-          {!isNaN(num) && num > 0 ? num.toLocaleString() : "—"}
-        </span>
-      </div>
-    );
-  }
+  if (readOnly) return (
+    <div className="flex h-9 w-full items-center justify-center">
+      <span className={`font-mono text-xs tabular-nums ${value ? "font-bold text-[#1A3547]" : "text-gray-300"}`}>
+        {value || "—"}
+      </span>
+    </div>
+  );
 
   return (
     <div
@@ -122,12 +132,7 @@ function MonthCell({ value, onChange, fileCount, onFileAdd, disabled, annualPlac
           value={value}
           onChange={e => onChange(e.target.value)}
           onBlur={() => setEditing(false)}
-          onKeyDown={e => {
-            if (e.key === "Enter" || e.key === "Escape") {
-              e.preventDefault();
-              setEditing(false);
-            }
-          }}
+          onKeyDown={e => { if (e.key === "Enter" || e.key === "Escape") { e.preventDefault(); setEditing(false); } }}
           className="absolute inset-0 w-full border-2 border-[var(--primary)] bg-white px-2 text-center font-mono text-sm focus:outline-none"
           style={{ zIndex: 20 }}
         />
@@ -136,29 +141,25 @@ function MonthCell({ value, onChange, fileCount, onFileAdd, disabled, annualPlac
           type="button"
           onClick={() => setEditing(true)}
           className={`absolute inset-0 flex w-full items-center justify-center font-mono text-xs tabular-nums transition-colors ${
-            value
-              ? "bg-emerald-50 font-semibold text-emerald-900 hover:bg-emerald-100"
-              : "text-muted-foreground hover:bg-[var(--muted)]"
+            value ? "bg-emerald-50 font-semibold text-emerald-900 hover:bg-emerald-100" : "text-gray-300 hover:bg-gray-50"
           }`}
         >
           {value || "—"}
         </button>
       )}
 
-      {/* Hover: paperclip button */}
       {hovered && !editing && (
         <button
           type="button"
           onClick={e => { e.stopPropagation(); fileRef.current?.click(); }}
-          className="absolute bottom-0.5 right-0.5 flex h-[18px] w-[18px] items-center justify-center rounded bg-[#1A3547] text-white opacity-80 hover:opacity-100 transition-opacity"
-          title="Attach supporting document"
+          className="absolute bottom-0.5 right-0.5 flex h-[18px] w-[18px] items-center justify-center rounded bg-[#1A3547] text-white opacity-70 hover:opacity-100 transition-opacity"
           style={{ zIndex: 25 }}
+          title="Attach document"
         >
           <Paperclip className="h-2.5 w-2.5" />
         </button>
       )}
 
-      {/* File badge */}
       {fileCount > 0 && (
         <div
           className="pointer-events-none absolute left-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--primary)] px-1 text-[9px] font-bold text-white"
@@ -183,9 +184,9 @@ function MonthCell({ value, onChange, fileCount, onFileAdd, disabled, annualPlac
   );
 }
 
-// ── EquipmentRow ───────────────────────────────────────────────────────────────
+// ── EquipmentSection ───────────────────────────────────────────────────────────
 
-interface EquipmentRowProps {
+interface EquipmentSectionProps {
   asset: DecarbAsset;
   months: string[];
   draftRow: Record<string, string>;
@@ -194,82 +195,198 @@ interface EquipmentRowProps {
   onFileAdd: (month: string, file: File) => void;
 }
 
-function EquipmentRow({ asset, months, draftRow, onCellChange, rowFiles, onFileAdd }: EquipmentRowProps) {
-  const annual = isAnnualOnly(asset);
-  const tag = getScopeTag(asset);
-
-  const filledMonths = annual ? (draftRow["ANNUAL"] ? 1 : 0) : months.filter(m => draftRow[m]).length;
-  const totalSlots = annual ? 1 : months.length;
-  const pct = totalSlots > 0 ? Math.round((filledMonths / totalSlots) * 100) : 0;
+function EquipmentSection({ asset, months, draftRow, onCellChange, rowFiles, onFileAdd }: EquipmentSectionProps) {
+  const tag     = getScopeTag(asset);
+  const annual  = isAnnualOnly(asset);
+  const totalSlots  = annual ? 1 : months.length;
+  const filledCount = annual ? (draftRow["ANNUAL"] ? 1 : 0) : months.filter(m => draftRow[m]).length;
 
   const autoSum = useMemo(() => {
     if (annual) return null;
-    const sum = months.reduce((acc, m) => {
-      const v = parseFloat(draftRow[m] ?? "");
-      return acc + (isNaN(v) ? 0 : v);
-    }, 0);
-    return sum > 0 ? sum : null;
+    const s = months.reduce((acc, m) => { const v = parseFloat(draftRow[m] ?? ""); return acc + (isNaN(v) ? 0 : v); }, 0);
+    return s > 0 ? s : null;
   }, [annual, months, draftRow]);
 
+  const fieldLabel  = asset.unit ? `${asset.name} (${asset.unit})` : asset.name;
+  const description = [asset.fuel && `Fuel: ${asset.fuel}`, !asset.fuel && asset.sub_type].filter(Boolean).join(" · ");
+
   return (
-    <tr className="border-b border-[var(--border)] transition-colors hover:bg-slate-50/50">
-      {/* Equipment name */}
-      <td className="sticky left-0 z-10 min-w-[200px] max-w-[220px] border-r border-[var(--border)] bg-white px-3 py-2 align-middle">
-        <div className="truncate text-[13px] font-semibold leading-snug text-[var(--navy)]">{asset.name}</div>
-        <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">{asset.id}</div>
-        <span
-          className="mt-1 inline-block rounded px-1.5 py-[1px] text-[10px] font-bold"
-          style={{ background: tag.bg, color: tag.fg }}
-        >
-          {tag.label}
-        </span>
-      </td>
-      {/* Unit */}
-      <td className="sticky left-[200px] z-10 w-12 border-r border-[var(--border)] bg-white px-1 py-2 text-center align-middle">
-        <span className="text-[11px] text-muted-foreground">{asset.unit || "—"}</span>
-      </td>
-      {/* Monthly cells */}
-      {months.map(m => (
-        <td key={m} className="w-[68px] border-r border-[var(--border)] p-0 align-middle">
-          <MonthCell
-            value={draftRow[m] ?? ""}
-            onChange={v => onCellChange(m, v)}
-            fileCount={rowFiles[m]?.length ?? 0}
-            onFileAdd={f => onFileAdd(m, f)}
-            disabled={annual}
-          />
-        </td>
-      ))}
-      {/* Annual column */}
-      <td className="w-[72px] border-r border-[var(--border)] p-0 align-middle">
-        {annual ? (
-          <MonthCell
-            value={draftRow["ANNUAL"] ?? ""}
-            onChange={v => onCellChange("ANNUAL", v)}
-            fileCount={rowFiles["ANNUAL"]?.length ?? 0}
-            onFileAdd={f => onFileAdd("ANNUAL", f)}
-          />
-        ) : (
-          <MonthCell
-            value={autoSum !== null ? String(autoSum) : ""}
-            onChange={() => {}}
-            fileCount={0}
-            onFileAdd={() => {}}
-            annualPlaceholder
-          />
-        )}
-      </td>
-      {/* Complete % */}
-      <td className="w-16 px-2 text-center align-middle">
-        <span
-          className={`text-xs font-bold tabular-nums ${
-            pct === 100 ? "text-emerald-600" : pct > 0 ? "text-amber-600" : "text-muted-foreground"
-          }`}
-        >
-          {pct}%
-        </span>
-      </td>
-    </tr>
+    <div className="mb-4 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 px-5 py-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[15px] font-bold text-[#1A3547]">{asset.name}</span>
+            <span className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] text-gray-400">{asset.id}</span>
+            <span className="rounded px-2 py-0.5 text-[10px] font-bold" style={{ background: tag.bg, color: tag.fg }}>{tag.label}</span>
+          </div>
+          {description && <div className="mt-1 text-[13px] text-gray-400">{description}</div>}
+          {annual && <div className="mt-1 text-[12px] italic text-amber-600">Annual entry — enter total for the year</div>}
+        </div>
+        <div className="shrink-0 text-right text-sm">
+          <span className={`font-bold tabular-nums ${filledCount === totalSlots ? "text-emerald-600" : filledCount > 0 ? "text-amber-600" : "text-gray-300"}`}>
+            {filledCount}/{totalSlots}
+          </span>
+          <span className="ml-1 text-gray-300">filled</span>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="overflow-x-auto border-t border-gray-100">
+        <table className="min-w-max w-full border-collapse">
+          <thead>
+            <tr className="border-b border-gray-100 bg-gray-50">
+              <th className="sticky left-0 z-10 w-[180px] bg-gray-50 px-5 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                Field
+              </th>
+              {!annual && months.map(m => (
+                <th key={m} className="w-[68px] px-1 py-2 text-center text-[10px] font-bold uppercase tracking-widest text-gray-400">{m}</th>
+              ))}
+              <th className="w-[76px] px-1 py-2 text-center text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                {annual ? "Annual" : "Total"}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="sticky left-0 z-10 bg-white px-5 align-middle text-[12px] font-medium text-gray-600">
+                {fieldLabel}
+              </td>
+              {!annual && months.map(m => (
+                <td key={m} className="p-0 align-middle">
+                  <MonthCell
+                    value={draftRow[m] ?? ""}
+                    onChange={v => onCellChange(m, v)}
+                    fileCount={rowFiles[m]?.length ?? 0}
+                    onFileAdd={f => onFileAdd(m, f)}
+                  />
+                </td>
+              ))}
+              <td className="p-0 align-middle">
+                {annual ? (
+                  <MonthCell
+                    value={draftRow["ANNUAL"] ?? ""}
+                    onChange={v => onCellChange("ANNUAL", v)}
+                    fileCount={rowFiles["ANNUAL"]?.length ?? 0}
+                    onFileAdd={f => onFileAdd("ANNUAL", f)}
+                  />
+                ) : (
+                  <MonthCell value={autoSum !== null ? String(autoSum) : ""} onChange={() => {}} fileCount={0} onFileAdd={() => {}} readOnly />
+                )}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── FacilityAccordion ─────────────────────────────────────────────────────────
+
+interface FacilityAccordionProps {
+  name: string;
+  assets: DecarbAsset[];
+  facilityInfo?: FacilityRow;
+  months: string[];
+  draft: TrackerDraft;
+  cellFiles: CellFiles;
+  onCellChange: (assetId: string, month: string, value: string) => void;
+  onFileAdd: (assetId: string, month: string, file: File) => void;
+  defaultExpanded?: boolean;
+  pct: number;
+  isCategory?: boolean;
+}
+
+function FacilityAccordion({ name, assets, facilityInfo, months, draft, cellFiles, onCellChange, onFileAdd, defaultExpanded, pct, isCategory }: FacilityAccordionProps) {
+  const [open, setOpen] = useState(defaultExpanded ?? false);
+  const color    = facilityColor(name);
+  const initials = facilityInitials(name);
+
+  const subtitle = isCategory
+    ? `${assets.length} source${assets.length !== 1 ? "s" : ""} — value chain category`
+    : [facilityInfo?.location, facilityInfo?.grid_utility, `${assets.length} equipment source${assets.length !== 1 ? "s" : ""}`].filter(Boolean).join(" · ");
+
+  return (
+    <div className="mb-2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-gray-50"
+      >
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white" style={{ background: color }}>
+          {initials}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[15px] font-bold text-[#1A3547]">{name}</div>
+          <div className="truncate text-[12px] text-gray-400">{subtitle}</div>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          {!isCategory && (
+            <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold text-gray-500">
+              Active
+            </span>
+          )}
+          <span className={`w-10 text-right text-sm font-bold tabular-nums ${pct === 100 ? "text-emerald-600" : pct > 0 ? "text-amber-600" : "text-gray-300"}`}>
+            {pct}%
+          </span>
+          {open ? <ChevronUp className="h-4 w-4 text-gray-300" /> : <ChevronDown className="h-4 w-4 text-gray-300" />}
+        </div>
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-100 px-5 py-4">
+          {assets.map(a => (
+            <EquipmentSection
+              key={a.id}
+              asset={a}
+              months={months}
+              draftRow={draft[a.id] ?? {}}
+              onCellChange={(m, v) => onCellChange(a.id, m, v)}
+              rowFiles={cellFiles[a.id] ?? {}}
+              onFileAdd={(m, f) => onFileAdd(a.id, m, f)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── FacilityCards ─────────────────────────────────────────────────────────────
+
+function FacilityCards({ names, facilities, facilityPct, assetCount, selected, onSelect }: {
+  names: string[];
+  facilities: FacilityRow[];
+  facilityPct: Record<string, number>;
+  assetCount: Record<string, number>;
+  selected: string | null;
+  onSelect: (name: string | null) => void;
+}) {
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-1">
+      {names.map(name => {
+        const f   = facilities.find(x => x.name === name);
+        const pct = facilityPct[name] ?? 0;
+        const cnt = assetCount[name] ?? 0;
+        const sel = selected === name;
+        return (
+          <button
+            key={name}
+            type="button"
+            onClick={() => onSelect(sel ? null : name)}
+            className={`w-52 shrink-0 rounded-xl border-2 p-4 text-left transition-all ${
+              sel ? "border-[#1A3547] shadow-md" : "border-gray-200 hover:border-gray-300"
+            }`}
+          >
+            <div className="mb-1.5 truncate text-[13px] font-bold text-[#1A3547]">{name}</div>
+            {f && <div className="mb-3 truncate text-[11px] text-gray-400">{[f.state, f.grid_utility].filter(Boolean).join(" · ")}</div>}
+            <div className="text-[28px] font-bold leading-none tabular-nums text-[#1A3547]">{pct}%</div>
+            <div className="mt-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">{cnt} sources</div>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -277,116 +394,89 @@ function EquipmentRow({ asset, months, draftRow, onCellChange, rowFiles, onFileA
 
 function DataTrackerPage() {
   const ctx = useClientContext();
-  const { entity } = useEntity();
-  const { fy } = useFiscalYear();
+  const { entity }  = useEntity();
+  const { fy }      = useFiscalYear();
 
   const { data: assets = [], isPending: assetsLoading } = useDecarbAssets(entity);
   const { data: facilities = [] } = useFacilities(entity);
 
-  const [scopeTab, setScopeTab] = useState<"s1" | "s2" | "s3">("s1");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [activeFacility, setActiveFacility] = useState<string | null>(null);
-  const [draft, setDraft] = useState<TrackerDraft>({});
-  const [cellFiles, setCellFiles] = useState<CellFiles>({});
-  const [saving, setSaving] = useState(false);
+  const [scopeTab, setScopeTab]         = useState<"s1" | "s2" | "s3">("s1");
+  const [selectedFacility, setFacility] = useState<string | null>(null);
+  const [draft, setDraft]               = useState<TrackerDraft>({});
+  const [cellFiles, setCellFiles]       = useState<CellFiles>({});
+  const [saving, setSaving]             = useState(false);
 
-  const period = ctx.client.reporting_period ?? "FY";
-  const months = useMemo(() => fyMonths(fy, period), [fy, period]);
+  const period   = ctx.client.reporting_period ?? "FY";
+  const months   = useMemo(() => fyMonths(fy, period), [fy, period]);
   const draftKey = `tracker_${ctx.client.slug}_${entity}_${fy}`;
 
-  // Load draft from localStorage on mount / fy change
   useEffect(() => {
     try {
       const saved = localStorage.getItem(draftKey);
-      if (saved) setDraft(JSON.parse(saved) as TrackerDraft);
-      else setDraft({});
-    } catch {
-      setDraft({});
-    }
+      setDraft(saved ? (JSON.parse(saved) as TrackerDraft) : {});
+    } catch { setDraft({}); }
   }, [draftKey]);
 
   const setCellValue = useCallback((assetId: string, month: string, value: string) => {
-    setDraft(prev => ({
-      ...prev,
-      [assetId]: { ...(prev[assetId] ?? {}), [month]: value },
-    }));
+    setDraft(prev => ({ ...prev, [assetId]: { ...(prev[assetId] ?? {}), [month]: value } }));
   }, []);
 
   const addCellFile = useCallback((assetId: string, month: string, file: File) => {
     setCellFiles(prev => ({
       ...prev,
-      [assetId]: {
-        ...(prev[assetId] ?? {}),
-        [month]: [...(prev[assetId]?.[month] ?? []), file],
-      },
+      [assetId]: { ...(prev[assetId] ?? {}), [month]: [...(prev[assetId]?.[month] ?? []), file] },
     }));
   }, []);
 
   const saveDraft = useCallback(() => {
     setSaving(true);
-    try {
-      localStorage.setItem(draftKey, JSON.stringify(draft));
-      toast.success("Draft saved locally");
-    } catch {
-      toast.error("Could not save draft");
-    }
+    try { localStorage.setItem(draftKey, JSON.stringify(draft)); toast.success("Draft saved locally"); }
+    catch { toast.error("Could not save draft"); }
     setTimeout(() => setSaving(false), 500);
   }, [draft, draftKey]);
 
-  // Active (non-decommissioned) assets filtered by scope tab
-  const activeAssets = useMemo(
-    () => assets.filter(a => a.status !== "Decommissioned"),
-    [assets],
-  );
+  const activeAssets = useMemo(() => assets.filter(a => a.status !== "Decommissioned"), [assets]);
 
-  const filteredAssets = useMemo(
-    () =>
-      scopeTab === "s1"
-        ? activeAssets.filter(a => a.scope === "Scope 1")
-        : scopeTab === "s2"
-        ? activeAssets.filter(a => a.scope === "Scope 2")
-        : activeAssets.filter(a => a.scope === "Scope 3"),
+  const filteredAssets = useMemo(() =>
+    scopeTab === "s1" ? activeAssets.filter(a => a.scope === "Scope 1")
+    : scopeTab === "s2" ? activeAssets.filter(a => a.scope === "Scope 2")
+    : activeAssets.filter(a => a.scope === "Scope 3"),
     [activeAssets, scopeTab],
   );
 
-  // Group by facility, preserving insertion order
-  const byFacility = useMemo(() => {
+  // For S3: group by sub_type (category); for S1/S2: group by facility
+  const byGroup = useMemo(() => {
     const map = new Map<string, DecarbAsset[]>();
     for (const a of filteredAssets) {
-      if (!map.has(a.facility)) map.set(a.facility, []);
-      map.get(a.facility)!.push(a);
+      const key = scopeTab === "s3" ? (a.sub_type || "Other") : (a.facility || "Unknown");
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(a);
     }
     return map;
-  }, [filteredAssets]);
+  }, [filteredAssets, scopeTab]);
 
-  // Per-facility completion %
-  const facilityPct = useMemo(() => {
+  const groupNames = useMemo(() => [...byGroup.keys()], [byGroup]);
+
+  const groupPct = useMemo(() => {
     const out: Record<string, number> = {};
-    for (const [fac, fAssets] of byFacility) {
+    for (const [g, ga] of byGroup) {
       let total = 0, filled = 0;
-      for (const a of fAssets) {
+      for (const a of ga) {
         const keys = isAnnualOnly(a) ? ["ANNUAL"] : months;
         total += keys.length;
         filled += keys.filter(k => draft[a.id]?.[k]).length;
       }
-      out[fac] = total > 0 ? Math.round((filled / total) * 100) : 0;
+      out[g] = total > 0 ? Math.round((filled / total) * 100) : 0;
     }
     return out;
-  }, [byFacility, draft, months]);
+  }, [byGroup, draft, months]);
 
-  // Data gaps list
-  const dataGaps = useMemo(() => {
-    const gaps: { assetId: string; assetName: string; month: string }[] = [];
-    for (const a of filteredAssets) {
-      const keys = isAnnualOnly(a) ? ["ANNUAL"] : months;
-      for (const k of keys) {
-        if (!draft[a.id]?.[k]) gaps.push({ assetId: a.id, assetName: a.name, month: k });
-      }
-    }
-    return gaps;
-  }, [filteredAssets, draft, months]);
+  const assetCount = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const [g, ga] of byGroup) out[g] = ga.length;
+    return out;
+  }, [byGroup]);
 
-  // Overall completion
   const { totalFields, filledFields } = useMemo(() => {
     let total = 0, filled = 0;
     for (const a of filteredAssets) {
@@ -399,354 +489,158 @@ function DataTrackerPage() {
 
   const overallPct = totalFields > 0 ? Math.round((filledFields / totalFields) * 100) : 0;
 
-  // Sidebar facilities
-  const sidebarFacs = useMemo(
-    () =>
-      [...byFacility.keys()].map(name => {
-        const f = facilities.find(x => x.name === name);
-        return { name, gridUtility: f?.grid_utility ?? "", pct: facilityPct[name] ?? 0 };
-      }),
-    [byFacility, facilities, facilityPct],
-  );
-
-  // Groups to display (filtered when a facility is selected in sidebar)
   const visibleGroups = useMemo(() => {
-    if (!activeFacility) return [...byFacility.entries()];
-    const fAssets = byFacility.get(activeFacility);
-    return fAssets ? ([[activeFacility, fAssets]] as [string, DecarbAsset[]][]) : [];
-  }, [byFacility, activeFacility]);
-
-  const descParts = [
-    `${fy}`,
-    `${[...byFacility.keys()].length} ${[...byFacility.keys()].length === 1 ? "facility" : "facilities"}`,
-    `${filteredAssets.length} sources`,
-  ];
+    if (!selectedFacility) return [...byGroup.entries()];
+    const a = byGroup.get(selectedFacility);
+    return a ? [[selectedFacility, a] as [string, DecarbAsset[]]] : [];
+  }, [byGroup, selectedFacility]);
 
   return (
     <>
       <PageHeader
         eyebrow="Data Collection"
-        title="Monthly Data Tracker"
-        description={descParts.join(" · ")}
+        title={ctx.client.name || "Data Tracker"}
+        description={fyLabel(fy, period)}
         right={
           <div className="flex items-center gap-2">
+            {/* Progress ring */}
             <div
-              className="flex h-9 w-9 items-center justify-center rounded-full border-2 text-sm font-bold tabular-nums"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-4 text-xs font-bold tabular-nums"
               style={{
-                borderColor: overallPct === 100 ? "#059669" : "var(--primary)",
-                color: overallPct === 100 ? "#059669" : "var(--primary)",
+                borderColor: overallPct === 100 ? "#059669" : overallPct > 0 ? "var(--primary)" : "#E5E7EB",
+                color: overallPct > 0 ? (overallPct === 100 ? "#059669" : "var(--primary)") : "#9CA3AF",
               }}
             >
               {overallPct}%
             </div>
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--muted)] transition-colors"
-              onClick={() => toast("Interim report generation coming soon")}
+              onClick={saveDraft}
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-[#1A3547] transition-colors hover:bg-gray-50 disabled:opacity-50"
             >
-              <Download className="h-3.5 w-3.5" />
-              Interim Report
+              <Save className="h-4 w-4" />
+              {saving ? "Saving…" : "Save draft"}
+            </button>
+            <button
+              type="button"
+              disabled={overallPct < 50}
+              onClick={() => toast("Submit flow — coming soon")}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Complete ≥ 50% to submit
             </button>
           </div>
         }
       />
 
-      {/* Body — no PageBody wrapper so the grid can be full-bleed */}
-      <div className="px-6 pt-4 pb-8 md:px-8">
+      <div className="px-6 pt-4 pb-10 md:px-8">
         {assetsLoading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full rounded-lg" />
-            ))}
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}
           </div>
         ) : assets.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-[var(--border)] py-16 text-center">
-            <p className="text-sm text-muted-foreground">No equipment in the inventory yet.</p>
-            <p className="text-xs text-muted-foreground">
-              Set up your inventory boundary first, then return here to log monthly data.
-            </p>
-            <a
-              href="/inventory"
-              className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity"
-            >
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-gray-200 py-16 text-center">
+            <p className="text-sm text-gray-400">No equipment in the inventory yet.</p>
+            <a href="/inventory" className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90">
               Go to Inventory →
             </a>
           </div>
         ) : (
-          <div
-            className="flex overflow-hidden rounded-xl border border-[var(--border)]"
-            style={{ minHeight: 520 }}
-          >
-            {/* ── Sidebar ── */}
-            {sidebarOpen && (
-              <aside className="flex w-48 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--muted)]/30">
-                <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2.5">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    Facilities
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setSidebarOpen(false)}
-                    className="rounded p-0.5 text-muted-foreground hover:bg-[var(--border)] hover:text-foreground transition-colors"
-                    title="Collapse sidebar"
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-
-                {/* All Facilities option */}
+          <>
+            {/* Scope tabs */}
+            <div className="mb-5 flex gap-1 border-b border-gray-200">
+              {(["s1", "s2", "s3"] as const).map(tab => (
                 <button
+                  key={tab}
                   type="button"
-                  onClick={() => setActiveFacility(null)}
-                  className={`w-full border-b border-[var(--border)] px-3 py-2.5 text-left text-xs font-semibold transition-colors hover:bg-[var(--muted)] ${!activeFacility ? "bg-[var(--navy)]/5 text-[var(--navy)]" : "text-muted-foreground"}`}
+                  onClick={() => { setScopeTab(tab); setFacility(null); }}
+                  className={`border-b-2 px-5 py-3 text-sm font-semibold transition-colors ${
+                    scopeTab === tab
+                      ? "border-[var(--primary)] text-[var(--primary)]"
+                      : "border-transparent text-gray-400 hover:text-[#1A3547]"
+                  }`}
                 >
-                  All Facilities
+                  {tab === "s1" ? "Scope 1" : tab === "s2" ? "Scope 2" : "Scope 3"}
                 </button>
+              ))}
+            </div>
 
-                <div className="flex-1 divide-y divide-[var(--border)] overflow-y-auto">
-                  {sidebarFacs.map(f => (
-                    <button
-                      key={f.name}
-                      type="button"
-                      onClick={() => setActiveFacility(prev => (prev === f.name ? null : f.name))}
-                      className={`w-full px-3 py-2.5 text-left transition-colors hover:bg-[var(--muted)] ${activeFacility === f.name ? "bg-[var(--navy)]/8" : ""}`}
-                    >
-                      <div className="flex items-start justify-between gap-1">
-                        <span className="truncate text-[12px] font-semibold text-[var(--navy)] leading-snug">
-                          {f.name}
-                        </span>
-                        <span
-                          className={`ml-1 shrink-0 text-[11px] font-bold tabular-nums ${
-                            f.pct === 100 ? "text-emerald-600" : f.pct > 0 ? "text-amber-600" : "text-muted-foreground"
-                          }`}
-                        >
-                          {f.pct}%
-                        </span>
-                      </div>
-                      {f.gridUtility && (
-                        <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                          {f.gridUtility}
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Data Gaps panel */}
-                {dataGaps.length > 0 && (
-                  <div className="border-t border-[var(--border)]">
-                    <div className="flex items-center gap-1.5 bg-red-50 px-3 py-2">
-                      <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
-                      <span className="text-[11px] font-bold text-red-700">
-                        {dataGaps.length} gap{dataGaps.length !== 1 ? "s" : ""}
-                      </span>
-                    </div>
-                    <div className="max-h-36 overflow-y-auto px-3 py-2 space-y-0.5">
-                      {dataGaps.slice(0, 30).map((g, i) => (
-                        <div key={i} className="flex gap-1 text-[11px]">
-                          <span className="font-mono text-red-600 truncate flex-1">{g.assetName}</span>
-                          <span className="shrink-0 text-muted-foreground">{g.month}</span>
-                        </div>
-                      ))}
-                      {dataGaps.length > 30 && (
-                        <div className="mt-1 text-[11px] text-muted-foreground">
-                          +{dataGaps.length - 30} more
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </aside>
-            )}
-
-            {/* ── Main panel ── */}
-            <div className="flex min-w-0 flex-1 flex-col">
-              {/* Scope tab bar */}
-              <div className="flex items-center border-b border-[var(--border)]">
-                {!sidebarOpen && (
-                  <button
-                    type="button"
-                    onClick={() => setSidebarOpen(true)}
-                    className="border-r border-[var(--border)] px-2.5 py-3 text-muted-foreground hover:bg-[var(--muted)] hover:text-foreground transition-colors"
-                    title="Expand sidebar"
-                  >
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </button>
-                )}
-                {(["s1", "s2", "s3"] as const).map(tab => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => { setScopeTab(tab); setActiveFacility(null); }}
-                    className={`border-b-2 px-5 py-3 text-sm font-semibold transition-colors ${
-                      scopeTab === tab
-                        ? "border-[var(--primary)] text-[var(--primary)]"
-                        : "border-transparent text-muted-foreground hover:text-[var(--navy)]"
-                    }`}
-                  >
-                    {tab === "s1" ? "Scope 1" : tab === "s2" ? "Scope 2" : "Scope 3"}
-                  </button>
-                ))}
-                {activeFacility && (
-                  <span className="ml-auto mr-3 flex items-center gap-1.5 rounded-full bg-[var(--navy)]/10 px-2.5 py-0.5 text-[11px] font-semibold text-[var(--navy)]">
-                    {activeFacility}
-                    <button
-                      type="button"
-                      onClick={() => setActiveFacility(null)}
-                      className="text-[var(--navy)]/60 hover:text-[var(--navy)]"
-                    >
-                      ×
-                    </button>
-                  </span>
-                )}
+            {filteredAssets.length === 0 ? (
+              <div className="flex h-32 items-center justify-center rounded-xl border border-dashed border-gray-200 text-sm text-gray-400">
+                No {scopeTab === "s1" ? "Scope 1" : scopeTab === "s2" ? "Scope 2" : "Scope 3"} sources in the inventory boundary.
               </div>
-
-              {/* Grid or empty state */}
-              {filteredAssets.length === 0 ? (
-                <div className="flex flex-1 items-center justify-center py-16 text-sm text-muted-foreground">
-                  No {scopeTab === "s1" ? "Scope 1" : scopeTab === "s2" ? "Scope 2" : "Scope 3"} sources in the inventory.
-                </div>
-              ) : (
-                <div className="flex-1 overflow-x-auto overflow-y-auto">
-                  <table className="min-w-max border-collapse">
-                    <thead>
-                      <tr>
-                        <th
-                          className="sticky left-0 z-20 min-w-[200px] max-w-[220px] border-r border-white/20 px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-white"
-                          style={{ background: "#1A3547" }}
-                        >
-                          Equipment
-                        </th>
-                        <th
-                          className="sticky left-[200px] z-20 w-12 border-r border-white/20 px-1 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-white"
-                          style={{ background: "#1A3547" }}
-                        >
-                          Unit
-                        </th>
-                        {months.map(m => (
-                          <th
-                            key={m}
-                            className="w-[68px] px-1 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-white"
-                            style={{ background: "#1A3547" }}
-                          >
-                            {m}
-                          </th>
-                        ))}
-                        <th
-                          className="w-[72px] px-1 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider"
-                          style={{ background: "#1E4A62", color: "#A7C8D8" }}
-                        >
-                          Annual
-                        </th>
-                        <th
-                          className="w-16 px-2 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-white/80"
-                          style={{ background: "#1A3547" }}
-                        >
-                          Done
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {visibleGroups.map(([fac, fAssets]) => {
-                        const facInfo = facilities.find(f => f.name === fac);
-                        const facPct = facilityPct[fac] ?? 0;
-                        return (
-                          <Fragment key={fac}>
-                            {/* Facility group header */}
-                            <tr>
-                              <td
-                                colSpan={months.length + 4}
-                                className="px-3 py-1.5"
-                                style={{ background: "#243D52" }}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <span className="text-[11px] font-bold uppercase tracking-wide text-white">
-                                    {fac}
-                                  </span>
-                                  {facInfo && (
-                                    <span className="text-[11px] text-white/50">
-                                      {[facInfo.state, facInfo.grid_utility].filter(Boolean).join(" · ")}
-                                    </span>
-                                  )}
-                                  <span className="ml-auto text-[11px] text-white/50">
-                                    {fAssets.length} source{fAssets.length !== 1 ? "s" : ""} ·{" "}
-                                    <span
-                                      className={`font-bold ${
-                                        facPct === 100 ? "text-emerald-400" : facPct > 0 ? "text-amber-400" : "text-white/50"
-                                      }`}
-                                    >
-                                      {facPct}%
-                                    </span>
-                                  </span>
-                                </div>
-                              </td>
-                            </tr>
-                            {fAssets.map(a => (
-                              <EquipmentRow
-                                key={a.id}
-                                asset={a}
-                                months={months}
-                                draftRow={draft[a.id] ?? {}}
-                                onCellChange={(m, v) => setCellValue(a.id, m, v)}
-                                rowFiles={cellFiles[a.id] ?? {}}
-                                onFileAdd={(m, f) => addCellFile(a.id, m, f)}
-                              />
-                            ))}
-                          </Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* Footer */}
-              <div className="flex items-center justify-between border-t border-[var(--border)] bg-[var(--muted)]/40 px-4 py-2.5">
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground">
-                    <span className="font-bold tabular-nums text-[var(--ink)]">{filledFields}</span>
-                    {" of "}
-                    <span className="font-bold tabular-nums text-[var(--ink)]">{totalFields}</span>
-                    {" fields complete"}
-                  </span>
-                  <div className="h-2 w-24 overflow-hidden rounded-full bg-[var(--border)]">
-                    <div
-                      className="h-full rounded-full bg-[var(--primary)] transition-all duration-300"
-                      style={{ width: `${overallPct}%` }}
+            ) : (
+              <>
+                {/* Facility cards strip — S1 and S2 only */}
+                {scopeTab !== "s3" && (
+                  <div className="mb-5">
+                    <FacilityCards
+                      names={groupNames}
+                      facilities={facilities}
+                      facilityPct={groupPct}
+                      assetCount={assetCount}
+                      selected={selectedFacility}
+                      onSelect={setFacility}
                     />
                   </div>
+                )}
+
+                {/* Welcome banner */}
+                <div className="mb-5 flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                  <p className="text-[13px] text-emerald-800">
+                    <span className="font-semibold">Welcome to your {fy} GHG data collection.</span>
+                    {" "}Your consultant has pre-loaded the facility and equipment list. Fill in month by month — you don't need to complete everything at once. Everything auto-saves locally.
+                  </p>
                 </div>
 
-                <div className="flex items-center gap-4">
-                  {/* Legend */}
-                  <div className="hidden items-center gap-3 text-[11px] text-muted-foreground sm:flex">
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block h-2.5 w-2.5 rounded-sm bg-emerald-100 ring-1 ring-emerald-300" />
-                      entered
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[var(--muted)] ring-1 ring-[var(--border)]" />
-                      empty
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Paperclip className="h-2.5 w-2.5 text-[var(--navy)]" />
-                      doc attached
-                    </span>
+                {/* Progress line */}
+                <div className="mb-4 flex items-center gap-3">
+                  <span className="text-sm text-gray-400">
+                    <span className="font-bold tabular-nums text-[#1A3547]">{filledFields}</span>
+                    {" of "}
+                    <span className="font-bold tabular-nums text-[#1A3547]">{totalFields}</span>
+                    {" fields complete"}
+                  </span>
+                  <div className="h-1.5 w-36 overflow-hidden rounded-full bg-gray-200">
+                    <div className="h-full rounded-full bg-[var(--primary)] transition-all duration-300" style={{ width: `${overallPct}%` }} />
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={saveDraft}
-                    disabled={saving}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60 transition-opacity"
-                  >
-                    <Save className="h-3.5 w-3.5" />
-                    {saving ? "Saving…" : "Save Draft"}
-                  </button>
                 </div>
-              </div>
-            </div>
-          </div>
+
+                {/* Scope 3 section header */}
+                {scopeTab === "s3" && (
+                  <div className="mb-3 flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#1A3547] text-sm font-bold text-white">S3</div>
+                    <div>
+                      <div className="text-[15px] font-bold text-[#1A3547]">Scope 3 — Value Chain Categories</div>
+                      <div className="text-[12px] text-gray-400">
+                        {groupNames.length} relevant {groupNames.length === 1 ? "category" : "categories"} · Upload one dataset per applicable category
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Accordion list */}
+                {visibleGroups.map(([grp, grpAssets], idx) => (
+                  <FacilityAccordion
+                    key={grp}
+                    name={grp}
+                    assets={grpAssets}
+                    facilityInfo={facilities.find(f => f.name === grp)}
+                    months={months}
+                    draft={draft}
+                    cellFiles={cellFiles}
+                    onCellChange={setCellValue}
+                    onFileAdd={addCellFile}
+                    defaultExpanded={idx === 0}
+                    pct={groupPct[grp] ?? 0}
+                    isCategory={scopeTab === "s3"}
+                  />
+                ))}
+              </>
+            )}
+          </>
         )}
       </div>
     </>
