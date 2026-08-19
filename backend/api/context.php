@@ -164,6 +164,18 @@ try {
     $config['team_count'] = 0;
 }
 
+// ── Facility count (live from org_facilities) ─────────────────────────────
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM org_facilities WHERE client_id = ?");
+    $stmt->execute([$client_id]);
+    $liveCount = (int)$stmt->fetchColumn();
+    // Prefer live count; fall back to value saved during setup if table is empty
+    $config['facility_count'] = $liveCount > 0 ? $liveCount : (int)($config['facility_count'] ?? 0);
+} catch (PDOException $e) {
+    // org_facilities table not yet created — keep stored value if present
+    if (!isset($config['facility_count'])) $config['facility_count'] = 0;
+}
+
 // ── 9. Assemble response ─────────────────────────────────────────────────────
 echo json_encode([
     'client' => [
@@ -179,6 +191,7 @@ echo json_encode([
         'invoice_ref'      => $client['invoice_ref']    ?? null,
         'payment_date'     => $client['payment_date']   ?? null,
         'activated_at'     => $client['activated_at']   ?? null,
+        'created_at'       => $client['created_at']     ?? null,
     ],
     'entities'         => $entities,
     'reporting_years'  => $years,

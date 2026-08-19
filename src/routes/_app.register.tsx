@@ -29,6 +29,13 @@ const GHOST_TEXT = "#64748B";
 const ACCENT     = "#C55B46";   // salmon-red — matches reference active/due colour
 const ACCENT_BG  = "#FFF4F2";
 
+function fmtDate(val: string | null | undefined): string {
+  if (!val) return "—";
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
 type OrgStatus = "accepted" | "in-review" | "setup-pending";
 
 // ── Sidebar (standalone register layout) ──────────────────────────────────────
@@ -125,7 +132,7 @@ function DetailRow({
 
 // ── Org card ──────────────────────────────────────────────────────────────────
 function OrgCard({
-  org, status, paymentUnlocked, expanded, onToggle, teamCount, facilityCount,
+  org, status, paymentUnlocked, expanded, onToggle, teamCount, facilityCount, createdAt, activatedAt,
 }: {
   org: ClientEntity;
   status: OrgStatus;
@@ -134,6 +141,8 @@ function OrgCard({
   onToggle: () => void;
   teamCount: string;
   facilityCount: string;
+  createdAt: string | null | undefined;
+  activatedAt: string | null | undefined;
 }) {
   const badge = {
     "accepted":      { bg: EMERALD_BG, color: EMERALD,    dot: EMERALD,    text: "ACCEPTED"      },
@@ -220,7 +229,7 @@ function OrgCard({
                 About This Entity
               </div>
               <DetailRow icon={Building2} label="Organization type" value={(org as any).org_type || "—"} />
-              <DetailRow icon={MapPin}    label="Facility count"    value={facilityCount} />
+              <DetailRow icon={MapPin}    label="Facility count"    value={facilityCount === "0" ? "—" : facilityCount} />
               <DetailRow icon={Users}     label="Team members"      value={teamCount} />
             </div>
 
@@ -228,8 +237,8 @@ function OrgCard({
               <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: SLATE, marginBottom: 14 }}>
                 Activity
               </div>
-              <DetailRow icon={Calendar} label="Creation date"  value={"—"} />
-              <DetailRow icon={Clock}    label="Last edit date" value={"—"} />
+              <DetailRow icon={Calendar} label="Created on"    value={fmtDate(createdAt)} />
+              <DetailRow icon={Clock}    label="Activated on"   value={fmtDate(activatedAt)} />
               <DetailRow icon={User}     label="Updated by"     value={org.name} />
             </div>
           </div>
@@ -350,7 +359,9 @@ function RegisterEntityPage() {
 
   const allOrgs     = ctx.entities.filter(e => !e.is_consolidated);
   const teamCount   = (ctx.config as any).team_count?.toString() || "—";
-  const facilityCount = (ctx.config as any).facility_count?.toString() || "—";
+  const facilityCount = (ctx.config as any).facility_count?.toString() || "0";
+  const createdAt   = (ctx.client as any).created_at   as string | null | undefined;
+  const activatedAt = (ctx.client as any).activated_at as string | null | undefined;
 
   const [search,       setSearch]       = useState("");
   // Auto-expand the first card so details are visible immediately
@@ -479,6 +490,8 @@ function RegisterEntityPage() {
                 onToggle={() => setExpandedCode(p => p === o.code ? null : o.code)}
                 teamCount={teamCount}
                 facilityCount={facilityCount}
+                createdAt={createdAt}
+                activatedAt={activatedAt}
               />
             ))}
             <div style={{ marginTop: 12, fontSize: 12, color: SLATE, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
