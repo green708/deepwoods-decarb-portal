@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ArrowRight, BookOpen, HelpCircle, Library } from "lucide-react";
 import { useClientContext } from "@/lib/client-context";
-import { getEmail } from "@/lib/auth";
+import { getEmail, getRole } from "@/lib/auth";
 
 export const Route = createFileRoute("/_app/home")({ component: HomePage });
 
@@ -20,13 +20,15 @@ const AMBER_BG   = "#FEF3C7";
 function HomePage() {
   const ctx     = useClientContext();
   const navigate = useNavigate();
+  const supportEmail = (ctx.config as any).support_email as string | undefined ?? "support@deepwoodsgreen.com";
 
   const setupComplete     = ctx.config.setup_complete     === true || ctx.config.setup_complete     === "true";
   const paymentUnlocked   = ctx.client.payment_status === "paid" || ctx.client.payment_status === "waived";
   const inventoryComplete = ctx.config.inventory_complete === true || ctx.config.inventory_complete === "true";
   const primaryEmail      = ((ctx.config.primary_contact_email as string) || "").toLowerCase();
   const currentEmail      = (getEmail() || "").toLowerCase();
-  const isPrimary         = !primaryEmail || currentEmail === primaryEmail;
+  const role              = getRole();
+  const isPrimary         = !!primaryEmail && currentEmail === primaryEmail && role === "sustainability_team";
 
   const nonConsolidated = ctx.entities.filter(e => !e.is_consolidated);
   const orgType         = (nonConsolidated[0] as any)?.org_type ?? null;
@@ -133,8 +135,8 @@ function HomePage() {
                 <p style={{ margin: 0, fontSize: 13, color: SLATE, lineHeight: 1.65 }}>
                   <strong style={{ color: INK }}>Important:</strong> Full access to Carbon Footprint, Compliance, and other tools will unlock once your account is activated.
                   If you have any questions, our team is one email away —{" "}
-                  <a href="mailto:accounts@deepwoodsgreen.com" style={{ color: MOSS, fontWeight: 600 }}>
-                    accounts@deepwoodsgreen.com
+                  <a href={`mailto:${supportEmail}`} style={{ color: MOSS, fontWeight: 600 }}>
+                    {supportEmail}
                   </a>.
                 </p>
               )}
@@ -181,7 +183,7 @@ function HomePage() {
             {([
               { title: "Library",       desc: "Read our decarbonisation reporting guides, standards references, and FAQs.",           icon: Library,  action: () => navigate({ to: "/reports" as any }) },
               { title: "Methodology",   desc: "Understand the calculation approaches used across each emissions category.",           icon: BookOpen, action: () => navigate({ to: "/methodology" as any }) },
-              { title: "Support",       desc: "Get in touch with our team for setup help and questions.",                             icon: HelpCircle, action: () => window.open("mailto:accounts@deepwoodsgreen.com") },
+              { title: "Support",       desc: "Get in touch with our team for setup help and questions.",                             icon: HelpCircle, action: () => window.open(`mailto:${supportEmail}`) },
             ] as const).map((r, i) => {
               const Icon = r.icon;
               return (

@@ -31,39 +31,30 @@ const CYCLE_STEPS = [
 const ROLES = [
   {
     icon: ShieldCheck,
-    name: "Owner",
+    name: "Sustainability Team",
     iconBg: "#E6F4EF",
     iconColor: "#1E4D2B",
     bg: "border-[#1E4D2B]/30 bg-[#F0FAF5]",
     color: "#1E4D2B",
-    perms: ["Full portal access", "Manage team and roles", "Approve disclosures"],
-  },
-  {
-    icon: BarChart2,
-    name: "ESG Manager",
-    iconBg: "#E6F4EF",
-    iconColor: "#0C6C56",
-    bg: "border-[#0C6C56]/30 bg-[#F0FAF6]",
-    color: "#0C6C56",
-    perms: ["All dashboards", "Edit submissions", "Propose disclosures"],
+    perms: ["Full portal access", "Data submission & dashboards", "Manage team and disclosures"],
   },
   {
     icon: ClipboardList,
-    name: "Data Submitter",
+    name: "Data Submission Team",
     iconBg: "#DBEAFE",
     iconColor: "#1D4ED8",
     bg: "border-[#3B82F6]/30 bg-[#EFF6FF]",
     color: "#3B82F6",
-    perms: ["Submit activity data", "Upload evidence", "Facility scope only"],
+    perms: ["Upload activity data", "Browse document vault", "Facility scope only"],
   },
   {
     icon: Eye,
-    name: "Viewer",
+    name: "Leadership",
     iconBg: "#F3F4F6",
     iconColor: "#6B7280",
     bg: "border-slate-200 bg-slate-50",
     color: "#6B7280",
-    perms: ["Read-only access", "View dashboards", "View reports"],
+    perms: ["Read-only dashboards and KPIs", "View reports", "No data entry"],
   },
 ];
 
@@ -178,8 +169,8 @@ function Slide3() {
       </div>
       <div className="mt-4 rounded-xl border border-amber-200 bg-[#FFFBEB] px-4 py-3">
         <p className="text-xs text-amber-800">
-          <span className="font-semibold">Tip:</span> As the Owner, you can invite and manage your
-          team from the workspace at any time — no need to do it right now.
+          <span className="font-semibold">Tip:</span> The Sustainability Team role can invite and manage
+          team members from the workspace at any time — no need to do it right now.
         </p>
       </div>
     </div>

@@ -120,9 +120,13 @@ function EntitySetupPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+
   const canNext = (): boolean => {
     if (step === 0) {
-      return data.legalName.trim() !== "" && data.industry !== "" && data.legal_address.trim() !== "";
+      if (!data.legalName.trim() || !data.industry || !data.legal_address.trim() || !data.org_type) return false;
+      if (data.is_india && data.gstin.trim() && !GSTIN_RE.test(data.gstin.trim().toUpperCase())) return false;
+      return true;
     }
     if (step === 1) {
       return data.facilities.length > 0 && data.facilities.every(f => f.name.trim() !== "");

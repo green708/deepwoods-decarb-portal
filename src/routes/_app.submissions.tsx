@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PageBody, PageHeader, Card, LockedState } from "@/components/portal";
 import { useClientContext, useDataEntryEntities } from "@/lib/client-context";
 import { useDatasets } from "@/lib/api";
-import { getRole, ROLE_META } from "@/lib/auth";
+import { getRole, ROLE_META, authFetch } from "@/lib/auth";
 import { useEntity } from "@/lib/entity";
 import { addSubmission, loadSubmissions, type Submission, type SubmissionVersion, type DataEntryEntity } from "@/lib/submissionsStore";
 import {
@@ -216,16 +216,22 @@ function EntityPicker({ value, onChange }: { value: DataEntryEntity | null; onCh
 /* ── Shared badges (also used by _app.admin.tsx) ────────────────────────────── */
 export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    Pending:  "bg-amber-100 text-amber-800 border-amber-200",
-    Approved: "bg-emerald-100 text-emerald-800 border-emerald-200",
-    Rejected: "bg-red-100 text-red-700 border-red-200",
+    "Pending":            "bg-amber-100 text-amber-800 border-amber-200",
+    "Approved":           "bg-emerald-100 text-emerald-800 border-emerald-200",
+    "Rejected":           "bg-red-100 text-red-700 border-red-200",
+    "Under Review":       "bg-blue-100 text-blue-800 border-blue-200",
+    "Revision Requested": "bg-orange-100 text-orange-800 border-orange-200",
+    "Resubmitted":        "bg-purple-100 text-purple-800 border-purple-200",
   };
   const cls = map[status] ?? "bg-slate-100 text-slate-700 border-slate-200";
   return (
     <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${cls}`}>
-      {status === "Pending" && <Clock className="mr-1 h-3 w-3" />}
-      {status === "Approved" && <CheckCircle2 className="mr-1 h-3 w-3" />}
-      {status === "Rejected" && <XCircle className="mr-1 h-3 w-3" />}
+      {status === "Pending"            && <Clock        className="mr-1 h-3 w-3" />}
+      {status === "Approved"           && <CheckCircle2 className="mr-1 h-3 w-3" />}
+      {status === "Rejected"           && <XCircle      className="mr-1 h-3 w-3" />}
+      {status === "Under Review"       && <ClipboardList className="mr-1 h-3 w-3" />}
+      {status === "Revision Requested" && <AlertTriangle className="mr-1 h-3 w-3" />}
+      {status === "Resubmitted"        && <BarChart3     className="mr-1 h-3 w-3" />}
       {status}
     </span>
   );
@@ -246,14 +252,14 @@ type FollowUpField = {
   options?: string[]; placeholder?: string;
 };
 
-const FACILITIES: string[] = []; // TODO: populate from facilities API when data submission is rebuilt
+// FACILITIES is now derived from ctx.entities inside InventoryUpdateWizard — see facilityOptions below
 
 const CHANGE_TYPE_FOLLOWUPS: Record<string, FollowUpField[]> = {
   "New equipment / asset added": [
     { id: "equip_type",    label: "Equipment type",          type: "select", required: true,
       options: ["DG set", "Vehicle", "Forklift", "Air conditioning / chiller", "Boiler / furnace", "Solar inverter", "Other"] },
     { id: "make_model",    label: "Make / model",            type: "text",   placeholder: "e.g. Kirloskar 125 kVA", required: true },
-    { id: "facility",      label: "Facility",                type: "select", options: FACILITIES },
+    { id: "facility",      label: "Facility",                type: "select", options: [] },
     { id: "install_date",  label: "Installation date",       type: "date" },
     { id: "replaces",      label: "Replaces existing unit?", type: "select",
       options: ["Yes — old unit decommissioned", "Yes — old unit still running in parallel", "No — additional capacity"] },
@@ -262,7 +268,7 @@ const CHANGE_TYPE_FOLLOWUPS: Record<string, FollowUpField[]> = {
     { id: "asset_name",    label: "Asset name / description", type: "text",   placeholder: "e.g. 100 kVA DG set at Main Plant",  required: true },
     { id: "reason",        label: "Reason",                   type: "select",
       options: ["End of life", "Replaced by newer unit", "Facility closure", "Process change", "Other"] },
-    { id: "facility",      label: "Facility",                 type: "select", options: FACILITIES },
+    { id: "facility",      label: "Facility",                 type: "select", options: [] },
     { id: "retire_date",   label: "Retirement / effective date", type: "date" },
   ],
   "Facility expansion or new location": [
@@ -278,7 +284,7 @@ const CHANGE_TYPE_FOLLOWUPS: Record<string, FollowUpField[]> = {
       options: ["Diesel", "LPG", "Natural gas", "Grid electricity", "Biomass", "Other"], required: true },
     { id: "new_fuel",      label: "New fuel / energy source",      type: "select",
       options: ["Diesel", "LPG", "Natural gas", "Grid electricity", "Solar", "Wind", "Electric (grid-charged)", "Other"], required: true },
-    { id: "facility",      label: "Facility",                      type: "select", options: FACILITIES },
+    { id: "facility",      label: "Facility",                      type: "select", options: [] },
     { id: "effective_date", label: "Effective date",               type: "date" },
   ],
   "Vehicle or forklift fleet update": [
@@ -298,7 +304,7 @@ const CHANGE_TYPE_FOLLOWUPS: Record<string, FollowUpField[]> = {
       options: ["R-22", "R-32", "R-410A", "R-134a", "HFC blend", "Other"] },
     { id: "charge_kg",     label: "Refrigerant charge (kg)", type: "text",   placeholder: "e.g. 4.5" },
     { id: "unit_count",    label: "Number of AC units",      type: "text",   placeholder: "e.g. 3" },
-    { id: "facility",      label: "Facility",                type: "select", options: FACILITIES },
+    { id: "facility",      label: "Facility",                type: "select", options: [] },
   ],
   "Other boundary change": [
     { id: "scope_affected", label: "Scope affected",  type: "select",
@@ -309,6 +315,9 @@ const CHANGE_TYPE_FOLLOWUPS: Record<string, FollowUpField[]> = {
 
 /* ── Inventory update form ──────────────────────────────────────────────────── */
 function InventoryUpdateWizard({ year, defaultEntity, onBack }: { year: string; defaultEntity: DataEntryEntity | null; onBack: () => void }) {
+  const { entities } = useClientContext();
+  const facilityOptions = entities.filter(e => !e.is_consolidated).map(e => e.name);
+
   const [step, setStep]           = useState<"entity" | "changes" | "review">(defaultEntity ? "changes" : "entity");
   const [entity, setEntity]       = useState<DataEntryEntity | null>(defaultEntity);
   const [changeType, setChangeType] = useState<string[]>([]);
@@ -316,6 +325,7 @@ function InventoryUpdateWizard({ year, defaultEntity, onBack }: { year: string; 
   const [notes, setNotes]         = useState("");
   const [file, setFile]           = useState<File | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const CHANGE_TYPES = Object.keys(CHANGE_TYPE_FOLLOWUPS);
 
@@ -325,11 +335,31 @@ function InventoryUpdateWizard({ year, defaultEntity, onBack }: { year: string; 
   const setAnswer = (type: string, fieldId: string, val: string) =>
     setAnswers(prev => ({ ...prev, [type]: { ...(prev[type] ?? {}), [fieldId]: val } }));
 
-  const submit = () => {
+  const submit = async () => {
     if (!entity) { toast.error("Select an entity first."); return; }
     if (changeType.length === 0) { toast.error("Select at least one change type."); return; }
-    toast.success("Inventory update submitted", { description: "The asset register will be updated within 2 business days." });
-    setSubmitted(true);
+    setSubmitting(true);
+    try {
+      await authFetch("submissions.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type:         "inventory_update",
+          entity,
+          year,
+          change_types: changeType,
+          answers,
+          notes,
+          submitted_at: new Date().toISOString(),
+        }),
+      });
+      toast.success("Inventory update submitted", { description: "The asset register will be updated within 2 business days." });
+      setSubmitted(true);
+    } catch {
+      toast.error("Submission failed — please try again or contact support.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   /* ── Success screen ── */
@@ -431,7 +461,9 @@ function InventoryUpdateWizard({ year, defaultEntity, onBack }: { year: string; 
                             className="w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]"
                           >
                             <option value="">Select…</option>
-                            {f.options!.map(o => <option key={o} value={o}>{o}</option>)}
+                            {(f.id === "facility" ? facilityOptions : (f.options ?? [])).map(o => (
+                              <option key={o} value={o}>{o}</option>
+                            ))}
                           </select>
                         ) : (
                           <input
@@ -527,9 +559,10 @@ function InventoryUpdateWizard({ year, defaultEntity, onBack }: { year: string; 
                 className="inline-flex items-center gap-1 rounded-lg border px-4 py-2 text-sm font-semibold">
                 <ChevronLeft className="h-4 w-4" /> Back
               </button>
-              <button onClick={submit}
-                className="inline-flex items-center gap-2 rounded-lg bg-[var(--navy)] px-5 py-2 text-sm font-semibold text-white">
-                <ClipboardList className="h-4 w-4" /> Submit update
+              <button onClick={submit} disabled={submitting}
+                className="inline-flex items-center gap-2 rounded-lg bg-[var(--navy)] px-5 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}
+                {submitting ? "Submitting…" : "Submit update"}
               </button>
             </div>
           </Card>
@@ -716,7 +749,7 @@ function Submissions() {
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {visibleSubs.slice(0, 8).map(s => (
+                      {visibleSubs.map(s => (
                         <tr key={s.id} className="hover:bg-[var(--muted)]">
                           <td className="px-4 py-2.5 font-medium">{s.datasetName}</td>
                           <td className="px-4 py-2.5"><span className="rounded-full border px-2 py-0.5 text-[10px] font-bold text-[var(--navy)]">{s.entity}</span></td>

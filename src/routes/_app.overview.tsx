@@ -42,6 +42,12 @@ function DonutActiveShape(props: any) {
 const f2 = (v: number | null) =>
   v == null ? "—" : v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const fyToYear = (fy: string): number => {
+  const m = fy.match(/\d+/);
+  const n = m ? parseInt(m[0]) : 22;
+  return n < 100 ? 2000 + n : n;
+};
+
 // ── Chart card ────────────────────────────────────────────────────────────────
 function ChartCard({ n, title, sub, note, children, className = "" }: {
   n: number; title: string; sub: string; note: string; children: React.ReactNode; className?: string;
@@ -77,9 +83,11 @@ function GenericTip({ active, payload, label }: any) {
 // ── KPI row ───────────────────────────────────────────────────────────────────
 function KpiRow({ year }: { year: string }) {
   const { entity } = useEntity();
-  const { reporting_years } = useClientContext();
+  const { reporting_years, targets } = useClientContext();
   const { data: kpiInvData } = useInventory(entity);
   const inv = (metric: string, fy: string) => getVal(kpiInvData, metric, fy);
+
+  const baseYear = targets.base_year_s12;
 
   const fyIdx = reporting_years.indexOf(year);
   const prevYear: string | null = fyIdx > 0 ? reporting_years[fyIdx - 1] : null;
@@ -93,7 +101,7 @@ function KpiRow({ year }: { year: string }) {
   const s3     = inv("Scope 3 Total", year);
   const s3Prev = prevYear ? inv("Scope 3 Total", prevYear) : null;
 
-  const s12mbBase = (inv("Scope 1", "FY22") ?? 0) + (inv("Scope 2 MB", "FY22") ?? 0);
+  const s12mbBase = (inv("Scope 1", baseYear) ?? 0) + (inv("Scope 2 MB", baseYear) ?? 0);
   const s12mbNow  = (s1 ?? 0) + (s2mb ?? 0);
   const baseCh    = s12mbBase > 0 ? ((s12mbNow - s12mbBase) / s12mbBase) * 100 : null;
 
@@ -144,7 +152,7 @@ function KpiRow({ year }: { year: string }) {
         <div className="mt-1 text-[11px] text-muted-foreground">{chip(s3Ch, prevYear ? `vs ${prevYear}` : "")}</div>
       </div>
       <div className="rounded-xl border bg-white p-4" style={{ borderLeft: `4px solid ${(baseCh ?? 1) <= 0 ? GREEN : AMBER}` }}>
-        <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">S1+2 MB vs FY22 Base</div>
+        <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">S1+2 MB vs {baseYear} Base</div>
         {baseCh != null ? (
           <div className="font-bold tabular-nums leading-snug" style={{ color: baseCh <= 0 ? GREEN : "#FF2800", fontSize: 15 }}>
             {baseCh <= 0 ? "▼" : "▲"} {Math.abs(baseCh).toFixed(1)}% vs base year
@@ -152,7 +160,7 @@ function KpiRow({ year }: { year: string }) {
         ) : (
           <div className="font-bold tabular-nums leading-snug text-muted-foreground" style={{ fontSize: 15 }}>—</div>
         )}
-        <div className="mt-1 text-[11px] text-muted-foreground">Scope 1+2 market-based, FY22 baseline</div>
+        <div className="mt-1 text-[11px] text-muted-foreground">Scope 1+2 market-based, {baseYear} baseline</div>
       </div>
     </div>
   );
@@ -170,18 +178,28 @@ function Overview() {
   const { data: intensityData } = useIntensity(entity);
   const inv = (metric: string, fy: string) => getVal(invData, metric, fy);
   const [activeDonutIdx, setActiveDonutIdx] = useState<number | null>(null);
-  // data from useInventory hook above
+
+  // Compute SBTi annual rate from client targets
+  const baseYear    = targets.base_year_s12;
+  const baseYearNum = fyToYear(baseYear);
+  const annualRate  = targets.sbti_target_s12 / 100 / Math.max(targets.sbti_target_year - baseYearNum, 1);
+  const sbtiPctStr  = `−${(annualRate * 100).toFixed(1)}%`;
 
   // Chart 1: S1+2 market-based vs SBTi pace — always shows full history
-  const base = (inv("Scope 1", "FY22") ?? 0) + (inv("Scope 2 MB", "FY22") ?? 0);
-  const mbSeries = reporting_years.map((y, i) => {
+  const base = (inv("Scope 1", baseYear) ?? 0) + (inv("Scope 2 MB", baseYear) ?? 0);
+  const mbSeries = reporting_years.map((y) => {
     const s1 = inv("Scope 1", y), s2 = inv("Scope 2 MB", y);
     const actual = s1 !== null ? +((s1) + (s2 ?? 0)).toFixed(2) : null;
-    return { year: y, actual, sbti: +(base * (1 - 0.042 * i)).toFixed(2) };
+    const yearsFromBase = fyToYear(y) - baseYearNum;
+    return { year: y, actual, sbti: +(base * (1 - annualRate * yearsFromBase)).toFixed(2) };
   });
-  const future = ["FY27", "FY28", "FY29", "FY30"].map((y, i) => ({
-    year: y, actual: null, sbti: +(base * (1 - 0.042 * (5 + i))).toFixed(2),
-  }));
+  const lastReportedYear = reporting_years.length > 0 ? fyToYear(reporting_years[reporting_years.length - 1]) : baseYearNum;
+  const future = ["FY27", "FY28", "FY29", "FY30"]
+    .filter(y => fyToYear(y) > lastReportedYear)
+    .map((y) => {
+      const yearsFromBase = fyToYear(y) - baseYearNum;
+      return { year: y, actual: null, sbti: +(base * (1 - annualRate * yearsFromBase)).toFixed(2) };
+    });
   const glidepath = [...mbSeries, ...future];
 
   // Chart 2: gross-to-net waterfall for selected year
@@ -248,7 +266,7 @@ function Overview() {
       <PageHeader
         eyebrow={`${year} · ${entityShort(entity)}${entityInfo?.is_consolidated ? " · consolidated" : ""}`}
         title="Overview"
-        description={`${year} GHG performance — GHG Protocol + ISO 14064-1, operational control. Scope 1 & 2 base year FY22 · Scope 3 base year FY24. Use the fiscal year switcher above to change the reporting period.`}
+        description={`${year} GHG performance — GHG Protocol + ISO 14064-1, operational control. Scope 1 & 2 base year ${targets.base_year_s12} · Scope 3 base year ${targets.base_year_s3}. Use the fiscal year switcher above to change the reporting period.`}
       />
       <PageBody>
         {noData && (
@@ -263,7 +281,7 @@ function Overview() {
         <div className="grid gap-4 lg:grid-cols-2">
           <ChartCard n={1}
             title="Scope 1+2 (Market-Based) vs Reduction Pace"
-            sub="Dark line = actual Scope 1+2 market-based tCO2e. Dotted amber = −4.2%/yr linear pace from the FY22 base year (SBTi-style trajectory)."
+            sub={`Dark line = actual Scope 1+2 market-based tCO2e. Dotted amber = ${sbtiPctStr}/yr linear pace from the ${baseYear} base year (SBTi trajectory: ${targets.sbti_target_s12}% by ${targets.sbti_target_year}).`}
             note="When market-based equals location-based, no renewable instruments are applied yet. A drop in the market-based line indicates I-REC or PPA coverage taking effect. Staying below the dotted reference line means reducing faster than the target pace."
           >
             <ResponsiveContainer width="100%" height={280}>
@@ -275,7 +293,7 @@ function Overview() {
                 <Legend iconType="plainline" iconSize={22} wrapperStyle={{ fontSize: 11, paddingTop: 8, color: "#1F2937" }}
                   formatter={(v: string) => <span style={{ color: "#1F2937" }}>{v}</span>} />
                 <Line dataKey="actual" name="Actual S1+2 (MB)" stroke={S1_BLUE} strokeWidth={3} dot={{ r: 4, fill: S1_BLUE }} connectNulls={false} />
-                <Line dataKey="sbti"   name="Reference pace (−4.2%/yr)" stroke={AMBER} strokeWidth={2} strokeDasharray="2 4" dot={false} />
+                <Line dataKey="sbti"   name={`Reference pace (${sbtiPctStr}/yr)`} stroke={AMBER} strokeWidth={2} strokeDasharray="2 4" dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -432,9 +450,9 @@ function IntensityRow3({ entity }: { entity: string }) {
       };
     });
 
-  // CPI-adjusted intensity — placeholder until CPI data is wired to the API
+  // CPI-adjusted intensity — nominal lines shown; real (CPI-deflated) lines populated when CPI data is available
   const adjustedData = rows
-    .filter(r => r.revenue_lakh && r.s12_lb && false /* CPI not yet wired */)
+    .filter(r => r.revenue_lakh && r.s12_lb)
     .map(r => ({
       fy: r.fy,
       "LB Intensity (Nominal)": parseFloat((r.s12_lb! / (r.revenue_lakh! / 100)).toFixed(4)),
@@ -469,8 +487,8 @@ function IntensityRow3({ entity }: { entity: string }) {
 
       <ChartCard n={7}
         title="Emission Intensity — Inflation-Adjusted"
-        sub="Nominal vs real (CPI-adjusted) intensity. Real revenue is deflated to FY22 rupees using India CPI (Base 2012=100, MOSPI). Strips out revenue inflation so you see true efficiency gains."
-        note="If the real line (solid) is above the nominal line (dashed), inflation was flattering your intensity ratio — real improvement is smaller than headline numbers suggest."
+        sub="Nominal intensity shown. CPI-adjusted (real) lines will appear once inflation data is connected — this strips out revenue growth from genuine efficiency gains."
+        note="If the real line (solid) is above the nominal line (dashed), inflation was flattering your intensity ratio — true efficiency is smaller than the headline number suggests."
       >
         <ResponsiveContainer width="100%" height={280}>
           <LineChart data={adjustedData} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
