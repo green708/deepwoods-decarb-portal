@@ -6,6 +6,7 @@ import { useDatasets } from "@/lib/api";
 import { getRole, ROLE_META, authFetch } from "@/lib/auth";
 import { useEntity } from "@/lib/entity";
 import { addSubmission, loadSubmissions, type Submission, type SubmissionVersion, type DataEntryEntity } from "@/lib/submissionsStore";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Download, FileCheck2, Clock, CheckCircle2, XCircle,
   ChevronRight, ChevronLeft, FileSpreadsheet, Flame, Zap, Globe, Loader2,
@@ -28,13 +29,13 @@ type ScopeDef = {
 /* ── Scope definitions ──────────────────────────────────────────────────────── */
 const SCOPES: ScopeDef[] = [
   {
-    id: "scope1", label: "Scope 1", sub: "Direct emissions — DG sets, vehicles, forklifts, fugitive",
+    id: "scope1", label: "Scope 1", sub: "Direct emissions — stationary combustion, mobile sources, fugitive",
     icon: <Flame className="h-5 w-5" />, accentVar: "var(--alert)",
     template: "GHG_Scope1_Template.xlsx",
-    templateHint: "One workbook per entity: stationary combustion (DG sets, PC oven, LPG), mobile combustion (vehicles, forklifts), fugitive (CO2 cylinders & fire extinguishers).",
+    templateHint: "One workbook per entity: stationary combustion (backup generators, industrial ovens/kilns, LPG/natural gas), mobile combustion (vehicles, forklifts), fugitive (CO2 cylinders & fire extinguishers).",
     verificationDocs: [
-      { id: "s1-fuel-inv",  label: "Fuel purchase invoices",       hint: "Diesel/LPG supplier invoices covering the full reporting period.",                     accept: ".pdf,.xlsx" },
-      { id: "s1-equip",     label: "Equipment service records",    hint: "DG set maintenance / calibration logs confirming operational status.",                  accept: ".pdf" },
+      { id: "s1-fuel-inv",  label: "Fuel purchase invoices",       hint: "Diesel/LPG/natural gas supplier invoices covering the full reporting period.",          accept: ".pdf,.xlsx" },
+      { id: "s1-equip",     label: "Equipment service records",    hint: "Generator/equipment maintenance & calibration logs confirming operational status.",      accept: ".pdf" },
     ],
   },
   {
@@ -257,7 +258,7 @@ type FollowUpField = {
 const CHANGE_TYPE_FOLLOWUPS: Record<string, FollowUpField[]> = {
   "New equipment / asset added": [
     { id: "equip_type",    label: "Equipment type",          type: "select", required: true,
-      options: ["DG set", "Vehicle", "Forklift", "Air conditioning / chiller", "Boiler / furnace", "Solar inverter", "Other"] },
+      options: ["Backup generator / DG set", "Vehicle", "Forklift", "Air conditioning / chiller", "Boiler / furnace", "Solar inverter", "Other"] },
     { id: "make_model",    label: "Make / model",            type: "text",   placeholder: "e.g. Kirloskar 125 kVA", required: true },
     { id: "facility",      label: "Facility",                type: "select", options: [] },
     { id: "install_date",  label: "Installation date",       type: "date" },
@@ -265,7 +266,7 @@ const CHANGE_TYPE_FOLLOWUPS: Record<string, FollowUpField[]> = {
       options: ["Yes — old unit decommissioned", "Yes — old unit still running in parallel", "No — additional capacity"] },
   ],
   "Asset decommissioned or retired": [
-    { id: "asset_name",    label: "Asset name / description", type: "text",   placeholder: "e.g. 100 kVA DG set at Main Plant",  required: true },
+    { id: "asset_name",    label: "Asset name / description", type: "text",   placeholder: "e.g. 100 kVA backup generator at Main Facility",  required: true },
     { id: "reason",        label: "Reason",                   type: "select",
       options: ["End of life", "Replaced by newer unit", "Facility closure", "Process change", "Other"] },
     { id: "facility",      label: "Facility",                 type: "select", options: [] },
@@ -609,6 +610,7 @@ function Submissions() {
   const [role, setRole] = useState<ReturnType<typeof getRole>>(null);
   const [year, setYear] = useState("FY26");
   const [subs, setSubs] = useState<Submission[]>([]);
+  const [subsLoading, setSubsLoading] = useState(true);
   const [activeScope, setActiveScope] = useState<ScopeId | "ghg-report" | null>(null);
 
   // Pre-select entity for new submissions unless on the consolidated view.
@@ -618,7 +620,10 @@ function Submissions() {
     const r = getRole();
     if (!r) navigate({ to: "/" });
     setRole(r);
-    loadSubmissions(client.slug).then(setSubs).catch((e) => toast.error("Couldn't load submissions", { description: e.message }));
+    loadSubmissions(client.slug)
+      .then(setSubs)
+      .catch((e) => toast.error("Couldn't load submissions", { description: e.message }))
+      .finally(() => setSubsLoading(false));
   }, [navigate, client.slug]);
 
   const refresh = () => loadSubmissions(client.slug).then(setSubs).catch(() => {});
@@ -671,7 +676,7 @@ function Submissions() {
         {!activeScope ? (
           <div>
             {/* First-time welcome callout — shown until first submission exists */}
-            {visibleSubs.length === 0 && (
+            {!subsLoading && visibleSubs.length === 0 && (
               <div className="mb-6 flex items-start gap-4 rounded-2xl border border-[#1E6F5C]/25 bg-gradient-to-r from-[#E6F4EF] to-[#F0FAF5] p-5">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1E6F5C]">
                   <Download className="h-5 w-5 text-white" />
@@ -733,8 +738,18 @@ function Submissions() {
               </button>
             </div>
 
-            {/* Past submissions */}
-            {visibleSubs.length > 0 && (
+            {/* Past submissions — skeleton while loading */}
+            {subsLoading && (
+              <div className="mt-8">
+                <Skeleton className="mb-3 h-3 w-36" />
+                <div className="overflow-hidden rounded-xl border">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="m-2 h-10 rounded-lg" />
+                  ))}
+                </div>
+              </div>
+            )}
+            {!subsLoading && visibleSubs.length > 0 && (
               <div className="mt-8">
                 <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                   Recent submissions{viewEntity !== consolidatedCode ? ` — ${viewEntity}` : ""}

@@ -8,6 +8,8 @@ import { PageBody, PageHeader } from "@/components/portal";
 import { useClientContext } from "@/lib/client-context";
 import { useInventory, useIntensity, getVal, getMetric } from "@/lib/api";
 import { useEntity, useFiscalYear } from "@/lib/entity";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 export const Route = createFileRoute("/_app/overview")({ component: Overview });
 
@@ -84,7 +86,7 @@ function GenericTip({ active, payload, label }: any) {
 function KpiRow({ year }: { year: string }) {
   const { entity } = useEntity();
   const { reporting_years, targets } = useClientContext();
-  const { data: kpiInvData } = useInventory(entity);
+  const { data: kpiInvData, isPending } = useInventory(entity);
   const inv = (metric: string, fy: string) => getVal(kpiInvData, metric, fy);
 
   const baseYear = targets.base_year_s12;
@@ -119,6 +121,18 @@ function KpiRow({ year }: { year: string }) {
         {v <= 0 ? "▼" : "▲"} {Math.abs(v).toFixed(1)}% {label}
       </span>
     );
+
+  if (isPending) {
+    return (
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <Skeleton className="col-span-2 h-24 rounded-xl sm:col-span-1" />
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-24 rounded-xl" />
+      </div>
+    );
+  }
 
   return (
     <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -275,7 +289,9 @@ function Overview() {
           </div>
         )}
 
-        <KpiRow year={year} />
+        <ErrorBoundary label="KPI summary">
+          <KpiRow year={year} />
+        </ErrorBoundary>
 
         {/* ── Row 1 ── */}
         <div className="grid gap-4 lg:grid-cols-2">
@@ -411,7 +427,9 @@ function Overview() {
         </div>
 
         {/* ── Row 3: Emission Intensity ── */}
-        <IntensityRow3 entity={entity} />
+        <ErrorBoundary label="Emission Intensity">
+          <IntensityRow3 entity={entity} />
+        </ErrorBoundary>
       </PageBody>
     </>
   );

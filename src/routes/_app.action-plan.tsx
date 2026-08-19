@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo } from "react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   LineChart, Line, Legend, CartesianGrid, PieChart, Pie, Cell,
@@ -808,22 +809,24 @@ function ActionPlanPage() {
         ))}
       </div>
 
-      {view === "plan" ? (
-        <ActionPlanView
-          entity={entity} fy={fy} consolidatedCode={consolidatedCode}
-          onAddIrec={onAddIrec} onAddCredits={onAddCredits}
-        />
-      ) : (
-        <ScenarioBuilder key={presetPulse}
-          state={state} setState={setState}
-          scenarios={scenarios} saveScenario={saveScenario}
-          loadScenario={loadScenario} reset={reset}
-          S1_BASE={S1_BASE} S2LB_BASE={S2LB_BASE}
-          IREC_MAX={IREC_MAX} SBTI_BASE={SBTI_BASE} SBTI_TARGET={SBTI_TARGET}
-          fy={fy} glidepathYears={glidepathYears}
-          scenarioName={scenarioName} setScenarioName={setScenarioName}
-        />
-      )}
+      <ErrorBoundary label={view === "plan" ? "Action Plan" : "Scenario Builder"}>
+        {view === "plan" ? (
+          <ActionPlanView
+            entity={entity} fy={fy} consolidatedCode={consolidatedCode}
+            onAddIrec={onAddIrec} onAddCredits={onAddCredits}
+          />
+        ) : (
+          <ScenarioBuilder key={presetPulse}
+            state={state} setState={setState}
+            scenarios={scenarios} saveScenario={saveScenario}
+            loadScenario={loadScenario} reset={reset}
+            S1_BASE={S1_BASE} S2LB_BASE={S2LB_BASE}
+            IREC_MAX={IREC_MAX} SBTI_BASE={SBTI_BASE} SBTI_TARGET={SBTI_TARGET}
+            fy={fy} glidepathYears={glidepathYears}
+            scenarioName={scenarioName} setScenarioName={setScenarioName}
+          />
+        )}
+      </ErrorBoundary>
     </div>
   );
 }
