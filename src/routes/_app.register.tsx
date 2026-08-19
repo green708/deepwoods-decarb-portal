@@ -142,7 +142,7 @@ function OrgCard({
   teamCount: string;
   facilityCount: string;
   createdAt: string | null | undefined;
-  activatedAt: string | null | undefined;
+  activatedAt: string | null | undefined;  // last_activity_at from config
 }) {
   const badge = {
     "accepted":      { bg: EMERALD_BG, color: EMERALD,    dot: EMERALD,    text: "ACCEPTED"      },
@@ -238,7 +238,7 @@ function OrgCard({
                 Activity
               </div>
               <DetailRow icon={Calendar} label="Created on"    value={fmtDate(createdAt)} />
-              <DetailRow icon={Clock}    label="Activated on"   value={fmtDate(activatedAt)} />
+              <DetailRow icon={Clock}    label="Last edit"      value={fmtDate(activatedAt)} />
               <DetailRow icon={User}     label="Updated by"     value={org.name} />
             </div>
           </div>
@@ -360,8 +360,8 @@ function RegisterEntityPage() {
   const allOrgs     = ctx.entities.filter(e => !e.is_consolidated);
   const teamCount   = (ctx.config as any).team_count?.toString() || "—";
   const facilityCount = (ctx.config as any).facility_count?.toString() || "0";
-  const createdAt   = (ctx.client as any).created_at   as string | null | undefined;
-  const activatedAt = (ctx.client as any).activated_at as string | null | undefined;
+  const createdAt    = (ctx.client as any).created_at         as string | null | undefined;
+  const lastEditAt   = (ctx.config  as any).last_activity_at  as string | null | undefined;
 
   const [search,       setSearch]       = useState("");
   // Auto-expand the first card so details are visible immediately
@@ -491,7 +491,7 @@ function RegisterEntityPage() {
                 teamCount={teamCount}
                 facilityCount={facilityCount}
                 createdAt={createdAt}
-                activatedAt={activatedAt}
+                activatedAt={lastEditAt}
               />
             ))}
             <div style={{ marginTop: 12, fontSize: 12, color: SLATE, display: "flex", alignItems: "center", justifyContent: "space-between" }}>

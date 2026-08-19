@@ -164,6 +164,21 @@ try {
     $config['team_count'] = 0;
 }
 
+// ── Last activity (MAX across data-submission tables) ────────────────────────
+$lastActivity = null;
+try {
+    $stmt = $pdo->prepare("SELECT MAX(updated_at) FROM ghg_inventory WHERE client_id = ?");
+    $stmt->execute([$client_id]);
+    $lastActivity = $stmt->fetchColumn() ?: null;
+} catch (PDOException $e) {}
+try {
+    $stmt = $pdo->prepare("SELECT MAX(created_at) FROM submissions WHERE client_id = ?");
+    $stmt->execute([$client_id]);
+    $subTs = $stmt->fetchColumn() ?: null;
+    if ($subTs && (!$lastActivity || $subTs > $lastActivity)) $lastActivity = $subTs;
+} catch (PDOException $e) {}
+$config['last_activity_at'] = $lastActivity;
+
 // ── Facility count (live from org_facilities) ─────────────────────────────
 try {
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM org_facilities WHERE client_id = ?");
