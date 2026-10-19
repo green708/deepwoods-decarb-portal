@@ -62,11 +62,14 @@ export interface IntensityRow {
 export interface FacilityRow {
   id: number;
   name: string;
+  short_name?: string;
   entity: string;
   location: string;
   state: string;
   grid_utility: string;
   re_instrument: string;
+  status?: string;
+  is_hq?: number | boolean;
 }
 
 export interface S3SummaryRow {
@@ -86,6 +89,11 @@ export interface DecarbAction {
   priority: "High" | "Medium" | "Low";
   abatement_t: number | null;
   timeline: string;
+  owner?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  cost?: number | null;
+  actual_abatement_t?: number | null;
 }
 
 export interface DecarbAsset {
@@ -100,6 +108,34 @@ export interface DecarbAsset {
   health: string;
   unit: string;
   series: FYSeries;
+}
+
+/**
+ * Returns the correct activity unit for an asset.
+ * Guards against legacy rows where unit='tCO2e' was stored by mistake.
+ * The DB migration (fix_data_gaps_2026-09-05.sql) corrects existing rows;
+ * this fallback prevents future display issues if a row slips through.
+ */
+export function resolveAssetUnit(asset: Pick<DecarbAsset, "unit" | "sub_type">): string {
+  if (asset.unit && asset.unit !== "tCO2e") return asset.unit;
+  switch (asset.sub_type) {
+    case "stationary":
+    case "mobile":
+      return "L";
+    case "fire-extinguisher":
+    case "fugitive":
+      return "kg";
+    case "electricity":
+    case "diesel-generator-electricity":
+    case "solar":
+    case "solar-generated":
+    case "solar-consumed":
+    case "solar-exported":
+    case "wind":
+      return "kWh";
+    default:
+      return asset.unit || "unit";
+  }
 }
 
 export interface PriorityItem {
@@ -234,6 +270,33 @@ export function useFacilities(entity?: string) {
   });
 }
 
+export function useAddFacility() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Omit<FacilityRow, 'id'> & { status?: string }) =>
+      authFetch('ghg/facilities.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['facilities'] }); },
+  });
+}
+
+export function useUpdateFacility() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Partial<FacilityRow> & { id: number; status?: string }) =>
+      authFetch('ghg/facilities.php', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['facilities'] }); },
+  });
+}
+
+export function useDeleteFacility() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      authFetch('ghg/facilities.php', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['facilities'] }); },
+  });
+}
+
 /** Scope 3 summary — all categories for one entity */
 export function useS3Summary(entity: string) {
   return useQuery<S3SummaryRow[]>({
@@ -252,11 +315,11 @@ export function useDecarbActions(entity?: string) {
   });
 }
 
-/** Equipment / asset register */
-export function useDecarbAssets(entity?: string) {
+/** Equipment / asset register — pass fy to include tracker_drafts in series */
+export function useDecarbAssets(entity?: string, fy?: string) {
   return useQuery<DecarbAsset[]>({
-    queryKey: ["decarb-assets", entity ?? "all"],
-    queryFn: () => authFetch(`decarb/assets.php${qs({ entity })}`),
+    queryKey: ["decarb-assets", entity ?? "all", fy ?? ""],
+    queryFn: () => authFetch(`decarb/assets.php${qs({ entity, fy })}`),
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -421,13 +484,42 @@ export function useClients() {
   });
 }
 
+// ── Data Health ───────────────────────────────────────────────────────────────
+
+export interface DataHealthCheck {
+  id: string;
+  check: string;
+  client_id: number;
+  client_name: string;
+  severity: "high" | "medium" | "low";
+  status: "open" | "ok";
+  detail: string;
+  fix: string;
+  count: number;
+}
+
+export interface DataHealthResponse {
+  summary: { open_high: number; open_medium: number; resolved: number; total: number };
+  checks: DataHealthCheck[];
+  as_of: string;
+}
+
+export function useDataHealth() {
+  return useQuery<DataHealthResponse>({
+    queryKey: ["data-health"],
+    queryFn: () => authFetch("data-health.php"),
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+}
+
 // ── Helper: extract a single metric series from InventoryResponse ─────────────
 
 export function getMetric(
   data: InventoryResponse | undefined,
   key: string,
 ): FYSeries {
-  return data?.rows.find((r) => r.metric_key === key)?.series ?? {};
+  return data?.rows?.find((r) => r.metric_key === key)?.series ?? {};
 }
 
 /** Get the value for a specific metric + year */
@@ -437,4 +529,110 @@ export function getVal(
   fy: string,
 ): number | null {
   return getMetric(data, key)[fy] ?? null;
+}
+
+// ── NDC Query Threads ─────────────────────────────────────────────────────────
+
+export interface NdcMessage {
+  id: number;
+  thread_id: number;
+  from_role: "client" | "deepwoods";
+  author: string;
+  message: string;
+  created_at: string;
+}
+
+export interface NdcThread {
+  id: number;
+  last_from_role: "client" | "deepwoods";
+  created_by: string;
+  created_at: string;
+  messages: NdcMessage[];
+}
+
+export interface NdcSummaryEntry {
+  count: number;
+  has_open: boolean; // true = DW sent last (client should respond)
+}
+
+/** Summary map for all source IDs in a FY — used for badge counts on asset/category headers. */
+export function useNdcThreadsSummary(fy: string, clientId?: number) {
+  return useQuery<Record<string, NdcSummaryEntry>>({
+    queryKey: ["ndc-summary", fy, clientId ?? "self"],
+    queryFn: () =>
+      authFetch(`ndc-threads.php${qs({ fy, ...(clientId ? { client_id: String(clientId) } : {}) })}`),
+    staleTime: 60 * 1000,
+    enabled: !!fy,
+  });
+}
+
+/** Full thread list (with messages) for one source. Fetched lazily when the panel opens. */
+export function useNdcThreads(
+  sourceType: "scope12" | "scope3",
+  sourceId: string,
+  fy: string,
+  clientId?: number,
+) {
+  return useQuery<NdcThread[]>({
+    queryKey: ["ndc-threads", sourceType, sourceId, fy, clientId ?? "self"],
+    queryFn: () =>
+      authFetch(
+        `ndc-threads.php${qs({
+          fy,
+          source_type: sourceType,
+          source_id: sourceId,
+          ...(clientId ? { client_id: String(clientId) } : {}),
+        })}`,
+      ),
+    staleTime: 30 * 1000,
+    enabled: !!sourceId && !!fy,
+  });
+}
+
+/** Create a new thread with a first message. */
+export function useNdcCreateThread(sourceType: "scope12" | "scope3", sourceId: string, fy: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      source_type: string;
+      source_id: string;
+      fy: string;
+      message: string;
+      client_id?: number;
+    }) =>
+      authFetch("ndc-threads.php", {
+        method: "POST",
+        body: JSON.stringify({ action: "create", ...data }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ndc-threads", sourceType, sourceId, fy] });
+      qc.invalidateQueries({ queryKey: ["ndc-summary"] });
+    },
+  });
+}
+
+/** Reply to an existing thread. */
+export function useNdcReplyThread(sourceType: "scope12" | "scope3", sourceId: string, fy: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { thread_id: number; message: string; client_id?: number }) =>
+      authFetch("ndc-threads.php", {
+        method: "POST",
+        body: JSON.stringify({ action: "reply", ...data }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ndc-threads", sourceType, sourceId, fy] });
+      qc.invalidateQueries({ queryKey: ["ndc-summary"] });
+    },
+  });
+}
+
+/** Cross-client thread summary — Deepwoods admin only. Returns per-client open counts. */
+export function useNdcAllClientsSummary(fy: string) {
+  return useQuery<{ total_open: number; by_client: Record<string, { count: number; open_count: number }> }>({
+    queryKey: ["ndc-all-clients-summary", fy],
+    queryFn: () => authFetch(`ndc-threads.php${qs({ fy, all_clients: "1" })}`),
+    staleTime: 60 * 1000,
+    enabled: !!fy,
+  });
 }

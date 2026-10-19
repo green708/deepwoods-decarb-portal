@@ -10,6 +10,12 @@ function dolphin_config(): array {
             die(json_encode(['error' => 'config.php missing — copy config.php.example and fill it in']));
         }
         $config = require $path;
+        // Local dev override — never committed (gitignored as config.local.php)
+        $localPath = __DIR__ . '/../config.local.php';
+        if (file_exists($localPath)) {
+            $local = require $localPath;
+            $config = array_replace_recursive($config, $local);
+        }
     }
     return $config;
 }
@@ -63,6 +69,23 @@ function dolphin_require_auth(): array {
         http_response_code(401);
         die(json_encode(['error' => 'Session expired or invalid — please log in again']));
     }
+
+    // DWA (view-as): Deepwoods staff viewing a client's data.
+    // Frontend sends X-View-As: <client-slug> on every request.
+    // Resolve it to a real client_id so data endpoints work normally.
+    $deepwoodsRoles = ['deepwoods_admin', 'deepwoods_coordinator'];
+    if (empty($user['client_id']) && in_array($user['role'], $deepwoodsRoles, true)) {
+        $headers = getallheaders();
+        $viewAs = $headers['X-View-As'] ?? $headers['x-view-as'] ?? ($_GET['view_as'] ?? null);
+        if ($viewAs) {
+            $slug = preg_replace('/[^a-z0-9_-]/', '', strtolower($viewAs));
+            $cs = $pdo->prepare('SELECT id FROM clients WHERE slug = ?');
+            $cs->execute([$slug]);
+            $row = $cs->fetch();
+            if ($row) $user['client_id'] = $row['id'];
+        }
+    }
+
     return $user;
 }
 
@@ -168,6 +191,18 @@ function dolphin_validate_entity(array $authUser, string $requestedEntity): stri
         ], 403);
     }
     return $requestedEntity;
+}
+
+/**
+ * Read-only roles (client_leadership) may view but never change client data.
+ * Call right after dolphin_require_auth() in any endpoint that has write methods.
+ */
+function dolphin_block_read_only_writes(array $authUser): void {
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    if (in_array($method, ['GET', 'HEAD', 'OPTIONS'], true)) return;
+    if (($authUser['role'] ?? '') === 'client_leadership') {
+        dolphin_send_json(['error' => 'Your role is read-only and cannot change data.'], 403);
+    }
 }
 
 // CORS + preflight — the static site and this API sit on the same domain in

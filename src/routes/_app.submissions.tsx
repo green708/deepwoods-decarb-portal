@@ -1,937 +1,1152 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
-import { PageBody, PageHeader, Card, LockedState } from "@/components/portal";
-import { useClientContext, useDataEntryEntities } from "@/lib/client-context";
-import { useDatasets } from "@/lib/api";
-import { getRole, ROLE_META } from "@/lib/auth";
-import { useEntity } from "@/lib/entity";
-import { addSubmission, loadSubmissions, type Submission, type SubmissionVersion, type DataEntryEntity } from "@/lib/submissionsStore";
+import { createFileRoute } from "@tanstack/react-router";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { Paperclip, StickyNote, Save, Send, Info, CheckCircle2, AlertTriangle, Upload, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 import {
-  Download, FileCheck2, Clock, CheckCircle2, XCircle,
-  ChevronRight, ChevronLeft, FileSpreadsheet, Flame, Zap, Globe, Loader2,
-  ClipboardList, Building2, BarChart3, AlertTriangle,
-} from "lucide-react";
-import { GHG_LIVE, ghgPost } from "@/lib/ghg-config";
+  Accordion, AccordionContent, AccordionItem, AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+import { useDecarbAssets, useFacilities, useNdcThreadsSummary, resolveAssetUnit } from "@/lib/api";
+import type { DecarbAsset, FacilityRow } from "@/lib/api";
+import { useEntity, useFiscalYear } from "@/lib/entity";
+import { ThreadPanel } from "@/components/threads/ThreadPanel";
+import { ThreadBadge } from "@/components/threads/ThreadBadge";
+import { useClientContext } from "@/lib/client-context";
+import { authFetch, getRole } from "@/lib/auth";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useHomeSummary, useSubmitCycle } from "@/lib/api-admin";
+import { trackerSummary } from "@/lib/tracker-progress";
 import { toast } from "sonner";
+import { GhgStoreProvider } from "@/lib/ghg/store";
+import { Scope3Cards } from "@/components/ghg/Scope3Cards";
 
-export const Route = createFileRoute("/_app/submissions")({ component: Submissions });
+export const Route = createFileRoute("/_app/submissions")({ component: DataTrackerPage });
 
-/* ── Types ──────────────────────────────────────────────────────────────────── */
-type ScopeId = "scope1" | "scope2" | "scope3" | "inventory";
-type ScopeCategory = { id: string; label: string; hint: string; accept: string };
-type ScopeDef = {
-  id: ScopeId; label: string; sub: string; icon: React.ReactNode;
-  accentVar: string; template: string; templateHint: string;
-  verificationDocs: ScopeCategory[];
-};
+// ── Month helpers ─────────────────────────────────────────────────────────────
 
-/* ── Scope definitions ──────────────────────────────────────────────────────── */
-const SCOPES: ScopeDef[] = [
-  {
-    id: "scope1", label: "Scope 1", sub: "Direct emissions — DG sets, vehicles, forklifts, fugitive",
-    icon: <Flame className="h-5 w-5" />, accentVar: "var(--alert)",
-    template: "GHG_Scope1_Template.xlsx",
-    templateHint: "One workbook per entity: stationary combustion (DG sets, PC oven, LPG), mobile combustion (vehicles, forklifts), fugitive (CO2 cylinders & fire extinguishers).",
-    verificationDocs: [
-      { id: "s1-fuel-inv",  label: "Fuel purchase invoices",       hint: "Diesel/LPG supplier invoices covering the full reporting period.",                     accept: ".pdf,.xlsx" },
-      { id: "s1-equip",     label: "Equipment service records",    hint: "DG set maintenance / calibration logs confirming operational status.",                  accept: ".pdf" },
-    ],
-  },
-  {
-    id: "scope2", label: "Scope 2", sub: "Purchased electricity — grid, solar, wind PPA & I-RECs",
-    icon: <Zap className="h-5 w-5" />, accentVar: "var(--warning)",
-    template: "GHG_Scope2_Template.xlsx",
-    templateHint: "One workbook per entity: grid consumption per facility, on-site solar generation, and wind PPA & I-REC instruments where applicable.",
-    verificationDocs: [
-      { id: "s2-bills",     label: "Electricity bills",             hint: "Monthly bills for all in-boundary connections — per facility.",                         accept: ".pdf,.xlsx" },
-      { id: "s2-solar-log", label: "Solar generation logs",         hint: "Inverter/meter logs for on-site solar PV systems.",                                  accept: ".pdf,.xlsx,.csv" },
-      { id: "s2-irec",      label: "Wind PPA / I-REC certificates", hint: "Certificate doc: issuer, certificate ID, MWh quantity, vintage year.",                  accept: ".pdf,.xlsx" },
-    ],
-  },
-  {
-    id: "scope3", label: "Scope 3", sub: "Value chain — up to 10 calculated categories",
-    icon: <Globe className="h-5 w-5" />, accentVar: "var(--navy-2)",
-    template: "GHG_Scope3_Template.xlsx",
-    templateHint: "Multi-sheet workbook — one tab per category: Cat 1, 2, 3, 4, 5, 6, 7, 9, 11, 12. Relevant categories vary by entity.",
-    verificationDocs: [
-      { id: "s3-invoices",  label: "Purchase register / supplier invoices", hint: "Procurement extract for Cat 1 & fixed-asset additions for Cat 2.",             accept: ".pdf,.xlsx,.csv" },
-      { id: "s3-freight",   label: "Freight / delivery records",            hint: "Monthly delivery data, freight invoices: origin, destination, mode, weight.",   accept: ".pdf,.xlsx,.csv" },
-      { id: "s3-travel",    label: "Travel & commute records",              hint: "HR commute survey results; business travel expense reports or tickets.",         accept: ".pdf,.xlsx" },
-    ],
-  },
-];
+function genMonths(fy: string, startMonth = 4): { key: string; short: string }[] {
+  const yy = parseInt(fy.replace(/[^0-9]/g, ""));
+  const endYear = yy < 100 ? 2000 + yy : yy;
+  const ALL: [string, string][] = [
+    ["JAN","Jan"],["FEB","Feb"],["MAR","Mar"],["APR","Apr"],
+    ["MAY","May"],["JUN","Jun"],["JUL","Jul"],["AUG","Aug"],
+    ["SEP","Sep"],["OCT","Oct"],["NOV","Nov"],["DEC","Dec"],
+  ];
+  const startIdx = startMonth - 1;
+  const ordered = [...ALL.slice(startIdx), ...ALL.slice(0, startIdx)];
+  return ordered.map(([m, label], i) => {
+    const monthIdx = (startIdx + i) % 12;
+    // CY: all months in the same (end) year. FY/custom: months before startMonth wrap to endYear.
+    const calYear = startMonth === 1 ? endYear : (monthIdx < startMonth - 1 ? endYear : endYear - 1);
+    const yy2 = String(calYear).slice(-2);
+    return { key: `${m}-${yy2}`, short: `${label}-${yy2}` };
+  });
+}
 
-/* ── GHG Annual Report Upload Card ─────────────────────────────────────────── */
-function GhgReportUpload({ entity, onDone }: { entity: string; onDone: () => void }) {
-  const [step, setStep] = useState<"idle" | "uploading" | "done" | "error">("idle");
-  const [file, setFile] = useState<File | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+// ── Asset helpers ─────────────────────────────────────────────────────────────
 
-  const { entities, reporting_years } = useClientContext();
-  const dataEntryCode = entities.find(e => !e.is_consolidated)?.code ?? entity;
-  const resolvedEntity = entities.find(e => e.is_consolidated)?.code === entity ? dataEntryCode : entity;
-  const currentFY = reporting_years[reporting_years.length - 1] ?? "FY26";
-  const templateName = `GHG_Data_${currentFY}_Template.xlsx`;
+// Fugitive-gas assets (fire extinguishers, refrigerants) are always a single
+// annual figure — an occasional recharge/top-up event isn't naturally monthly
+// data, so this is unconditional and never spread across months.
+function isAnnual(asset: DecarbAsset): boolean {
+  const st = (asset.sub_type ?? "").toLowerCase();
+  return st === "fugitive" || st.includes("refrigerant") || st.includes("fire ext");
+}
 
-  const upload = async () => {
-    if (!file) return;
-    setStep("uploading");
-    setErrorMsg(null);
-    try {
-      const buf = await file.arrayBuffer();
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-      if (GHG_LIVE) {
-        await ghgPost({
-          action:       "uploadDataFile",
-          clientId:     resolvedEntity,
-          fileName:     file.name,
-          fileBase64:   b64,
-          submittedBy:  "portal",
-          fiscalYear:   currentFY,
-        });
-      }
-      setStep("done");
-      setTimeout(onDone, 2000);
-    } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : "Upload failed.");
-      setStep("error");
-    }
-  };
+// Some years report even fugitive/refrigerant recharges monthly instead of as
+// one annual total (e.g. a ledger that switches to monthly reporting for a
+// given fiscal year) -- if real monthly data already exists for this asset,
+// show the monthly grid instead of forcing annual-only mode and hiding it.
+function hasAnyMonthlyData(assetSeries: Record<string, number | null | undefined>, months: { key: string }[]): boolean {
+  return months.some(m => assetSeries[m.key] != null || assetSeries[`${m.key}__lb`] != null);
+}
 
-  if (step === "done") {
-    return (
-      <div className="flex flex-col items-center gap-3 py-8 text-center">
-        <CheckCircle2 className="h-10 w-10 text-emerald-500" />
-        <div className="font-bold text-lg text-[var(--navy)]">File uploaded</div>
-        <p className="max-w-xs text-sm text-muted-foreground">
-          {GHG_LIVE
-            ? "Your data has been saved to Drive. Deepwoods has been notified to generate the GHG report."
-            : "Demo mode — no file was actually uploaded. Configure VITE_GHG_WEBAPP_URL to go live."}
-        </p>
-      </div>
-    );
+// isAnnual(asset) alone is a static sub_type check; this also accounts for an
+// asset that actually has real monthly data this year, so progress counts and
+// the "Annual entry" badge match what EquipmentGrid actually renders.
+function isAnnualNow(asset: DecarbAsset, months: { key: string }[]): boolean {
+  return isAnnual(asset) && !hasAnyMonthlyData(asset.series ?? {}, months);
+}
+
+function isSolar(asset: DecarbAsset): boolean {
+  const n = (asset.name ?? "").toLowerCase();
+  const st = (asset.sub_type ?? "").toLowerCase();
+  return n.includes("solar") || st.includes("solar");
+}
+
+function isS2Electricity(asset: DecarbAsset): boolean {
+  return asset.scope === "Scope 2" && !isSolar(asset);
+}
+
+function getSubFields(asset: DecarbAsset): string[] {
+  if (isSolar(asset)) return ["Generated", "Self-consumed", "Exported"];
+  return [resolveAssetUnit(asset)];
+}
+
+function getScopeInfo(asset: DecarbAsset): { label: string; isS1: boolean } {
+  const st = (asset.sub_type ?? "").toLowerCase();
+  const sc = asset.scope ?? "";
+  if (sc === "Scope 1") {
+    if (st.includes("fugitive") || st.includes("refrigerant") || st.includes("fire ext"))
+      return { label: "S1 — Fugitive", isS1: true };
+    if (st.includes("process")) return { label: "S1 — Process", isS1: true };
+    if (st.includes("mobile")) return { label: "S1 — Mobile Combustion", isS1: true };
+    return { label: "S1 — Combustion", isS1: true };
+  }
+  if (sc === "Scope 2") {
+    if (isSolar(asset)) return { label: "S2 — RE Info Only", isS1: false };
+    return { label: "S2 — LB + MB", isS1: false };
+  }
+  return { label: sc, isS1: false };
+}
+
+// ── Cell state: assetId → periodKey → value ───────────────────────────────────
+
+type CellMap = Record<string, Record<string, number | null>>;
+
+// ── Per-equipment grid (exact dc EquipmentMonthlyGrid layout) ─────────────────
+
+interface GridProps {
+  asset: DecarbAsset;
+  months: { key: string; short: string }[];
+  cells: CellMap;
+  onCellChange: (assetId: string, periodKey: string, value: number | null) => void;
+}
+
+function EquipmentGrid({ asset, months, cells, onCellChange }: GridProps) {
+  const assetCells = cells[asset.id] ?? {};
+  const annual = isAnnual(asset) && !hasAnyMonthlyData(assetCells, months);
+  const solar = isSolar(asset);
+  const subFields = getSubFields(asset);
+  const multi = subFields.length > 1;
+  const unit = resolveAssetUnit(asset);
+  const fuel = asset.fuel ?? "";
+
+  function getSolarVal(periodKey: string, subIdx: number): number | null {
+    const raw = assetCells[`${periodKey}__${subIdx}`];
+    return raw ?? null;
+  }
+  function setSolarVal(periodKey: string, subIdx: number, v: number | null) {
+    onCellChange(asset.id, `${periodKey}__${subIdx}`, v);
   }
 
-  return (
-    <div className="space-y-5">
-      {!GHG_LIVE && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>Demo mode — upload will be simulated. Set <code className="rounded bg-amber-100 px-1 font-mono">VITE_GHG_WEBAPP_URL</code> to go live.</span>
-        </div>
-      )}
+  const filledMonths = annual
+    ? (assetCells["annual"] != null ? 1 : 0)
+    : months.filter(m => multi
+        ? subFields.some((_, si) => getSolarVal(m.key, si) !== null)
+        : assetCells[m.key] != null
+      ).length;
+  const pct = annual
+    ? (filledMonths > 0 ? 100 : 0)
+    : Math.round((filledMonths / months.length) * 100);
 
-      {/* Step 1: Download */}
-      <div className="rounded-xl border-2 border-[#1E6F5C] bg-[#E6F4EF]/40 p-4">
-        <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#1E6F5C]">Step 1 — Download template</div>
-        <div className="font-semibold text-[var(--navy)]">{templateName}</div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Single workbook covering all required GHG data points (Scope 1, 2, 3).
-          Fill in the yellow <em>FY2026 Value</em> column and save.
-        </p>
-        <a
-          href={`/templates/${templateName}`}
-          download={templateName}
-          className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[#1E6F5C] px-4 py-1.5 text-sm font-semibold text-[#1E6F5C] hover:bg-[#E6F4EF]"
-        >
-          <Download className="h-4 w-4" /> Download template
-        </a>
-      </div>
-
-      {/* Step 2: Upload */}
-      <div>
-        <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Step 2 — Upload completed file</div>
-        <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border-2 border-dashed bg-[var(--muted)] px-5 py-4 hover:bg-[var(--accent)]">
-          <div className="flex min-w-0 items-center gap-3 text-muted-foreground">
-            <FileSpreadsheet className="h-5 w-5 shrink-0" />
-            {file
-              ? <span className="truncate font-mono text-sm font-semibold text-[var(--navy)]">{file.name}</span>
-              : <span className="text-sm">Select filled template · .xlsx</span>
-            }
-          </div>
-          <span className="shrink-0 rounded-lg bg-[#1E6F5C] px-4 py-1.5 text-sm font-semibold text-white">
-            {file ? "Change" : "Browse"}
-          </span>
-          <input type="file" accept=".xlsx" className="hidden"
-            onChange={e => setFile(e.target.files?.[0] ?? null)} />
-        </label>
-        {file && (
-          <div className="mt-2 flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-            <CheckCircle2 className="h-3.5 w-3.5" /> {file.name} ready — click upload below
-          </div>
-        )}
-      </div>
-
-      {step === "error" && errorMsg && (
-        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {errorMsg}
-        </div>
-      )}
-
-      <div className="flex justify-between">
-        <button onClick={onDone} className="inline-flex items-center gap-1 rounded-lg border px-4 py-2 text-sm font-semibold">
-          <ChevronLeft className="h-4 w-4" /> Back
-        </button>
-        <button
-          onClick={upload}
-          disabled={!file || step === "uploading"}
-          className="inline-flex items-center gap-2 rounded-lg bg-[#1E6F5C] px-5 py-2 text-sm font-semibold text-white disabled:opacity-40"
-        >
-          {step === "uploading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
-          {step === "uploading" ? "Uploading…" : "Upload to Drive"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ── Entity picker (required for every submission) ─────────────────────────── */
-function EntityPicker({ value, onChange }: { value: DataEntryEntity | null; onChange: (e: DataEntryEntity) => void }) {
-  const entities = useDataEntryEntities();
-  return (
-    <div>
-      <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Which company is this data for?</div>
-      <p className="mb-3 text-sm text-muted-foreground">
-        Data must be submitted against a specific sub-entity. The consolidated view is calculated automatically.
-      </p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {entities.map((e) => (
-          <button key={e.code} type="button" onClick={() => onChange(e.code)}
-            className={`rounded-xl border-2 p-4 text-left transition ${
-              value === e.code ? "border-[var(--navy)] bg-[color-mix(in_oklab,var(--navy)_6%,white)]" : "border-[var(--border)] bg-white hover:border-[var(--navy-2)]"
-            }`}>
-            <div className="flex items-center justify-between">
-              <span className="font-bold tabular-nums text-[var(--navy)]">{e.code}</span>
-              {value === e.code && <CheckCircle2 className="h-4 w-4 text-[var(--navy)]" />}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">{e.name}</div>
-            <div className="mt-0.5 text-[11px] text-muted-foreground">{e.short ?? ""}</div>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ── Shared badges (also used by _app.admin.tsx) ────────────────────────────── */
-export function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    Pending:  "bg-amber-100 text-amber-800 border-amber-200",
-    Approved: "bg-emerald-100 text-emerald-800 border-emerald-200",
-    Rejected: "bg-red-100 text-red-700 border-red-200",
-  };
-  const cls = map[status] ?? "bg-slate-100 text-slate-700 border-slate-200";
-  return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${cls}`}>
-      {status === "Pending" && <Clock className="mr-1 h-3 w-3" />}
-      {status === "Approved" && <CheckCircle2 className="mr-1 h-3 w-3" />}
-      {status === "Rejected" && <XCircle className="mr-1 h-3 w-3" />}
-      {status}
-    </span>
-  );
-}
-
-export function VersionChip({ v }: { v: string }) {
-  return (
-    <span className="inline-flex items-center rounded border bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-600">
-      {v}
-    </span>
-  );
-}
-
-/* ── Inventory update — follow-up question definitions ──────────────────────── */
-type FollowUpField = {
-  id: string; label: string; required?: boolean;
-  type: "text" | "select" | "date";
-  options?: string[]; placeholder?: string;
-};
-
-const FACILITIES: string[] = []; // TODO: populate from facilities API when data submission is rebuilt
-
-const CHANGE_TYPE_FOLLOWUPS: Record<string, FollowUpField[]> = {
-  "New equipment / asset added": [
-    { id: "equip_type",    label: "Equipment type",          type: "select", required: true,
-      options: ["DG set", "Vehicle", "Forklift", "Air conditioning / chiller", "Boiler / furnace", "Solar inverter", "Other"] },
-    { id: "make_model",    label: "Make / model",            type: "text",   placeholder: "e.g. Kirloskar 125 kVA", required: true },
-    { id: "facility",      label: "Facility",                type: "select", options: FACILITIES },
-    { id: "install_date",  label: "Installation date",       type: "date" },
-    { id: "replaces",      label: "Replaces existing unit?", type: "select",
-      options: ["Yes — old unit decommissioned", "Yes — old unit still running in parallel", "No — additional capacity"] },
-  ],
-  "Asset decommissioned or retired": [
-    { id: "asset_name",    label: "Asset name / description", type: "text",   placeholder: "e.g. 100 kVA DG set at Main Plant",  required: true },
-    { id: "reason",        label: "Reason",                   type: "select",
-      options: ["End of life", "Replaced by newer unit", "Facility closure", "Process change", "Other"] },
-    { id: "facility",      label: "Facility",                 type: "select", options: FACILITIES },
-    { id: "retire_date",   label: "Retirement / effective date", type: "date" },
-  ],
-  "Facility expansion or new location": [
-    { id: "facility_name", label: "Facility name",            type: "text",   placeholder: "e.g. Whitefield Office",              required: true },
-    { id: "city_state",    label: "City / state",             type: "text",   placeholder: "e.g. Bengaluru, Karnataka" },
-    { id: "facility_type", label: "Facility type",            type: "select",
-      options: ["Manufacturing plant", "Office / showroom", "Warehouse / distribution centre", "Other"] },
-    { id: "ops_from",      label: "Operational from",         type: "date" },
-    { id: "floor_area",    label: "Approx. floor area (sq ft)", type: "text", placeholder: "e.g. 25,000" },
-  ],
-  "Change in process / fuel type": [
-    { id: "prev_fuel",     label: "Previous fuel / energy source", type: "select",
-      options: ["Diesel", "LPG", "Natural gas", "Grid electricity", "Biomass", "Other"], required: true },
-    { id: "new_fuel",      label: "New fuel / energy source",      type: "select",
-      options: ["Diesel", "LPG", "Natural gas", "Grid electricity", "Solar", "Wind", "Electric (grid-charged)", "Other"], required: true },
-    { id: "facility",      label: "Facility",                      type: "select", options: FACILITIES },
-    { id: "effective_date", label: "Effective date",               type: "date" },
-  ],
-  "Vehicle or forklift fleet update": [
-    { id: "vehicle_type",  label: "Vehicle type",         type: "select", required: true,
-      options: ["Car / SUV", "Truck / lorry", "Forklift (electric)", "Forklift (diesel)", "Two-wheeler", "Other"] },
-    { id: "fuel_type",     label: "Fuel type",            type: "select",
-      options: ["Diesel", "Petrol", "CNG", "Electric", "Other"] },
-    { id: "make_model",    label: "Make / model",         type: "text",   placeholder: "e.g. Mahindra Scorpio, Kion 3T" },
-    { id: "reg_serial",    label: "Registration / serial no.", type: "text", placeholder: "e.g. KA-01-AB-1234" },
-    { id: "action",        label: "Action",               type: "select",
-      options: ["New addition to fleet", "Replacement — old unit retired", "Disposal only (no replacement)"] },
-  ],
-  "Refrigerant or AC unit change": [
-    { id: "ref_old",       label: "Previous refrigerant",    type: "select",
-      options: ["R-22", "R-32", "R-410A", "R-134a", "HFC blend", "Unknown", "N/A — new install"] },
-    { id: "ref_new",       label: "New refrigerant",         type: "select",
-      options: ["R-22", "R-32", "R-410A", "R-134a", "HFC blend", "Other"] },
-    { id: "charge_kg",     label: "Refrigerant charge (kg)", type: "text",   placeholder: "e.g. 4.5" },
-    { id: "unit_count",    label: "Number of AC units",      type: "text",   placeholder: "e.g. 3" },
-    { id: "facility",      label: "Facility",                type: "select", options: FACILITIES },
-  ],
-  "Other boundary change": [
-    { id: "scope_affected", label: "Scope affected",  type: "select",
-      options: ["Scope 1 only", "Scope 2 only", "Scope 3 only", "Multiple scopes"] },
-    { id: "effective_date", label: "Effective date",  type: "date" },
-  ],
-};
-
-/* ── Inventory update form ──────────────────────────────────────────────────── */
-function InventoryUpdateWizard({ year, defaultEntity, onBack }: { year: string; defaultEntity: DataEntryEntity | null; onBack: () => void }) {
-  const [step, setStep]           = useState<"entity" | "changes" | "review">(defaultEntity ? "changes" : "entity");
-  const [entity, setEntity]       = useState<DataEntryEntity | null>(defaultEntity);
-  const [changeType, setChangeType] = useState<string[]>([]);
-  const [answers, setAnswers]     = useState<Record<string, Record<string, string>>>({});
-  const [notes, setNotes]         = useState("");
-  const [file, setFile]           = useState<File | null>(null);
-  const [submitted, setSubmitted] = useState(false);
-
-  const CHANGE_TYPES = Object.keys(CHANGE_TYPE_FOLLOWUPS);
-
-  const toggle = (t: string) =>
-    setChangeType(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
-
-  const setAnswer = (type: string, fieldId: string, val: string) =>
-    setAnswers(prev => ({ ...prev, [type]: { ...(prev[type] ?? {}), [fieldId]: val } }));
-
-  const submit = () => {
-    if (!entity) { toast.error("Select an entity first."); return; }
-    if (changeType.length === 0) { toast.error("Select at least one change type."); return; }
-    toast.success("Inventory update submitted", { description: "The asset register will be updated within 2 business days." });
-    setSubmitted(true);
-  };
-
-  /* ── Success screen ── */
-  if (submitted) {
+  // Annual entry
+  if (annual) {
+    const val = assetCells["annual"] ?? null;
     return (
-      <div>
-        <button onClick={onBack} className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ChevronLeft className="h-4 w-4" /> All options
-        </button>
-        <Card>
-          <div className="flex flex-col items-center gap-3 py-6 text-center">
-            <CheckCircle2 className="h-10 w-10 text-emerald-500" />
-            <div className="font-bold text-xl text-[var(--navy)]">Inventory update submitted</div>
-            <p className="max-w-sm text-sm text-muted-foreground">
-              {entity} emissions source register will be updated within 2 business days.
-            </p>
-            <button onClick={onBack} className="mt-2 rounded-lg bg-[var(--navy)] px-5 py-2 text-sm font-semibold text-white">Done</button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <button onClick={onBack} className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ChevronLeft className="h-4 w-4" /> All options
-      </button>
-
-      {/* Header */}
-      <div className="mb-5 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--navy)] text-white">
-          <Building2 className="h-5 w-5" />
-        </div>
-        <div>
-          <div className="font-bold text-[var(--navy)]">Inventory Update — {year}</div>
-          <div className="text-xs text-muted-foreground">Report boundary changes to the emissions source register</div>
-        </div>
-      </div>
-
-      {/* Step indicators */}
-      <div className="mb-6 flex items-center gap-2 text-xs font-semibold">
-        {[
-          { key: "entity",  label: "1 · Company" },
-          { key: "changes", label: "2 · What changed" },
-          { key: "review",  label: "3 · Review & submit" },
-        ].map((s, i, arr) => (
-          <span key={s.key} className="flex items-center gap-2">
-            <span className={`rounded-full px-3 py-1 ${step === s.key ? "bg-[var(--navy)] text-white" : "bg-[var(--muted)] text-muted-foreground"}`}>
-              {s.label}
-            </span>
-            {i < arr.length - 1 && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
-          </span>
-        ))}
-      </div>
-
-      {/* ── Step 1: Entity ── */}
-      {step === "entity" && (
-        <Card>
-          <EntityPicker value={entity} onChange={(e) => { setEntity(e); setStep("changes"); }} />
-        </Card>
-      )}
-
-      {/* ── Step 2: Change types + inline follow-ups ── */}
-      {step === "changes" && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between mb-1">
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">What changed?</div>
-              <p className="text-sm text-muted-foreground mt-0.5">Select everything that applies — follow-up questions appear for each.</p>
+      <div className="space-y-3">
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex-1 min-w-[220px]">
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Annual total {fuel} ({unit})
+              </label>
+              <Input
+                type="number"
+                inputMode="decimal"
+                value={val ?? ""}
+                placeholder="—"
+                onChange={e => {
+                  const raw = e.target.value.trim();
+                  onCellChange(asset.id, "annual", raw === "" ? null : Number(raw));
+                }}
+                className="max-w-xs"
+              />
             </div>
-            <span className="rounded-full border border-[var(--navy)] px-3 py-0.5 text-xs font-bold text-[var(--navy)]">{entity}</span>
-          </div>
-
-          {CHANGE_TYPES.map(t => {
-            const selected = changeType.includes(t);
-            const fields   = CHANGE_TYPE_FOLLOWUPS[t] ?? [];
-            return (
-              <div key={t} className={`rounded-xl border-2 transition-all ${selected ? "border-[var(--navy)] bg-[color-mix(in_oklab,var(--navy)_4%,white)]" : "border-[var(--border)] bg-white"}`}>
-                {/* Checkbox row */}
-                <label className="flex cursor-pointer items-center gap-3 px-4 py-3">
-                  <input type="checkbox" checked={selected} onChange={() => toggle(t)}
-                    className="h-4 w-4 accent-[var(--navy)] shrink-0" />
-                  <span className="text-sm font-semibold text-[var(--navy)]">{t}</span>
-                </label>
-
-                {/* Follow-up fields — shown when selected */}
-                {selected && fields.length > 0 && (
-                  <div className="border-t border-dashed px-4 pb-4 pt-3 grid gap-3 sm:grid-cols-2">
-                    {fields.map(f => (
-                      <div key={f.id}>
-                        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          {f.label}{f.required && <span className="ml-1 text-red-400">*</span>}
-                        </label>
-                        {f.type === "select" ? (
-                          <select
-                            value={answers[t]?.[f.id] ?? ""}
-                            onChange={e => setAnswer(t, f.id, e.target.value)}
-                            className="w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]"
-                          >
-                            <option value="">Select…</option>
-                            {f.options!.map(o => <option key={o} value={o}>{o}</option>)}
-                          </select>
-                        ) : (
-                          <input
-                            type={f.type}
-                            value={answers[t]?.[f.id] ?? ""}
-                            onChange={e => setAnswer(t, f.id, e.target.value)}
-                            placeholder={f.placeholder}
-                            className="w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--navy)]"
-                          />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          <div className="flex justify-between pt-2">
-            <button onClick={() => setStep("entity")}
-              className="inline-flex items-center gap-1 rounded-lg border px-4 py-2 text-sm font-semibold">
-              <ChevronLeft className="h-4 w-4" /> Back
-            </button>
-            <button
-              onClick={() => { if (changeType.length === 0) { toast.error("Select at least one change type."); return; } setStep("review"); }}
-              className="inline-flex items-center gap-2 rounded-lg bg-[var(--navy)] px-5 py-2 text-sm font-semibold text-white"
-            >
-              Next <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Step 3: Review + notes + file + submit ── */}
-      {step === "review" && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Summary of selected types */}
-          <Card>
-            <div className="mb-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Summary</div>
-            <div className="space-y-3">
-              {changeType.map(t => (
-                <div key={t} className="rounded-lg border bg-[var(--muted)] px-3 py-2.5">
-                  <div className="text-sm font-semibold text-[var(--navy)]">{t}</div>
-                  {answers[t] && Object.entries(answers[t]).filter(([, v]) => v).map(([k, v]) => {
-                    const field = (CHANGE_TYPE_FOLLOWUPS[t] ?? []).find(f => f.id === k);
-                    return (
-                      <div key={k} className="mt-1 flex items-start gap-2 text-xs text-muted-foreground">
-                        <span className="font-medium shrink-0">{field?.label ?? k}:</span>
-                        <span>{v}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-            <button onClick={() => setStep("changes")}
-              className="mt-4 text-xs font-semibold text-[var(--navy)] hover:underline">
-              ← Edit changes
-            </button>
-          </Card>
-
-          {/* Notes + file + submit */}
-          <Card>
-            <div className="mb-4">
-              <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Additional notes (optional)</div>
-              <textarea
-                value={notes} onChange={e => setNotes(e.target.value)}
-                placeholder="Any context not captured above — dates, contact person, reason for change…"
-                className="w-full rounded-lg border bg-[var(--muted)] px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[var(--navy)]"
-                rows={4} />
-            </div>
-
-            <div className="mb-6">
-              <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Supporting document (optional)</div>
-              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border-2 border-dashed bg-[var(--muted)] px-5 py-4 hover:bg-[var(--accent)]">
-                <div className="flex items-center gap-3 min-w-0 text-muted-foreground">
-                  <FileSpreadsheet className="h-5 w-5 shrink-0" />
-                  {file
-                    ? <span className="truncate font-mono text-sm font-semibold text-[var(--navy)]">{file.name}</span>
-                    : <span className="text-sm">Purchase order, asset spec, or supporting doc</span>
-                  }
-                </div>
-                <span className="shrink-0 rounded-lg bg-[var(--navy)] px-4 py-1.5 text-sm font-semibold text-white">
-                  {file ? "Change" : "Browse"}
-                </span>
-                <input type="file" accept=".pdf,.xlsx,.docx,.png,.jpg" className="hidden"
-                  onChange={e => setFile(e.target.files?.[0] ?? null)} />
+            <div className="flex items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent">
+                <Paperclip className="h-4 w-4" />
+                <span>Upload inspection report</span>
+                <input type="file" multiple hidden />
               </label>
             </div>
-
-            <div className="flex justify-between">
-              <button onClick={() => setStep("changes")}
-                className="inline-flex items-center gap-1 rounded-lg border px-4 py-2 text-sm font-semibold">
-                <ChevronLeft className="h-4 w-4" /> Back
-              </button>
-              <button onClick={submit}
-                className="inline-flex items-center gap-2 rounded-lg bg-[var(--navy)] px-5 py-2 text-sm font-semibold text-white">
-                <ClipboardList className="h-4 w-4" /> Submit update
-              </button>
-            </div>
-          </Card>
+          </div>
+          {asset.fuel && (
+            <p className="mt-2 text-xs text-muted-foreground">Annual {fuel} refilled / consumed during the year.</p>
+          )}
         </div>
-      )}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span>Source documents: 0 / 1 uploaded</span>
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+              <StickyNote className="h-3.5 w-3.5" />Notes
+            </Button>
+            <span className="tabular-nums">{pct}% complete</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Monthly grid
+  return (
+    <div className="space-y-3">
+      <div className="hidden overflow-x-auto rounded-lg border bg-card md:block">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-neutral-soft">
+              <th className="sticky left-0 z-10 min-w-[140px] bg-neutral-soft px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Field
+              </th>
+              {months.map(m => (
+                <th key={m.key} className="min-w-[92px] px-2 py-2 text-center text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {m.short}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {subFields.map((sub, subIdx) => (
+              <tr key={sub} className={subIdx > 0 ? "border-t" : undefined}>
+                <td className="sticky left-0 z-10 bg-card px-3 py-1.5 text-xs font-medium">
+                  {sub} <span className="text-muted-foreground">({unit})</span>
+                </td>
+                {months.map(m => {
+                  const v = multi ? getSolarVal(m.key, subIdx) : (assetCells[m.key] ?? null);
+                  const filled = v !== null;
+                  return (
+                    <td key={m.key} className="p-1 align-top">
+                      <div className={cn(
+                        "group relative rounded-md p-0.5 transition",
+                        filled ? "ghg-cell-filled" : "ghg-cell-empty",
+                      )}>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          value={v ?? ""}
+                          placeholder="—"
+                          onChange={e => {
+                            const raw = e.target.value.trim();
+                            const parsed = raw === "" ? null : Number(raw);
+                            if (multi) setSolarVal(m.key, subIdx, parsed);
+                            else onCellChange(asset.id, m.key, parsed);
+                          }}
+                          className="w-full bg-transparent px-1.5 py-1 text-right text-sm tabular-nums outline-none placeholder:text-muted-foreground/60"
+                        />
+                        {subIdx === 0 && (
+                          <div className="flex items-center justify-between px-1 pb-0.5">
+                            <label className="cursor-pointer text-muted-foreground/60 opacity-0 transition group-hover:opacity-100">
+                              <Paperclip className="h-3 w-3" />
+                              <input type="file" multiple hidden />
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+            {multi && (
+              <tr className="border-t bg-neutral-soft/60">
+                <td className="sticky left-0 z-10 bg-neutral-soft/60 px-3 py-1.5 text-xs font-semibold text-navy">
+                  Total ({unit})
+                </td>
+                {months.map(m => {
+                  const vals = subFields.map((_, si) => getSolarVal(m.key, si));
+                  const total = vals.reduce<number | null>((acc, v) => v == null ? acc : (acc ?? 0) + v, null);
+                  return (
+                    <td key={m.key} className="px-2 py-1 text-right text-xs font-semibold tabular-nums text-navy">
+                      {total == null ? "—" : total.toLocaleString()}
+                    </td>
+                  );
+                })}
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile stack */}
+      <div className="space-y-2 md:hidden">
+        {months.map(m => {
+          const v = assetCells[m.key] ?? null;
+          const filled = v !== null;
+          return (
+            <div key={m.key} className={cn("rounded-lg border p-2", filled ? "bg-card" : "bg-neutral-soft")}>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase text-muted-foreground">{m.short}</span>
+                <label className="cursor-pointer text-muted-foreground">
+                  <Paperclip className="h-3.5 w-3.5" />
+                  <input type="file" multiple hidden />
+                </label>
+              </div>
+              <input
+                type="number"
+                inputMode="decimal"
+                value={v ?? ""}
+                placeholder="—"
+                onChange={e => {
+                  const raw = e.target.value.trim();
+                  onCellChange(asset.id, m.key, raw === "" ? null : Number(raw));
+                }}
+                className="w-full rounded-md border bg-card px-2 py-1 text-right text-sm tabular-nums outline-none"
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-3">
+          <span>Source documents: 0 / {months.length} months uploaded</span>
+          {solar && <span>Rule: Generated = Self-consumed + Exported (±5%)</span>}
+        </div>
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+            <StickyNote className="h-3.5 w-3.5" />Notes
+          </Button>
+          <span className="tabular-nums">{pct}% complete</span>
+        </div>
+      </div>
     </div>
   );
 }
 
-/* ── Main component ─────────────────────────────────────────────────────────── */
-function Submissions() {
-  const navigate = useNavigate();
-  const { entity: viewEntity } = useEntity();
-  const { client, entities, reporting_years, config } = useClientContext();
-  const consolidatedCode = entities.find(e => e.is_consolidated)?.code;
+// ── Scope 2 dual LB/MB grid ───────────────────────────────────────────────────
 
-  // Filter scope cards to match what the client configured in the Annual Setup wizard
-  type ScopeConfig = {
-    s1_stationary?: boolean; s1_mobile?: boolean; s1_fugitive?: boolean;
-    s2_grid?: boolean; s2_renewable?: boolean; s3_included?: boolean;
-  };
-  const entityScopeMap = useMemo(() => {
-    const raw = config?.entity_scope_json;
-    if (!raw) return null;
-    // context.php auto-decodes JSON config values, so it arrives as an object, not a string.
-    // Support both forms defensively.
-    if (typeof raw === 'object') return raw as Record<string, ScopeConfig>;
-    if (typeof raw === 'string') {
-      try { return JSON.parse(raw) as Record<string, ScopeConfig>; } catch { return null; }
-    }
-    return null;
-  }, [config?.entity_scope_json]);
+const S2_ROWS = [
+  { suffix: "lb", label: "LB — Total kWh consumed", hint: "Grid consumption (location-based EF applied)" },
+  { suffix: "mb", label: "MB — Renewable kWh (EAC/PPA)", hint: "I-REC / PPA / green-tariff units (market-based EF applied)" },
+] as const;
 
-  const visibleScopes = useMemo(() => {
-    if (!entityScopeMap) return SCOPES;
-    const vals = Object.values(entityScopeMap);
-    return SCOPES.filter(s => {
-      if (s.id === "scope1") return vals.some(v => v.s1_stationary || v.s1_mobile || v.s1_fugitive);
-      if (s.id === "scope2") return vals.some(v => v.s2_grid || v.s2_renewable);
-      if (s.id === "scope3") return vals.some(v => v.s3_included);
-      return true;
-    });
-  }, [entityScopeMap]);
-  const [role, setRole] = useState<ReturnType<typeof getRole>>(null);
-  const [year, setYear] = useState("FY26");
-  const [subs, setSubs] = useState<Submission[]>([]);
-  const [activeScope, setActiveScope] = useState<ScopeId | "ghg-report" | null>(null);
+function S2DualGrid({ asset, months, cells, onCellChange }: GridProps) {
+  const assetCells = cells[asset.id] ?? {};
+  const unit = resolveAssetUnit(asset);
 
-  // Pre-select entity for new submissions unless on the consolidated view.
-  const defaultEntity: DataEntryEntity | null = viewEntity === consolidatedCode ? null : viewEntity as DataEntryEntity;
-
-  useEffect(() => {
-    const r = getRole();
-    if (!r) navigate({ to: "/" });
-    setRole(r);
-    loadSubmissions(client.slug).then(setSubs).catch((e) => toast.error("Couldn't load submissions", { description: e.message }));
-  }, [navigate, client.slug]);
-
-  const refresh = () => loadSubmissions(client.slug).then(setSubs).catch(() => {});
-
-  if (!role) return null;
-  if (!ROLE_META[role].canUpload) {
-    return (
-      <>
-        <PageHeader eyebrow="Data Submission" title="Data Submission" />
-        <PageBody><LockedState title="Uploads restricted" message="Data submission is available to authorised sustainability team members." /></PageBody>
-      </>
-    );
-  }
-
-  const scope = visibleScopes.find(s => s.id === activeScope);
-  const visibleSubs = viewEntity === consolidatedCode ? subs : subs.filter(s => s.entity === viewEntity);
-
-  if (activeScope === "ghg-report" && ROLE_META[role].canAdmin) {
-    return (
-      <>
-        <PageHeader eyebrow="Upload" title="GHG Annual Report — Data Submission" />
-        <PageBody>
-          <div className="mx-auto max-w-xl">
-            <button onClick={() => setActiveScope(null)} className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-              <ChevronLeft className="h-4 w-4" /> All options
-            </button>
-            <Card>
-              <GhgReportUpload entity={viewEntity} onDone={() => setActiveScope(null)} />
-            </Card>
-          </div>
-        </PageBody>
-      </>
-    );
-  }
+  const filledMonths = months.filter(m =>
+    S2_ROWS.some(r => assetCells[`${m.key}__${r.suffix}`] != null)
+  ).length;
+  const pct = Math.round((filledMonths / months.length) * 100);
 
   return (
-    <>
-      <PageHeader eyebrow="Upload" title="Data Submission"
-        description="Submit activity data, verification documents, or inventory boundary updates. Every submission is tagged to a sub-entity — the consolidated view is calculated automatically."
-        right={
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Year</label>
-            <select value={year} onChange={e => setYear(e.target.value)} className="rounded-md border bg-card px-3 py-1.5 text-sm">
-              {reporting_years.map(y => <option key={y}>{y}</option>)}
-            </select>
-          </div>
-        }
-      />
-      <PageBody>
-        {!activeScope ? (
-          <div>
-            {/* First-time welcome callout — shown until first submission exists */}
-            {visibleSubs.length === 0 && (
-              <div className="mb-6 flex items-start gap-4 rounded-2xl border border-[#1E6F5C]/25 bg-gradient-to-r from-[#E6F4EF] to-[#F0FAF5] p-5">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1E6F5C]">
-                  <Download className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-[#1E4D2B]">Ready to collect your first year of data</p>
-                  <p className="mt-1 text-xs leading-relaxed text-[#1E6F5C]">
-                    Download the template for each scope below, fill in your activity data, and upload it here.
-                    Deepwoods will process each file and notify you within 2 business days.
-                  </p>
-                </div>
-              </div>
-            )}
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">What would you like to submit?</div>
-            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-              {/* GHG Annual Report Card — admin role only */}
-              {ROLE_META[role].canAdmin && (
-                <button onClick={() => setActiveScope("ghg-report")}
-                  className="group col-span-1 sm:col-span-2 lg:col-span-full rounded-xl border-2 border-[#1E6F5C] bg-[#E6F4EF]/30 p-5 text-left transition hover:shadow-md hover:-translate-y-0.5">
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#1E6F5C] text-white">
-                      <BarChart3 className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="font-bold text-[var(--navy)]">GHG Annual Report — Data Submission</div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">
-                        Download the FY2026 combined data template (all 19 data points), fill it in, and upload here.
-                        Deepwoods will be notified automatically to generate your GHG report.
-                      </div>
-                    </div>
-                    <ChevronRight className="h-5 w-5 shrink-0 text-[#1E6F5C] opacity-60 transition group-hover:opacity-100" />
-                  </div>
-                </button>
-              )}
-              {visibleScopes.map(s => (
-                <button key={s.id} onClick={() => setActiveScope(s.id)}
-                  className="group rounded-xl border bg-white p-5 text-left transition hover:shadow-md hover:-translate-y-0.5">
-                  <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg text-white" style={{ background: s.accentVar }}>
-                    {s.icon}
-                  </div>
-                  <div className="font-bold tabular-nums text-[var(--navy)]">{s.label}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">{s.sub}</div>
-                  <div className="mt-3 flex items-center gap-1 text-xs font-semibold text-[var(--navy-2)] group-hover:gap-2 transition-all">
-                    Begin <ChevronRight className="h-3.5 w-3.5" />
-                  </div>
-                </button>
+    <div className="space-y-3">
+      <div className="hidden overflow-x-auto rounded-lg border bg-card md:block">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-neutral-soft">
+              <th className="sticky left-0 z-10 min-w-[200px] bg-neutral-soft px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Reporting method
+              </th>
+              {months.map(m => (
+                <th key={m.key} className="min-w-[92px] px-2 py-2 text-center text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {m.short}
+                </th>
               ))}
-              {/* Inventory Update card */}
-              <button onClick={() => setActiveScope("inventory")}
-                className="group rounded-xl border bg-white p-5 text-left transition hover:shadow-md hover:-translate-y-0.5">
-                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--navy)] text-white">
-                  <Building2 className="h-5 w-5" />
-                </div>
-                <div className="font-bold tabular-nums text-[var(--navy)]">Inventory Update</div>
-                <div className="mt-1 text-xs text-muted-foreground">Report changes to the entity asset boundary — new equipment, decommissioned assets, facility changes.</div>
-                <div className="mt-3 flex items-center gap-1 text-xs font-semibold text-[var(--navy-2)] group-hover:gap-2 transition-all">
-                  Report change <ChevronRight className="h-3.5 w-3.5" />
-                </div>
-              </button>
-            </div>
+            </tr>
+          </thead>
+          <tbody>
+            {S2_ROWS.map(({ suffix, label, hint }, rowIdx) => (
+              <tr key={suffix} className={rowIdx > 0 ? "border-t" : undefined}>
+                <td className="sticky left-0 z-10 bg-card px-3 py-2 min-w-[200px]">
+                  <div className="text-xs font-semibold text-navy">{label}</div>
+                  <div className="text-[10px] text-muted-foreground">{hint}</div>
+                </td>
+                {months.map(m => {
+                  const cellKey = `${m.key}__${suffix}`;
+                  const v = assetCells[cellKey] ?? null;
+                  const filled = v !== null;
+                  return (
+                    <td key={m.key} className="p-1 align-top">
+                      <div className={cn(
+                        "group relative rounded-md p-0.5 transition",
+                        filled ? "ghg-cell-filled" : "ghg-cell-empty",
+                      )}>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          value={v ?? ""}
+                          placeholder="—"
+                          onChange={e => {
+                            const raw = e.target.value.trim();
+                            onCellChange(asset.id, cellKey, raw === "" ? null : Number(raw));
+                          }}
+                          className="w-full bg-transparent px-1.5 py-1 text-right text-sm tabular-nums outline-none placeholder:text-muted-foreground/60"
+                        />
+                        {rowIdx === 0 && (
+                          <div className="flex items-center justify-between px-1 pb-0.5">
+                            <label className="cursor-pointer text-muted-foreground/60 opacity-0 transition group-hover:opacity-100">
+                              <Paperclip className="h-3 w-3" />
+                              <input type="file" multiple hidden />
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-            {/* Past submissions */}
-            {visibleSubs.length > 0 && (
-              <div className="mt-8">
-                <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                  Recent submissions{viewEntity !== consolidatedCode ? ` — ${viewEntity}` : ""}
+      {/* Mobile stack */}
+      <div className="space-y-2 md:hidden">
+        {months.map(m => (
+          <div key={m.key} className="rounded-lg border bg-card p-3 space-y-2">
+            <div className="text-xs font-semibold uppercase text-muted-foreground">{m.short}</div>
+            {S2_ROWS.map(({ suffix, label }) => {
+              const cellKey = `${m.key}__${suffix}`;
+              const v = assetCells[cellKey] ?? null;
+              return (
+                <div key={suffix}>
+                  <div className="mb-0.5 text-[10px] text-muted-foreground">{label} ({unit})</div>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={v ?? ""}
+                    placeholder="—"
+                    onChange={e => {
+                      const raw = e.target.value.trim();
+                      onCellChange(asset.id, cellKey, raw === "" ? null : Number(raw));
+                    }}
+                    className="w-full rounded-md border bg-background px-2 py-1 text-right text-sm tabular-nums outline-none"
+                  />
                 </div>
-                <div className="overflow-hidden rounded-xl border bg-white">
-                  <table className="w-full text-sm">
-                    <thead className="border-b bg-[var(--muted)]">
-                      <tr>
-                        {["Scope / Category","Entity","Year","Status","Submitted"].map(h => (
-                          <th key={h} className="px-4 py-2.5 text-left text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {visibleSubs.slice(0, 8).map(s => (
-                        <tr key={s.id} className="hover:bg-[var(--muted)]">
-                          <td className="px-4 py-2.5 font-medium">{s.datasetName}</td>
-                          <td className="px-4 py-2.5"><span className="rounded-full border px-2 py-0.5 text-[10px] font-bold text-[var(--navy)]">{s.entity}</span></td>
-                          <td className="px-4 py-2.5 text-muted-foreground">{s.year}</td>
-                          <td className="px-4 py-2.5"><StatusBadge status={s.status} /></td>
-                          <td className="px-4 py-2.5 text-xs text-muted-foreground">{s.date}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+              );
+            })}
           </div>
-        ) : activeScope === "inventory" ? (
-          <InventoryUpdateWizard year={year} defaultEntity={defaultEntity} onBack={() => setActiveScope(null)} />
-        ) : scope ? (
-          <ScopeWizard scope={scope} year={year} defaultEntity={defaultEntity} onBack={() => { setActiveScope(null); refresh(); }} onSubmitted={refresh} />
-        ) : null}
-      </PageBody>
-    </>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>LB = grid EF × total kWh · MB = instrument EF × renewable kWh + grid EF × remainder</span>
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs">
+            <StickyNote className="h-3.5 w-3.5" />Notes
+          </Button>
+          <span className="tabular-nums">{pct}% months entered</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
-/* ── Step-by-step scope wizard ─────────────────────────────────────────────── */
-function ScopeWizard({ scope, year, defaultEntity, onBack, onSubmitted }: {
-  scope: ScopeDef; year: string; defaultEntity: DataEntryEntity | null; onBack: () => void; onSubmitted: () => void;
-}) {
-  // Steps: 0=select entity, 1=download template, 2=upload filled template, 3..N=verification docs, N+1=review
-  const verDocs = scope.verificationDocs;
-  const totalSteps = 4 + verDocs.length; // entity + download + upload data + ver docs + review
-  const { client, entities } = useClientContext();
-  const [step, setStep] = useState(0);
-  const [entity, setEntity] = useState<DataEntryEntity | null>(defaultEntity);
-  const [dataFile, setDataFile] = useState<File | null>(null);
-  const [verFiles, setVerFiles] = useState<Record<string, File | null>>(
-    () => Object.fromEntries(verDocs.map(d => [d.id, null]))
-  );
-  const [submitting, setSubmitting] = useState(false);
+// ── Page ──────────────────────────────────────────────────────────────────────
 
-  const isEntity = step === 0;
-  const isDownload = step === 1;
-  const isDataUpload = step === 2;
-  const isReview = step === totalSteps - 1;
-  const verIdx = step - 3;
-  const verDoc = (!isEntity && !isDownload && !isDataUpload && !isReview) ? verDocs[verIdx] : null;
+function DataTrackerPage() {
+  const { entity } = useEntity();
+  const { fy } = useFiscalYear();
+  const ctx = useClientContext();
+  const { data: assets = [] } = useDecarbAssets(entity, fy);
+  const { data: facilities = [] } = useFacilities(entity);
+  const { data: ndcSummary = {} } = useNdcThreadsSummary(fy);
 
-  const progress = (step / (totalSteps - 1)) * 100;
+  const startMonth = ctx.client.reporting_period === "CY"
+    ? 1
+    : (parseInt((ctx.config as any).fiscal_year_start_month || "4") || 4);
+  const months = useMemo(() => genMonths(fy, startMonth), [fy, startMonth]);
 
-  const submit = async () => {
-    if (!entity) { toast.error("Select an entity before submitting."); return; }
-    if (!dataFile) { toast.error("Upload the completed data template before submitting."); return; }
-    setSubmitting(true);
-    try {
-      await addSubmission(client.slug, {
-        version: "V2", entity, datasetId: scope.id as string,
-        datasetName: scope.label, tag: scope.label, year,
-        unit: "All in-boundary facilities",
-        dataFile, documents: Object.values(verFiles).filter((f): f is File => !!f), notes: "",
-      });
-      toast.success(`${scope.label} (${entity}) submitted successfully`, {
-        description: "Will be verified within 2 business days.",
-      });
-      onSubmitted(); onBack();
-    } catch (e) {
-      toast.error("Submission failed", { description: e instanceof Error ? e.message : String(e) });
-      setSubmitting(false);
+  const consolidatedCode = ctx.entities.find((e) => e.is_consolidated)?.code;
+  const isConsolidatedView = !!consolidatedCode && entity === consolidatedCode;
+  const canSubmitRole = getRole() !== "client_leadership";
+  const summaryQ = useHomeSummary(entity, fy, !isConsolidatedView);
+  const submitCycle = useSubmitCycle();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const cycle = summaryQ.data?.cycle;
+  const locked = cycle?.status === "locked";
+  const submitted = cycle?.status === "submitted";
+  const [cells, setCells] = useState<CellMap>({});
+  const [activeFacilities, setActiveFacilities] = useState<string[]>([]);
+  const [scopeTab, setScopeTab] = useState<"s1" | "s2" | "s3">("s1");
+  const debounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  // Initialise cells from asset.series on load. Some clients only ever send one
+  // annual total for a source instead of monthly bills — for anything that
+  // isn't fugitive (fire extinguishers/refrigerants stay a single annual
+  // entry), spread that total evenly across the period's months so every
+  // month has a starting figure to review/edit instead of 12 empty cells.
+  useEffect(() => {
+    if (!assets.length) return;
+    const init: CellMap = {};
+    for (const a of assets) {
+      if (!a.series) continue;
+      init[a.id] = {};
+      for (const [k, v] of Object.entries(a.series)) {
+        if (v !== null && v !== undefined) init[a.id][k] = v;
+      }
+      const annualVal = a.series["annual"];
+      const hasMonthly = months.some(m => a.series![m.key] != null || a.series![`${m.key}__lb`] != null);
+      if (annualVal != null && !isAnnual(a) && !hasMonthly && !isSolar(a) && months.length > 0) {
+        const perMonth = Number(annualVal) / months.length;
+        for (const m of months) {
+          if (isS2Electricity(a)) init[a.id][`${m.key}__lb`] = perMonth;
+          else init[a.id][m.key] = perMonth;
+        }
+      }
+      // When no renewable-instrument data was ever recorded for a source, MB mirrors
+      // LB exactly — matching a ledger's explicit "Market-Based = Location-Based
+      // (no qualifying instruments)" note — instead of showing a blank gap.
+      if (isS2Electricity(a) && months.length > 0) {
+        const hasAnyMb = months.some(m => a.series![`${m.key}__mb`] != null);
+        if (!hasAnyMb) {
+          for (const m of months) {
+            const lbVal = init[a.id][`${m.key}__lb`];
+            if (lbVal != null) init[a.id][`${m.key}__mb`] = lbVal;
+          }
+        }
+      }
     }
+    setCells(init);
+    // open first facility by default
+    const firstFacility = assets[0]?.facility;
+    if (firstFacility) setActiveFacilities([firstFacility]);
+  }, [assets, months]);
+
+  const handleCellChange = useCallback((assetId: string, periodKey: string, value: number | null) => {
+    setCells(prev => ({
+      ...prev,
+      [assetId]: { ...(prev[assetId] ?? {}), [periodKey]: value },
+    }));
+    const key = `${assetId}__${periodKey}`;
+    if (debounceRef.current[key]) clearTimeout(debounceRef.current[key]);
+    debounceRef.current[key] = setTimeout(() => {
+      authFetch("data-tracker/draft.php", {
+        method: "POST",
+        body: JSON.stringify({ entity, fy, cells: [{ assetId, period: periodKey, value }] }),
+      }).catch(() => {});
+    }, 800);
+  }, [entity, fy]);
+
+  // Save/Submit buttons previously had no handler at all — every keystroke was
+  // already auto-saving via handleCellChange's debounce, but clicking Save had
+  // no effect and Submit only showed a fake "Submitted for review" toast with
+  // no backend call. This flushes every current cell value straight to the DB
+  // immediately (no separate review/approval step — the site has none), so
+  // the button actually does something and doesn't leave pending debounced
+  // writes unsent if the user navigates away right after clicking.
+  const [saving, setSaving] = useState(false);
+  const saveAll = useCallback(async () => {
+    setSaving(true);
+    Object.values(debounceRef.current).forEach(clearTimeout);
+    debounceRef.current = {};
+    const cellsList: { assetId: string; period: string; value: number | null }[] = [];
+    for (const [assetId, periods] of Object.entries(cells)) {
+      for (const [period, value] of Object.entries(periods)) {
+        cellsList.push({ assetId, period, value });
+      }
+    }
+    try {
+      await authFetch("data-tracker/draft.php", {
+        method: "POST",
+        body: JSON.stringify({ entity, fy, cells: cellsList }),
+      });
+      toast.success("Saved");
+      setSaving(false);
+      return true;
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : "Save failed — check connection");
+      setSaving(false);
+      return false;
+    }
+  }, [cells, entity, fy]);
+
+  // Group assets by facility name (filter null/empty — can happen if DB facility column is null)
+  const facilityNames = [...new Set(assets.map(a => a.facility).filter((f): f is string => !!f))];
+  const facilityMap = new Map<string, FacilityRow>(
+    facilities.map(f => [f.name, f])
+  );
+
+  // Overall progress — S2 electricity counts 2 rows (LB + MB) per month
+  function assetRowCount(a: DecarbAsset): number {
+    if (isAnnualNow(a, months)) return 0;
+    if (isS2Electricity(a)) return S2_ROWS.length;
+    return getSubFields(a).length;
+  }
+  const totalMonthlySlots = assets
+    .filter(a => !isAnnualNow(a, months))
+    .reduce((sum, a) => sum + months.length * assetRowCount(a), 0);
+  const totalAnnualSlots = assets.filter(a => isAnnualNow(a, months)).length;
+  const totalSlots = totalMonthlySlots + totalAnnualSlots;
+  const filledSlots = assets.reduce((sum, a) => {
+    const ac = cells[a.id] ?? {};
+    if (isAnnualNow(a, months)) return sum + (ac["annual"] != null ? 1 : 0);
+    if (isS2Electricity(a)) {
+      return sum + months.reduce((ms, m) =>
+        ms + S2_ROWS.filter(r => ac[`${m.key}__${r.suffix}`] != null).length, 0);
+    }
+    return sum + months.filter(m => ac[m.key] != null).length * getSubFields(a).length;
+  }, 0);
+  const overallPct = totalSlots > 0 ? filledSlots / totalSlots : 0;
+  const canSubmit = assets.length > 0;
+  const complete = overallPct >= 0.9999;
+  const summary = useMemo(() => trackerSummary(assets, months), [assets, months]);
+
+  const onSubmitClick = async () => {
+    const ok = await saveAll();
+    if (ok) setConfirmOpen(true);
+  };
+  const confirmSubmit = () => {
+    submitCycle.mutate({ entity, fy }, {
+      onSuccess: () => { toast.success("Submitted to Deepwoods"); setConfirmOpen(false); },
+      onError: (e) => toast.error(e.message || "Could not submit"),
+    });
   };
 
-  const stepLabel = isEntity ? "Select company"
-    : isDownload ? "Download template"
-    : isDataUpload ? "Upload data template"
-    : isReview ? "Review & submit"
-    : `Verification: ${verDoc?.label}`;
+  // ── XLSX import ref ────────────────────────────────────────────────────────
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  // ── XLSX template download ─────────────────────────────────────────────────
+  function downloadTemplate() {
+    const wb = XLSX.utils.book_new();
+    const clientName = (ctx.client as any)?.name ?? "Client";
+    const headerInfo = [`Client: ${clientName}`, `Entity: ${entity}`, `Fiscal Year: ${fy}`, `Template — fill values and re-import`];
+    const colHeader = ["Asset ID", "Asset Name", "Facility", "Scope", "Type", "Unit", ...months.map(m => m.short), "Annual"];
+    const rows: unknown[][] = [headerInfo, [], colHeader];
+    for (const asset of assets) {
+      const isAnn = isAnnualNow(asset, months);
+      if (isS2Electricity(asset)) {
+        const u = resolveAssetUnit(asset);
+        rows.push([asset.id, `${asset.name} — LB`, asset.facility ?? "", asset.scope ?? "", asset.sub_type ?? "", u, ...months.map(() => ""), ""]);
+        rows.push([asset.id, `${asset.name} — MB`, asset.facility ?? "", asset.scope ?? "", asset.sub_type ?? "", u, ...months.map(() => ""), ""]);
+      } else if (isAnn) {
+        rows.push([asset.id, asset.name, asset.facility ?? "", asset.scope ?? "", asset.sub_type ?? "", resolveAssetUnit(asset), ...months.map(() => ""), ""]);
+      } else {
+        rows.push([asset.id, asset.name, asset.facility ?? "", asset.scope ?? "", asset.sub_type ?? "", resolveAssetUnit(asset), ...months.map(() => ""), ""]);
+      }
+    }
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws["!cols"] = [{ wch: 26 }, { wch: 32 }, { wch: 20 }, { wch: 10 }, { wch: 16 }, { wch: 8 }, ...months.map(() => ({ wch: 10 })), { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, ws, "GHG Data");
+    XLSX.writeFile(wb, `GHG_Template_${entity}_${fy}.xlsx`);
+  }
+
+  // ── XLSX export (current filled data) ─────────────────────────────────────
+  function exportFilledXLSX() {
+    const wb = XLSX.utils.book_new();
+    const clientName = (ctx.client as any)?.name ?? "Client";
+    const headerInfo = [`Client: ${clientName}`, `Entity: ${entity}`, `Fiscal Year: ${fy}`, `Exported: ${new Date().toLocaleDateString()}`];
+    const colHeader = ["Asset ID", "Asset Name", "Facility", "Scope", "Type", "Unit", ...months.map(m => m.short), "Annual"];
+    const rows: unknown[][] = [headerInfo, [], colHeader];
+    for (const asset of assets) {
+      const ac = cells[asset.id] ?? {};
+      const isAnn = isAnnualNow(asset, months);
+      if (isS2Electricity(asset)) {
+        const u = resolveAssetUnit(asset);
+        const lbRow: (string | number)[] = [asset.id, `${asset.name} — LB`, asset.facility ?? "", asset.scope ?? "", asset.sub_type ?? "", u];
+        const mbRow: (string | number)[] = [asset.id, `${asset.name} — MB`, asset.facility ?? "", asset.scope ?? "", asset.sub_type ?? "", u];
+        for (const m of months) {
+          lbRow.push(ac[`${m.key}__lb`] ?? "");
+          mbRow.push(ac[`${m.key}__mb`] ?? "");
+        }
+        lbRow.push(""); mbRow.push("");
+        rows.push(lbRow, mbRow);
+      } else if (isAnn) {
+        const row = [asset.id, asset.name, asset.facility ?? "", asset.scope ?? "", asset.sub_type ?? "", resolveAssetUnit(asset), ...months.map(() => ""), ac["annual"] ?? ""];
+        rows.push(row);
+      } else {
+        const monthVals = months.map(m => ac[m.key] ?? "");
+        const annualSum = months.reduce((s, m) => s + (Number(ac[m.key]) || 0), 0);
+        rows.push([asset.id, asset.name, asset.facility ?? "", asset.scope ?? "", asset.sub_type ?? "", resolveAssetUnit(asset), ...monthVals, annualSum > 0 ? Math.round(annualSum * 100) / 100 : ""]);
+      }
+    }
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws["!cols"] = [{ wch: 26 }, { wch: 32 }, { wch: 20 }, { wch: 10 }, { wch: 16 }, { wch: 8 }, ...months.map(() => ({ wch: 10 })), { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, ws, "GHG Data");
+    const clientName2 = (ctx.client as any)?.name ?? "GHG";
+    XLSX.writeFile(wb, `${clientName2}_${entity}_${fy}.xlsx`);
+  }
+
+  // ── XLSX import handler ────────────────────────────────────────────────────
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const ab = await file.arrayBuffer();
+      const wb = XLSX.read(ab, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 });
+
+      // Find header row (contains "Asset ID")
+      let headerIdx = -1;
+      for (let i = 0; i < Math.min(raw.length, 10); i++) {
+        const r = raw[i] as unknown[];
+        if (r?.some(c => String(c ?? "").toLowerCase().includes("asset id"))) {
+          headerIdx = i; break;
+        }
+      }
+      if (headerIdx === -1) { toast.error("Invalid file: cannot find header row"); return; }
+
+      const headers = (raw[headerIdx] as unknown[]).map(c => String(c ?? "").trim());
+      // Map month short labels → column index; also find Annual column
+      const monthColIdx: Record<string, number> = {};
+      for (let c = 0; c < headers.length; c++) {
+        const h = headers[c].toUpperCase();
+        const m = months.find(mm => mm.short.toUpperCase() === h);
+        if (m) monthColIdx[m.key] = c;
+        if (h === "ANNUAL") monthColIdx["annual"] = c;
+      }
+
+      const newCellsMap: CellMap = {};
+      const batchCells: { assetId: string; period: string; value: number | null }[] = [];
+
+      for (let r = headerIdx + 1; r < raw.length; r++) {
+        const row = raw[r] as unknown[];
+        if (!row?.length) continue;
+        const rawId = String(row[0] ?? "").trim();
+        if (!rawId) continue;
+        const nameCol = String(row[1] ?? "");
+        const isMB = nameCol.includes("— MB") || nameCol.endsWith("MB");
+
+        const asset = assets.find(a => a.id === rawId);
+        if (!asset) continue;
+
+        if (!newCellsMap[asset.id]) newCellsMap[asset.id] = {};
+
+        for (const [periodKey, colIdx] of Object.entries(monthColIdx)) {
+          const raw2 = row[colIdx];
+          if (raw2 === null || raw2 === undefined || raw2 === "") continue;
+          const val = Number(raw2);
+          if (isNaN(val)) continue;
+
+          let storeKey = periodKey;
+          if (isS2Electricity(asset) && periodKey !== "annual") {
+            storeKey = isMB ? `${periodKey}__mb` : `${periodKey}__lb`;
+          }
+          newCellsMap[asset.id][storeKey] = val;
+          batchCells.push({ assetId: asset.id, period: storeKey, value: val });
+        }
+      }
+
+      if (!batchCells.length) { toast.error("No matching data found in file"); return; }
+
+      setCells(prev => {
+        const next = { ...prev };
+        for (const [assetId, periods] of Object.entries(newCellsMap)) {
+          next[assetId] = { ...(prev[assetId] ?? {}), ...periods };
+        }
+        return next;
+      });
+
+      await authFetch("data-tracker/draft.php", {
+        method: "POST",
+        body: JSON.stringify({ entity, fy, cells: batchCells }),
+      });
+      toast.success(`Imported ${batchCells.length} values from ${file.name}`);
+    } catch {
+      toast.error("Import failed — check file format");
+    }
+  }
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <button onClick={onBack} className="mb-4 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ChevronLeft className="h-4 w-4" /> All scopes
-      </button>
-
-      <div className="mb-5 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg text-white" style={{ background: scope.accentVar }}>
-          {scope.icon}
-        </div>
-        <div>
-          <div className="font-bold tabular-nums text-[var(--navy)]">
-            {scope.label}{entity ? <span className="ml-2 rounded-full border px-2 py-0.5 text-xs">{entity}</span> : null}
+    <div className="min-h-screen bg-background pb-24">
+      {/* Sticky sub-header */}
+      <div className="sticky top-[52px] z-30 border-b bg-card/95 backdrop-blur">
+        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-4 px-4 py-3">
+          <div className="min-w-0">
+            <h1 className="truncate text-xl font-bold text-navy">GHG Data Collection</h1>
+            <p className="text-xs text-muted-foreground">
+              {fy} · {filledSlots} of {totalSlots} fields complete
+            </p>
           </div>
-          <div className="text-xs text-muted-foreground">{scope.sub}</div>
+
+          <div className="ml-auto flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-full border-2 border-ghg-green flex items-center justify-center text-xs font-bold text-ghg-green tabular-nums">
+                {Math.round(overallPct * 100)}%
+              </div>
+            </div>
+            {/* Hidden file input for XLSX import */}
+            <input ref={importInputRef} type="file" accept=".xlsx,.xls" hidden onChange={handleImportFile} />
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={downloadTemplate}>
+              <Download className="h-3.5 w-3.5" /> Template
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => importInputRef.current?.click()}>
+              <Upload className="h-3.5 w-3.5" /> Import XLSX
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={exportFilledXLSX}>
+              <Download className="h-3.5 w-3.5" /> Export XLSX
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5" disabled={saving} onClick={saveAll}>
+              <Save className="h-3.5 w-3.5" /> Save draft
+            </Button>
+            <Button
+              size="sm"
+              disabled={!canSubmit || saving || locked || isConsolidatedView || !canSubmitRole}
+              onClick={onSubmitClick}
+              title={isConsolidatedView ? "Select a single entity to submit" : locked ? "This period is locked" : undefined}
+              className={cn(
+                "gap-1.5 transition",
+                canSubmit && !complete && "bg-amber-warn text-white hover:bg-amber-warn/90",
+                complete && "bg-ghg-green text-ghg-green-foreground hover:bg-ghg-green/90",
+              )}
+            >
+              <Send className="h-3.5 w-3.5" />
+              {locked ? "Locked" : submitted ? "Resubmit" : "Submit"}
+            </Button>
+          </div>
+        </div>
+        {/* Scope tabs */}
+        <div className="mx-auto max-w-[1440px] px-4 pb-2">
+          <div className="inline-flex gap-1 rounded-lg bg-muted p-1">
+            {(["s1", "s2", "s3"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setScopeTab(tab)}
+                className={cn(
+                  "px-4 py-1.5 rounded-md text-sm font-medium transition-colors",
+                  scopeTab === tab
+                    ? "bg-card text-navy shadow-sm"
+                    : "text-muted-foreground hover:text-navy",
+                )}
+              >
+                {tab === "s1" ? "Scope 1 — Direct" : tab === "s2" ? "Scope 2 — Purchased Energy" : "Scope 3 — Value Chain"}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      <Card>
-        {/* Progress bar */}
-        <div className="mb-5">
-          <div className="mb-1 flex justify-between text-xs font-semibold text-muted-foreground">
-            <span>Step {step + 1} of {totalSteps}</span>
-            <span>{stepLabel}</span>
-          </div>
-          <div className="h-2 w-full rounded-full bg-[var(--muted)]">
-            <div className="h-2 rounded-full bg-[var(--navy)] transition-all" style={{ width: `${progress}%` }} />
-          </div>
-        </div>
-
-        {/* ── Step 0: Entity ── */}
-        {isEntity && (
-          <div>
-            <EntityPicker value={entity} onChange={(e) => { setEntity(e); setStep(1); }} />
-          </div>
-        )}
-
-        {/* ── Step 1: Download template ── */}
-        {isDownload && (
-          <div className="space-y-4">
-            <div className="rounded-xl border-2 border-[#1E6F5C] bg-[#E6F4EF]/40 p-4">
-              <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#1E6F5C]">Download template</div>
-              <div className="font-semibold text-[var(--navy)]">{scope.template}</div>
-              <p className="mt-1 text-xs text-muted-foreground">{scope.templateHint}</p>
-              <a href={`/templates/${scope.template}`} download={scope.template}
-                className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[#1E6F5C] px-4 py-1.5 text-sm font-semibold text-[#1E6F5C] hover:bg-[#E6F4EF]">
-                <Download className="h-4 w-4" /> Download template
-              </a>
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Submit {fy} data to Deepwoods?</DialogTitle>
+            <DialogDescription>
+              Your consultant is told that this period is ready to review. You can keep editing afterwards, but resubmit so they know.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div className="rounded-lg border bg-muted/40 p-3">
+              <p className="text-2xl font-semibold tabular-nums text-navy">{Math.round(summary.pct * 100)}%</p>
+              <p className="text-[11px] text-muted-foreground">entries filled</p>
             </div>
-            <p className="text-sm text-muted-foreground">Fill in the yellow <em>FY value</em> column for every data point, then click Next to upload the completed file.</p>
-          </div>
-        )}
-
-        {/* ── Step 2: Upload data template ── */}
-        {isDataUpload && (
-          <div>
-            <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Upload completed template</div>
-            <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border-2 border-dashed bg-[var(--muted)] px-5 py-4 hover:bg-[var(--accent)]">
-              <div className="flex min-w-0 items-center gap-3 text-muted-foreground">
-                <FileSpreadsheet className="h-5 w-5 shrink-0" />
-                {dataFile
-                  ? <span className="truncate font-mono text-sm font-semibold text-[var(--navy)]">{dataFile.name}</span>
-                  : <span className="text-sm">Select filled template · .xlsx</span>}
-              </div>
-              <span className="shrink-0 rounded-lg bg-[var(--navy)] px-4 py-1.5 text-sm font-semibold text-white">{dataFile ? "Change" : "Browse"}</span>
-              <input type="file" accept=".xlsx" className="hidden" onChange={e => setDataFile(e.target.files?.[0] ?? null)} />
-            </label>
-            {dataFile && (
-              <div className="mt-2 flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-                <CheckCircle2 className="h-3.5 w-3.5" /> {dataFile.name} ready
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── Steps 3..N-1: Verification docs ── */}
-        {verDoc && (
-          <div>
-            <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{verDoc.label}</div>
-            <p className="mb-3 text-sm text-muted-foreground">{verDoc.hint}</p>
-            <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border-2 border-dashed bg-[var(--muted)] px-5 py-4 hover:bg-[var(--accent)]">
-              <div className="flex min-w-0 items-center gap-3 text-muted-foreground">
-                <FileSpreadsheet className="h-5 w-5 shrink-0" />
-                {verFiles[verDoc.id]
-                  ? <span className="truncate font-mono text-sm font-semibold text-[var(--navy)]">{verFiles[verDoc.id]!.name}</span>
-                  : <span className="text-sm">Optional — {verDoc.accept}</span>}
-              </div>
-              <span className="shrink-0 rounded-lg bg-[var(--navy)] px-4 py-1.5 text-sm font-semibold text-white">{verFiles[verDoc.id] ? "Change" : "Browse"}</span>
-              <input type="file" accept={verDoc.accept} className="hidden"
-                onChange={e => setVerFiles(prev => ({ ...prev, [verDoc.id]: e.target.files?.[0] ?? null }))} />
-            </label>
-          </div>
-        )}
-
-        {/* ── Final step: Review ── */}
-        {isReview && (
-          <div className="space-y-3">
-            <div className="rounded-lg border bg-[var(--muted)] px-4 py-3 text-sm">
-              <div className="font-semibold text-[var(--navy)] mb-1">Submission summary</div>
-              <div className="text-xs text-muted-foreground space-y-1">
-                <div><span className="font-medium">Entity:</span> {entity} — {entity ? entities.find(e => e.code === entity)?.name ?? entity : ""}</div>
-                <div><span className="font-medium">Scope:</span> {scope.label}</div>
-                <div><span className="font-medium">Year:</span> {year}</div>
-                <div><span className="font-medium">Data file:</span> {dataFile?.name ?? "—"}</div>
-                {Object.entries(verFiles).filter(([, f]) => f).map(([id, f]) => {
-                  const doc = scope.verificationDocs.find(d => d.id === id);
-                  return <div key={id}><span className="font-medium">{doc?.label}:</span> {f!.name}</div>;
-                })}
-              </div>
+            <div className="rounded-lg border bg-muted/40 p-3">
+              <p className="text-2xl font-semibold tabular-nums text-navy">{summary.complete}/{summary.sources}</p>
+              <p className="text-[11px] text-muted-foreground">sources complete</p>
+            </div>
+            <div className="rounded-lg border bg-muted/40 p-3">
+              <p className="text-2xl font-semibold tabular-nums text-navy">{cycle?.data_due_date ? new Date(cycle.data_due_date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"}</p>
+              <p className="text-[11px] text-muted-foreground">data due</p>
             </div>
           </div>
-        )}
-
-        {/* ── Navigation ── */}
-        <div className="mt-6 flex justify-between">
-          <button onClick={() => step > 0 ? setStep(s => s - 1) : onBack()}
-            className="inline-flex items-center gap-1 rounded-lg border px-4 py-2 text-sm font-semibold">
-            <ChevronLeft className="h-4 w-4" /> {step === 0 ? "All scopes" : "Back"}
-          </button>
-          {isReview ? (
-            <button onClick={submit} disabled={submitting}
-              className="inline-flex items-center gap-2 rounded-lg bg-[var(--navy)] px-5 py-2 text-sm font-semibold text-white disabled:opacity-50">
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
-              {submitting ? "Submitting…" : "Submit"}
-            </button>
-          ) : (
-            <button
-              onClick={() => {
-                if (isEntity && !entity) { toast.error("Select an entity first."); return; }
-                if (isDataUpload && !dataFile) { toast.error("Upload the completed template first."); return; }
-                setStep(s => s + 1);
-              }}
-              className="inline-flex items-center gap-2 rounded-lg bg-[var(--navy)] px-5 py-2 text-sm font-semibold text-white">
-              Next <ChevronRight className="h-4 w-4" />
-            </button>
+          {summary.pct < 0.9999 && (
+            <p className="text-xs text-muted-foreground">
+              Some entries are still empty. Gaps will be noted in the consultant's review — submitting incomplete data is fine.
+            </p>
           )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>Keep editing</Button>
+            <Button onClick={confirmSubmit} disabled={submitCycle.isPending}>
+              {submitCycle.isPending ? "Submitting…" : "Submit to Deepwoods"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <main className={cn(
+        "mx-auto max-w-[1440px] space-y-4 px-4 py-6",
+        locked && "[&_input[type=number]]:pointer-events-none [&_input[type=number]]:bg-muted [&_input[type=file]]:hidden",
+      )}>
+        {locked && (
+          <div className="flex items-start gap-3 rounded-lg border border-slate-300 bg-slate-50 p-4 text-sm" role="status">
+            <Info className="mt-0.5 h-4 w-4 text-slate-600" />
+            <div>
+              <p className="font-semibold text-navy">This reporting period is locked.</p>
+              <p className="mt-1 text-muted-foreground">Deepwoods has locked {fy} for review. Ask your consultant if something needs to change — you can still ask a question under any source.</p>
+            </div>
+          </div>
+        )}
+        {submitted && (
+          <div className="flex items-start gap-3 rounded-lg border border-primary/30 bg-ghg-green-soft p-4 text-sm" role="status">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" />
+            <div>
+              <p className="font-semibold text-navy">Submitted{cycle?.submitted_at ? ` on ${new Date(cycle.submitted_at.replace(" ", "T")).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : ""}.</p>
+              <p className="mt-1 text-muted-foreground">If you change anything now, press Resubmit so your consultant knows.</p>
+            </div>
+          </div>
+        )}
+        {!submitted && !locked && cycle?.data_due_date && (
+          <div className={cn("flex items-center gap-3 rounded-lg border p-3 text-sm", cycle.overdue ? "border-red-200 bg-red-50 text-red-800" : "border-border bg-card text-muted-foreground")} role="status">
+            <Info className="h-4 w-4 shrink-0" />
+            <span>
+              Data due {new Date(cycle.data_due_date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
+              {cycle.days_to_due != null ? (cycle.days_to_due < 0 ? ` — ${Math.abs(cycle.days_to_due)} days overdue` : ` — ${cycle.days_to_due} days left`) : ""}.
+            </span>
+          </div>
+        )}
+        {isConsolidatedView && (
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground" role="status">
+            <Info className="h-4 w-4 shrink-0" />
+            <span>You are viewing the combined view. Pick a single entity in the switcher above to submit its data.</span>
+          </div>
+        )}
+        {overallPct === 0 && (
+          <div className="flex items-start gap-3 rounded-lg border border-primary/30 bg-ghg-green-soft p-4 text-sm">
+            <Info className="mt-0.5 h-4 w-4 text-primary" />
+            <div>
+              <p className="font-semibold text-navy">Welcome to your GHG data collection.</p>
+              <p className="mt-1 text-muted-foreground">
+                Fill in what you have — you can submit at any time. Use "Import XLSX" to bulk-upload from a spreadsheet. Everything auto-saves.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {overallPct > 0 && !complete && (
+          <div className="flex items-start gap-3 rounded-lg border border-amber-warn/40 bg-amber-soft/50 p-4 text-sm">
+            <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-warn" />
+            <div>
+              <p className="font-semibold text-navy">{Math.round(overallPct * 100)}% complete — you can submit now or continue filling in.</p>
+              <p className="mt-1 text-muted-foreground">Gaps will be noted in the consultant's review. Submit any time.</p>
+            </div>
+          </div>
+        )}
+
+        {complete && (
+          <div className="flex items-start gap-3 rounded-lg border border-ghg-green/40 bg-ghg-green-soft p-4 text-sm">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 text-ghg-green" />
+            <div>
+              <p className="font-semibold text-navy">All data captured for {fy}. Ready to submit.</p>
+              <p className="mt-1 text-muted-foreground">Your consultant will receive the full submission and run the emissions calculations.</p>
+            </div>
+          </div>
+        )}
+
+        {!facilityNames.length && (
+          <div className="rounded-xl border bg-card p-8 text-center">
+            <p className="text-sm text-muted-foreground mb-3">No emission sources configured yet.</p>
+            <a
+              href="/inventory-boundary"
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity"
+            >
+              Set up Inventory Boundary →
+            </a>
+          </div>
+        )}
+
+        <div className={scopeTab !== "s3" ? "hidden" : ""}>
+          <GhgStoreProvider storageKey={`${ctx.client.slug}-ghg-v3`}>
+            <Scope3Cards />
+          </GhgStoreProvider>
         </div>
-      </Card>
+
+        <Accordion
+          type="multiple"
+          value={activeFacilities}
+          onValueChange={setActiveFacilities}
+          className={cn("space-y-3", scopeTab === "s3" ? "hidden" : "")}
+        >
+          {facilityNames
+            .filter(fn => assets.some(a => a.facility === fn && a.scope === (scopeTab === "s1" ? "Scope 1" : "Scope 2")))
+            .map(facilityName => {
+            const facilityRow = facilityMap.get(facilityName);
+            const facilityAssets = assets.filter(a => a.facility === facilityName && a.scope === (scopeTab === "s1" ? "Scope 1" : "Scope 2"));
+            const fSlots = facilityAssets.reduce((sum, a) => {
+              if (isAnnualNow(a, months)) return sum + 1;
+              return sum + months.length * assetRowCount(a);
+            }, 0);
+            const fFilled = facilityAssets.reduce((sum, a) => {
+              const ac = cells[a.id] ?? {};
+              if (isAnnualNow(a, months)) return sum + (ac["annual"] != null ? 1 : 0);
+              if (isS2Electricity(a)) {
+                return sum + months.reduce((ms, m) =>
+                  ms + S2_ROWS.filter(r => ac[`${m.key}__${r.suffix}`] != null).length, 0);
+              }
+              return sum + months.filter(m => ac[m.key] != null).length * getSubFields(a).length;
+            }, 0);
+            const fPct = fSlots > 0 ? Math.round((fFilled / fSlots) * 100) : 0;
+
+            // Group by scope sub-category
+            const s1Assets = facilityAssets.filter(a => a.scope === "Scope 1");
+            const s2Assets = facilityAssets.filter(a => a.scope === "Scope 2");
+
+            return (
+              <AccordionItem key={facilityName} value={facilityName} className="rounded-lg border bg-card shadow-sm">
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <div className="flex w-full items-center gap-3 pr-2">
+                    <div className={cn(
+                      "flex h-9 w-9 items-center justify-center rounded-md text-xs font-mono font-semibold shrink-0",
+                      fPct >= 100 ? "bg-ghg-green text-ghg-green-foreground"
+                        : fPct >= 50 ? "bg-amber-warn text-white"
+                        : fPct > 0 ? "bg-critical text-white"
+                        : "bg-neutral-soft text-muted-foreground",
+                    )}>
+                      {facilityName.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="text-left min-w-0">
+                      <div className="text-base font-semibold text-navy">{facilityName}</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {facilityRow?.grid_utility ?? ""}{facilityRow?.grid_utility ? " · " : ""}{facilityAssets.length} equipment sources
+                      </div>
+                    </div>
+                    <div className="ml-auto flex items-center gap-3 shrink-0">
+                      <Badge variant="outline" className="text-[10px]">Active</Badge>
+                      <span className="text-sm font-semibold tabular-nums text-navy">{fPct}%</span>
+                    </div>
+                  </div>
+                </AccordionTrigger>
+
+                <AccordionContent className="border-t bg-neutral-soft/30 px-4 py-4">
+                  <div className="space-y-6">
+                    {/* Scope 1 group */}
+                    {s1Assets.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-3 mb-3 rounded-lg bg-rose-50 border border-rose-200 px-4 py-2">
+                          <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                          <span className="font-semibold text-sm text-rose-800">Scope 1 — Direct Emissions</span>
+                          <span className="ml-auto text-xs text-rose-600">{s1Assets.length} source{s1Assets.length !== 1 ? "s" : ""}</span>
+                        </div>
+                        <div className="space-y-4">
+                          {s1Assets.map(asset => {
+                            const { label, isS1 } = getScopeInfo(asset);
+                            const ndcEntry = ndcSummary[asset.id];
+                            return (
+                              <section key={asset.id} className="rounded-lg border bg-card p-4 shadow-sm">
+                                <header className="mb-3 flex flex-wrap items-start gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h3 className="text-base font-semibold text-navy">{asset.name}</h3>
+                                    <span className="rounded-md bg-neutral-soft px-2 py-0.5 font-mono text-[11px]">{asset.id}</span>
+                                    <Badge variant="outline" className={cn("text-[10px]", isS1 ? "border-primary text-primary" : "border-amber-warn text-amber-warn")}>
+                                      {label}
+                                    </Badge>
+                                    {isAnnualNow(asset, months) && (
+                                      <Badge className="bg-muted text-muted-foreground text-[10px]">Annual entry</Badge>
+                                    )}
+                                    {ndcEntry && (
+                                      <ThreadBadge count={ndcEntry.count} hasOpen={ndcEntry.has_open} />
+                                    )}
+                                  </div>
+                                  {asset.fuel && (
+                                    <p className="w-full text-xs text-muted-foreground mt-0.5">Fuel: {asset.fuel}</p>
+                                  )}
+                                </header>
+                                <EquipmentGrid
+                                  asset={asset}
+                                  months={months}
+                                  cells={cells}
+                                  onCellChange={handleCellChange}
+                                />
+                                <ThreadPanel
+                                  sourceType="scope12"
+                                  sourceId={asset.id}
+                                  fy={fy}
+                                  summaryCount={ndcEntry?.count}
+                                  summaryHasOpen={ndcEntry?.has_open}
+                                />
+                              </section>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Scope 2 group */}
+                    {s2Assets.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-3 mb-3 rounded-lg bg-blue-50 border border-blue-200 px-4 py-2">
+                          <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                          <span className="font-semibold text-sm text-blue-800">Scope 2 — Purchased Energy</span>
+                          <div className="ml-auto flex items-center gap-2">
+                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">LB</span>
+                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">MB</span>
+                            <span className="text-xs text-blue-600">{s2Assets.length} source{s2Assets.length !== 1 ? "s" : ""}</span>
+                          </div>
+                        </div>
+                        <div className="space-y-4">
+                          {s2Assets.map(asset => {
+                            const { label, isS1 } = getScopeInfo(asset);
+                            const dual = isS2Electricity(asset);
+                            const ndcEntry = ndcSummary[asset.id];
+                            return (
+                              <section key={asset.id} className="rounded-lg border bg-card p-4 shadow-sm">
+                                <header className="mb-3 flex flex-wrap items-start gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h3 className="text-base font-semibold text-navy">{asset.name}</h3>
+                                    <span className="rounded-md bg-neutral-soft px-2 py-0.5 font-mono text-[11px]">{asset.id}</span>
+                                    {dual ? (
+                                      <>
+                                        <Badge variant="outline" className="text-[10px] border-blue-400 text-blue-700">LB</Badge>
+                                        <Badge variant="outline" className="text-[10px] border-blue-400 text-blue-700">MB</Badge>
+                                      </>
+                                    ) : (
+                                      <Badge variant="outline" className={cn("text-[10px]", isS1 ? "border-primary text-primary" : "border-amber-warn text-amber-warn")}>
+                                        {label}
+                                      </Badge>
+                                    )}
+                                    {isAnnualNow(asset, months) && (
+                                      <Badge className="bg-muted text-muted-foreground text-[10px]">Annual entry</Badge>
+                                    )}
+                                    {ndcEntry && (
+                                      <ThreadBadge count={ndcEntry.count} hasOpen={ndcEntry.has_open} />
+                                    )}
+                                  </div>
+                                  {asset.fuel && (
+                                    <p className="w-full text-xs text-muted-foreground mt-0.5">Fuel: {asset.fuel}</p>
+                                  )}
+                                </header>
+                                {dual ? (
+                                  <S2DualGrid
+                                    asset={asset}
+                                    months={months}
+                                    cells={cells}
+                                    onCellChange={handleCellChange}
+                                  />
+                                ) : (
+                                  <EquipmentGrid
+                                    asset={asset}
+                                    months={months}
+                                    cells={cells}
+                                    onCellChange={handleCellChange}
+                                  />
+                                )}
+                                <ThreadPanel
+                                  sourceType="scope12"
+                                  sourceId={asset.id}
+                                  fy={fy}
+                                  summaryCount={ndcEntry?.count}
+                                  summaryHasOpen={ndcEntry?.has_open}
+                                />
+                              </section>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            );
+          })}
+        </Accordion>
+      </main>
+
+      {/* Bottom sticky progress bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t bg-card/95 backdrop-blur">
+        <div className="mx-auto flex max-w-[1440px] items-center gap-3 px-4 py-2.5 text-xs">
+          <span className="tabular-nums text-muted-foreground">
+            {filledSlots.toLocaleString()} of {totalSlots.toLocaleString()} fields complete
+          </span>
+          <div className="mx-3 h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-soft">
+            <div
+              className={cn(
+                "h-full transition-all",
+                complete ? "bg-ghg-green"
+                  : overallPct > 0 ? "bg-amber-warn"
+                  : "bg-muted-foreground/40",
+              )}
+              style={{ width: `${Math.max(2, overallPct * 100)}%` }}
+            />
+          </div>
+          <Button size="sm" variant="outline" className="gap-1.5" disabled={saving} onClick={saveAll}>
+            <Save className="h-3.5 w-3.5" /> Save
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
-export default Submissions;

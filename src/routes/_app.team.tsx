@@ -16,7 +16,7 @@ export const Route = createFileRoute("/_app/team")({ component: TeamPage });
 
 // ── Role definitions ──────────────────────────────────────────────────────────
 
-type InviteRole = "sustainability_team" | "client_uploader_entity" | "client_uploader" | "client_leadership";
+type InviteRole = "sustainability_team" | "entity_admin" | "client_uploader_entity" | "client_uploader" | "client_leadership";
 
 interface RoleDef {
   id: InviteRole;
@@ -46,6 +46,22 @@ const ROLE_DEFS: RoleDef[] = [
       "View compliance reports",
     ],
     needsEntity: false,
+  },
+  {
+    id: "entity_admin",
+    dbRole: "sustainability_team",
+    label: "Entity Admin",
+    badge: "Entity Admin",
+    badgeCls: "bg-indigo-50 text-indigo-700",
+    icon: Building2,
+    description: "Full admin access scoped to a single entity. Manages that entity's facilities and invites its own team.",
+    permissions: [
+      "All dashboards and analytics (scoped entity only)",
+      "Manage facilities for their entity",
+      "Invite and remove team members for their entity",
+      "Edit and submit data for their entity",
+    ],
+    needsEntity: true,
   },
   {
     id: "client_uploader_entity",
@@ -100,6 +116,9 @@ function roleDef(dbRole: string, entityScope: string | null): RoleDef {
   if (dbRole === "client_uploader" && entityScope) {
     return ROLE_DEFS.find((r) => r.id === "client_uploader_entity")!;
   }
+  if (dbRole === "sustainability_team" && entityScope) {
+    return ROLE_DEFS.find((r) => r.id === "entity_admin")!;
+  }
   return ROLE_DEFS.find((r) => r.dbRole === dbRole && !r.needsEntity) ?? ROLE_DEFS[0];
 }
 
@@ -107,14 +126,20 @@ const inputCls = "w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 p
 
 // ── Invite Modal ──────────────────────────────────────────────────────────────
 
-function InviteModal({ onClose, entities }: {
+function InviteModal({ onClose, entities, restrictToEntity }: {
   onClose: () => void;
   entities: { code: string; name: string }[];
+  // Set when the inviter is themselves an entity admin — they can only grant
+  // access to their own entity, so org-wide roles are hidden from the picker.
+  restrictToEntity?: string | null;
 }) {
+  const selectableRoles = restrictToEntity
+    ? ROLE_DEFS.filter((r) => r.needsEntity)
+    : ROLE_DEFS;
   const [step, setStep] = useState<"role" | "details">("role");
   const [selectedRole, setSelectedRole] = useState<RoleDef | null>(null);
   const [email, setEmail] = useState("");
-  const [entity, setEntity] = useState("");
+  const [entity, setEntity] = useState(restrictToEntity ?? (entities.length === 1 ? entities[0].code : ""));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ email: string; tempPassword: string; emailSent: boolean } | null>(null);
@@ -215,7 +240,7 @@ function InviteModal({ onClose, entities }: {
           /* ── Step 1: Role selection ── */
           <div className="p-4">
             <div className="space-y-2">
-              {ROLE_DEFS.map((rd) => {
+              {selectableRoles.map((rd) => {
                 const Icon = rd.icon;
                 return (
                   <button
@@ -291,17 +316,20 @@ function InviteModal({ onClose, entities }: {
                     Entity scope
                   </label>
                   <select
-                    className={inputCls + " cursor-pointer"}
+                    className={inputCls + " cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"}
                     value={entity}
                     onChange={(e) => setEntity(e.target.value)}
+                    disabled={!!restrictToEntity}
                   >
                     <option value="">Select entity</option>
                     {entities.map((e) => (
-                      <option key={e.code} value={e.code}>{e.name} ({e.code})</option>
+                      <option key={e.code} value={e.code}>{e.code}</option>
                     ))}
                   </select>
                   <p className="mt-1 text-[11px] text-slate-400">
-                    This person will only see data for the selected entity.
+                    {restrictToEntity
+                      ? "Locked to your own entity — you can't grant access beyond it."
+                      : "This person will only see data for the selected entity."}
                   </p>
                 </div>
               )}
@@ -599,6 +627,7 @@ function TeamPage() {
         <InviteModal
           onClose={() => setShowInvite(false)}
           entities={nonConsolidatedEntities.map((e) => ({ code: e.code, name: e.name }))}
+          restrictToEntity={ctx.user?.entity_scope ?? null}
         />
       )}
     </>

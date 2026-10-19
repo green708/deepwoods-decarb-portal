@@ -54,6 +54,7 @@ function StatusBadge({ s }: { s: string }) {
     late: { bg: "var(--critical-bg)", fg: "var(--critical)", label: "Delayed", icon: AlertTriangle },
     upcoming: { bg: "#EEF2F7", fg: "#64748B", label: "Not Started", icon: Circle },
     "Not Started": { bg: "#EEF2F7", fg: "#64748B", label: "Not Started", icon: Circle },
+    Committed: { bg: "#E6F4EF", fg: "#1E6F5C", label: "Committed", icon: Circle },
     Completed: { bg: "var(--success-bg)", fg: "var(--success)", label: "Completed", icon: CheckCircle2 },
   };
   const c = map[s] ?? map.upcoming;
@@ -118,16 +119,26 @@ function Timeline() {
 function ProgressPage() {
   const { data: actionsData } = useDecarbActions();
   const COMMITTED = (actionsData ?? [])
-    .filter((a) => a.status === "In Progress" || a.status === "Completed" || a.status === "Delayed")
-    .map((a) => ({
-      title: a.title,
-      target: a.timeline,
-      status: a.status,
-      plan: a.abatement_t ?? 0,
-      actual: 0,
-      pct: a.status === "Completed" ? 100 : a.status === "In Progress" ? 50 : 0,
-      owner: a.entity,
-    }));
+    .filter((a) => a.status === "Committed" || a.status === "In Progress" || a.status === "Completed" || a.status === "Delayed")
+    .map((a) => {
+      const plan = a.abatement_t ?? 0;
+      const actual = a.actual_abatement_t ?? 0;
+      let pct = a.status === "Completed" ? 100 : a.status === "Committed" ? 0 : 50;
+      if (a.status === "In Progress" && a.start_date && a.end_date) {
+        const s = new Date(a.start_date).getTime();
+        const e = new Date(a.end_date).getTime();
+        if (e > s) pct = Math.max(0, Math.min(99, Math.round(((Date.now() - s) / (e - s)) * 100)));
+      }
+      return {
+        title: a.title,
+        target: a.end_date ?? a.timeline,
+        status: a.status,
+        plan,
+        actual,
+        pct,
+        owner: a.owner ?? a.entity,
+      };
+    });
 
   return (
     <div className="p-6 lg:p-8">
@@ -149,7 +160,13 @@ function ProgressPage() {
         <CardHeader title="Committed actions tracker" subtitle="What moved from planned to committed" />
         <div className="divide-y">
           {COMMITTED.length === 0 ? (
-            <div className="p-6 text-center text-sm text-[color:var(--ink-muted)]">No committed actions in the database yet.</div>
+            <div className="flex flex-col items-center gap-3 p-8 text-center">
+              <p className="text-sm text-[color:var(--ink-muted)]">No actions have been committed yet.</p>
+              <p className="text-xs text-[color:var(--ink-muted)]">Once you and your Deepwoods consultant agree an initiative, it appears here with its owner, timeline and the reduction it delivers.</p>
+              <a href="/action-plan" className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity">
+                Go to Action Plan →
+              </a>
+            </div>
           ) : COMMITTED.map((a) => (
             <div key={a.title} className="grid grid-cols-1 items-center gap-3 p-5 md:grid-cols-6">
               <div className="md:col-span-2">

@@ -12,7 +12,7 @@ type Msg = { role: "user" | "assistant"; content: string };
 async function askGroq(messages: Msg[], systemPrompt: string): Promise<string> {
   for (let i = 0; i < 3; i++) {
     try {
-      const res = await authFetch("ai.php", {
+      const d = await authFetch("ai.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -20,9 +20,9 @@ async function askGroq(messages: Msg[], systemPrompt: string): Promise<string> {
           messages: [{ role: "system", content: systemPrompt }, ...messages],
         }),
       });
-      if (!res.ok) throw new Error(`${res.status}`);
-      const d = await res.json();
-      return d.choices?.[0]?.message?.content as string;
+      const reply = d.choices?.[0]?.message?.content as string | undefined;
+      if (!reply) throw new Error("empty AI response");
+      return reply;
     } catch { continue; }
   }
   return "Sorry, I'm having trouble connecting right now. Please try again in a moment.";
@@ -103,14 +103,14 @@ export function DeecarbAI() {
   const inputRef   = useRef<HTMLTextAreaElement>(null);
   const prevEntity = useRef<string>(entity);
 
-  const entityInfo = ctx.entities.find(e => e.code === entity);
+  const entityInfo = (ctx.entities ?? []).find(e => e.code === entity);
   const entityName = entityInfo?.name ?? entity;
   const isConsolidated = entityInfo?.is_consolidated ?? false;
 
   /* ─── Build system prompt from live data ─────────────────────────────────── */
   const systemPrompt = useMemo(() => {
     const inv = (metric: string, fy: string) => getVal(invData, metric, fy);
-    const years = ctx.reporting_years;
+    const years = ctx.reporting_years ?? [];
 
     const inventoryLines = [
       "Scope 1", "Scope 2 LB", "Scope 2 MB", "Scope 3 Total",
@@ -132,7 +132,7 @@ export function DeecarbAI() {
       .join("\n");
 
     const { base_year_s12, sbti_target_s12, netzero_year } = ctx.targets ?? {};
-    const entitiesList = ctx.entities.filter(e => !e.is_consolidated)
+    const entitiesList = (ctx.entities ?? []).filter(e => !e.is_consolidated)
       .map(e => `  ${e.code}: ${e.name}`).join("\n");
 
     return `You are DeeCarb AI, the GHG data assistant embedded in this carbon dashboard, built by Deepwoods Green.
@@ -152,7 +152,7 @@ STRICT RULES — FOLLOW THESE WITHOUT EXCEPTION:
 REPORTING ENTITIES:
 ${entitiesList}
 
-REPORTING YEARS: ${ctx.reporting_years.join(", ")}
+REPORTING YEARS: ${(ctx.reporting_years ?? []).join(", ")}
 
 --- INVENTORY (tCO2e) ---
 ${inventoryLines}
@@ -421,7 +421,7 @@ ${s2FacLines || "  No facility data loaded yet."}
       {/* ── FAB ─────────────────────────────────────────────────────────────── */}
       <button onClick={() => setOpen(!open)}
         style={{
-          position: "fixed", bottom: 20, right: 20, zIndex: 9998,
+          position: "fixed", bottom: 24, right: 24, zIndex: 9998,
           width: 56, height: 56, borderRadius: "50%", border: "none",
           background: open ? "#1B3A5C" : "linear-gradient(135deg,#1B3A5C 0%,#1E6F5C 100%)",
           color: "#fff", cursor: "pointer",

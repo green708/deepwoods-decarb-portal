@@ -22,6 +22,7 @@ dist-static/
 # Secrets — real DB password, Drive tokens, API keys.
 # Never commit these. The .example files are the safe templates.
 backend/config.php
+backend/config.local.php
 backend/*.json
 
 # Editor
@@ -40,3 +41,7 @@ Thumbs.db
 
 # Local AI tooling
 .claude/
+.mcp.json
+# Build artefact / server diagnostics — never commit
+dist-static.zip
+backend/diag.php

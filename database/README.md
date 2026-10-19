@@ -4,9 +4,10 @@ Authoritative SQL schema for the Decarb Platform MySQL database.
 
 ## What belongs here
 
-- `schema_combined.sql` — The complete, authoritative database schema (31 tables).
-  This is the only schema file for production. It uses `IF NOT EXISTS` and
-  `ON DUPLICATE KEY` guards so it is safe to re-run against an existing database.
+- `schema_v2.sql` — The canonical database schema (46 tables), matching the backend exactly. Use it on a new,
+  empty database. See `MIGRATION_TO_V2.md` for moving an existing database across with all data kept, and
+  `verify_copy.sql` to prove the copy is identical.
+- `schema_combined.sql` — Superseded legacy schema, kept for history only.
 - `migrations/` — Incremental migration scripts for schema changes. Named with a
   sequence prefix: `001_add_notification_prefs.sql`, `002_client_config.sql`, etc.
 

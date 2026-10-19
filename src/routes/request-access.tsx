@@ -18,9 +18,29 @@ const MINTBG = "#ECF7F3";
 const CORAL  = "#DC2626";
 
 const INDUSTRIES = [
-  "Manufacturing", "Textiles & Apparel", "Chemicals", "Food & Beverage",
-  "IT / Technology", "Financial Services", "Real Estate & Construction",
-  "Logistics & Transportation", "Furniture Manufacturing", "Other",
+  "Agriculture & Forestry",
+  "Automotive & Mobility",
+  "Chemicals & Materials",
+  "Construction & Infrastructure",
+  "Consumer Goods & Retail",
+  "Education",
+  "Energy & Utilities",
+  "Financial Services",
+  "Food & Beverage",
+  "Healthcare & Pharmaceuticals",
+  "Hospitality & Tourism",
+  "IT / Technology & Software",
+  "Logistics & Transportation",
+  "Manufacturing — Discrete",
+  "Manufacturing — Process",
+  "Media & Entertainment",
+  "Mining & Metals",
+  "Professional Services",
+  "Real Estate",
+  "Telecommunications",
+  "Textiles & Apparel",
+  "Waste & Recycling",
+  "Other",
 ];
 const ORG_TYPES = [
   "Private Limited", "Public Limited", "LLP", "Partnership",
@@ -44,7 +64,7 @@ function RequestAccessPage() {
     ghg_requirement: "",
     services_other: "",
     // Org
-    legal_name: "", operating_name: "", industry: "", org_type: "",
+    legal_name: "", operating_name: "", industry: "", industry_other: "", org_type: "", org_type_other: "",
     is_india: true, gstin: "", is_msme: false, udyam_number: "",
     legal_address: "", website: "",
     // Contact
@@ -79,7 +99,7 @@ function RequestAccessPage() {
     form.designation.trim() !== "" &&
     form.email.trim() !== "" &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email) &&
-    form.phone.trim() !== "" &&
+    /^\d{10}$/.test(form.phone) &&
     servicesNeeded.length > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -97,12 +117,12 @@ function RequestAccessPage() {
           company:          form.legal_name,
           email:            form.email,
           phone:            form.phone || null,
-          industry:         form.industry || null,
+          industry:         form.industry === "Other" && form.industry_other ? `Other — ${form.industry_other}` : form.industry || null,
+          org_type:         form.org_type === "Other" && form.org_type_other ? `Other — ${form.org_type_other}` : form.org_type || null,
           is_india:         form.is_india,
           gstin:            form.gstin   || null,
           legal_name:       form.legal_name || null,
           operating_name:   form.operating_name || null,
-          org_type:         form.org_type || null,
           is_msme:          form.is_msme,
           udyam_number:     form.udyam_number || null,
           legal_address:    form.legal_address || null,
@@ -115,6 +135,9 @@ function RequestAccessPage() {
         }),
       });
       const json = await res.json().catch(() => ({}));
+      if (json.already_registered) {
+        throw new Error("This email address has already been submitted. If you need access, please contact us directly at deepwoods.likhith@gmail.com.");
+      }
       if (!res.ok) throw new Error(json.error || `Submission failed (${res.status})`);
       setSubmitted(true);
     } catch (err) {
@@ -296,13 +319,14 @@ function RequestAccessPage() {
                     onClick={() => set("is_india", false)}>No</button>
                 </div>
               </Field>
-              <Field label="B2. GSTIN"
-                hint="Your 15-character GST Identification Number, as shown on your GST registration certificate.">
+              <Field label={form.is_india ? "B2. GSTIN" : "B2. Business Registration / Tax ID (optional)"}
+                hint={form.is_india
+                  ? "Your 15-character GST Identification Number, as shown on your GST registration certificate."
+                  : "Enter your business registration or tax identification number, if applicable."}>
                 <input className="ra-input" value={form.gstin}
                   onChange={e => set("gstin", e.target.value.toUpperCase())}
-                  placeholder={form.is_india ? "15-character GST Identification Number" : "Not applicable"}
-                  maxLength={15} disabled={!form.is_india}
-                  style={{ opacity: form.is_india ? 1 : 0.45 }} />
+                  placeholder={form.is_india ? "e.g. 27AAPFU0939F1ZV" : "e.g. Company Registration No."}
+                  maxLength={form.is_india ? 15 : 30} />
               </Field>
             </div>
 
@@ -327,18 +351,28 @@ function RequestAccessPage() {
               <Field label="B5. Industry" required
                 hint="Choose the sector closest to your primary business activity — this affects the default emission factors used in your calculations.">
                 <select className="ra-select" value={form.industry}
-                  onChange={e => set("industry", e.target.value)}>
+                  onChange={e => { set("industry", e.target.value); if (e.target.value !== "Other") set("industry_other", ""); }}>
                   <option value="">Select an industry</option>
                   {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
                 </select>
+                {form.industry === "Other" && (
+                  <input className="ra-input" style={{ marginTop: 8 }} value={form.industry_other}
+                    onChange={e => set("industry_other", e.target.value)}
+                    placeholder="Please describe your industry…" />
+                )}
               </Field>
               <Field label="B6. Organisational Type" required
                 hint="Your legal structure, as stated on your registration documents.">
                 <select className="ra-select" value={form.org_type}
-                  onChange={e => set("org_type", e.target.value)}>
+                  onChange={e => { set("org_type", e.target.value); if (e.target.value !== "Other") set("org_type_other", ""); }}>
                   <option value="">Select a type</option>
                   {ORG_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
+                {form.org_type === "Other" && (
+                  <input className="ra-input" style={{ marginTop: 8 }} value={form.org_type_other}
+                    onChange={e => set("org_type_other", e.target.value)}
+                    placeholder="Please describe your organisational type…" />
+                )}
               </Field>
             </div>
 
@@ -452,10 +486,15 @@ function RequestAccessPage() {
                   placeholder="jane@company.com" />
               </Field>
               <Field label="C4. Mobile number" required
-                hint="We may call to verify your request or clarify details.">
-                <input className="ra-input" type="tel" value={form.phone}
-                  onChange={e => set("phone", e.target.value)}
-                  placeholder="+91 98765 43210" />
+                hint="10-digit Indian mobile number. We may call to verify your request or clarify details.">
+                <input className="ra-input" type="tel" inputMode="numeric" value={form.phone}
+                  onChange={e => { const digits = e.target.value.replace(/\D/g, "").slice(0, 10); set("phone", digits); }}
+                  placeholder="e.g. 9876543210" maxLength={10} />
+                {form.phone.length > 0 && form.phone.length < 10 && (
+                  <p style={{ margin: "5px 0 0", fontSize: 12, color: CORAL }}>
+                    Mobile number must be exactly 10 digits ({form.phone.length}/10)
+                  </p>
+                )}
               </Field>
             </div>
           </div>

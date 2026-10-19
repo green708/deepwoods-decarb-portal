@@ -165,7 +165,7 @@ function OverviewTab({ year }: { year: string }) {
   const kpiCards = [
     { label: "Total Emissions",       value: totKpi.toLocaleString("en-IN", { minimumFractionDigits:2, maximumFractionDigits:2 }), unit: "tCO2e",   color: RED },
     { label: "Scope 1 Emissions",     value: s1kpi.toLocaleString("en-IN",  { minimumFractionDigits:2, maximumFractionDigits:2 }), unit: "tCO2e",   color: AMBER },
-    { label: "Scope 2 Emissions",     value: s2kpi.toLocaleString("en-IN",  { minimumFractionDigits:3, maximumFractionDigits:3 }), unit: "tCO2e",   color: CYAN },
+    { label: "Scope 2 LB Emissions",   value: s2kpi.toLocaleString("en-IN",  { minimumFractionDigits:3, maximumFractionDigits:3 }), unit: "tCO2e",   color: CYAN },
     { label: "Renewable Energy",      value: reMwh > 0 ? reMwh.toLocaleString("en-IN") : "—",                                     unit: "MWh",     color: GREEN },
     { label: "Renewable Energy Share",value: reSharePct !== null ? `${reSharePct} %` : "—",                                       unit: "",        color: GREEN },
   ];

@@ -11,24 +11,25 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
+import { Route as CompareRouteImport } from './routes/compare'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as HistoricalRouteImport } from './routes/historical'
 import { Route as OnboardRouteImport } from './routes/onboard'
 import { Route as RequestAccessRouteImport } from './routes/request-access'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SetupRouteImport } from './routes/setup'
+import { Route as SubmitRouteImport } from './routes/submit'
 import { Route as AppActionPlanRouteImport } from './routes/_app.action-plan'
 import { Route as AppAdminRouteImport } from './routes/_app.admin'
 import { Route as AppCompanyProfileRouteImport } from './routes/_app.company-profile'
 import { Route as AppCreditsRouteImport } from './routes/_app.credits'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
+import { Route as AppDataTrackerRouteImport } from './routes/_app.data-tracker'
 import { Route as AppEntitySetupRouteImport } from './routes/_app.entity-setup'
 import { Route as AppGreenFinanceRouteImport } from './routes/_app.green-finance'
 import { Route as AppHomeRouteImport } from './routes/_app.home'
 import { Route as AppHotspotsRouteImport } from './routes/_app.hotspots'
-import { Route as AppInteractiveInventoryRouteImport } from './routes/_app.interactive-inventory'
-import { Route as AppInventoryRouteImport } from './routes/_app.inventory'
 import { Route as AppInventoryBoundaryRouteImport } from './routes/_app.inventory-boundary'
-import { Route as AppInventorySetupRouteImport } from './routes/_app.inventory-setup'
 import { Route as AppMethodologyRouteImport } from './routes/_app.methodology'
 import { Route as AppNotificationsRouteImport } from './routes/_app.notifications'
 import { Route as AppOverviewRouteImport } from './routes/_app.overview'
@@ -42,6 +43,8 @@ import { Route as AppSubmissionsRouteImport } from './routes/_app.submissions'
 import { Route as AppTeamRouteImport } from './routes/_app.team'
 import { Route as AppTrendsRouteImport } from './routes/_app.trends'
 import { Route as AppVaultRouteImport } from './routes/_app.vault'
+import { Route as AppWorkstreamsRouteImport } from './routes/_app.workstreams'
+import { Route as SurveyCommuteFacilityIdRouteImport } from './routes/survey.commute.$facilityId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -52,9 +55,19 @@ const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CompareRoute = CompareRouteImport.update({
+  id: '/compare',
+  path: '/compare',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HistoricalRoute = HistoricalRouteImport.update({
+  id: '/historical',
+  path: '/historical',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OnboardRoute = OnboardRouteImport.update({
@@ -75,6 +88,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
   path: '/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SubmitRoute = SubmitRouteImport.update({
+  id: '/submit',
+  path: '/submit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppActionPlanRoute = AppActionPlanRouteImport.update({
@@ -102,6 +120,11 @@ const AppDashboardRoute = AppDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDataTrackerRoute = AppDataTrackerRouteImport.update({
+  id: '/data-tracker',
+  path: '/data-tracker',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppEntitySetupRoute = AppEntitySetupRouteImport.update({
   id: '/entity-setup',
   path: '/entity-setup',
@@ -122,24 +145,9 @@ const AppHotspotsRoute = AppHotspotsRouteImport.update({
   path: '/hotspots',
   getParentRoute: () => AppRoute,
 } as any)
-const AppInteractiveInventoryRoute = AppInteractiveInventoryRouteImport.update({
-  id: '/interactive-inventory',
-  path: '/interactive-inventory',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppInventoryRoute = AppInventoryRouteImport.update({
-  id: '/inventory',
-  path: '/inventory',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppInventoryBoundaryRoute = AppInventoryBoundaryRouteImport.update({
   id: '/inventory-boundary',
   path: '/inventory-boundary',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppInventorySetupRoute = AppInventorySetupRouteImport.update({
-  id: '/inventory-setup',
-  path: '/inventory-setup',
   getParentRoute: () => AppRoute,
 } as any)
 const AppMethodologyRoute = AppMethodologyRouteImport.update({
@@ -207,27 +215,38 @@ const AppVaultRoute = AppVaultRouteImport.update({
   path: '/vault',
   getParentRoute: () => AppRoute,
 } as any)
+const AppWorkstreamsRoute = AppWorkstreamsRouteImport.update({
+  id: '/workstreams',
+  path: '/workstreams',
+  getParentRoute: () => AppRoute,
+} as any)
+const SurveyCommuteFacilityIdRoute = SurveyCommuteFacilityIdRouteImport.update({
+  id: '/survey/commute/$facilityId',
+  path: '/survey/commute/$facilityId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/compare': typeof CompareRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/historical': typeof HistoricalRoute
   '/onboard': typeof OnboardRoute
   '/request-access': typeof RequestAccessRoute
   '/reset-password': typeof ResetPasswordRoute
   '/setup': typeof SetupRoute
+  '/submit': typeof SubmitRoute
   '/action-plan': typeof AppActionPlanRoute
   '/admin': typeof AppAdminRoute
   '/company-profile': typeof AppCompanyProfileRoute
   '/credits': typeof AppCreditsRoute
   '/dashboard': typeof AppDashboardRoute
+  '/data-tracker': typeof AppDataTrackerRoute
   '/entity-setup': typeof AppEntitySetupRoute
   '/green-finance': typeof AppGreenFinanceRoute
   '/home': typeof AppHomeRoute
   '/hotspots': typeof AppHotspotsRoute
-  '/interactive-inventory': typeof AppInteractiveInventoryRoute
-  '/inventory': typeof AppInventoryRoute
   '/inventory-boundary': typeof AppInventoryBoundaryRoute
-  '/inventory-setup': typeof AppInventorySetupRoute
   '/methodology': typeof AppMethodologyRoute
   '/notifications': typeof AppNotificationsRoute
   '/overview': typeof AppOverviewRoute
@@ -241,27 +260,30 @@ export interface FileRoutesByFullPath {
   '/team': typeof AppTeamRoute
   '/trends': typeof AppTrendsRoute
   '/vault': typeof AppVaultRoute
+  '/workstreams': typeof AppWorkstreamsRoute
+  '/survey/commute/$facilityId': typeof SurveyCommuteFacilityIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/compare': typeof CompareRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/historical': typeof HistoricalRoute
   '/onboard': typeof OnboardRoute
   '/request-access': typeof RequestAccessRoute
   '/reset-password': typeof ResetPasswordRoute
   '/setup': typeof SetupRoute
+  '/submit': typeof SubmitRoute
   '/action-plan': typeof AppActionPlanRoute
   '/admin': typeof AppAdminRoute
   '/company-profile': typeof AppCompanyProfileRoute
   '/credits': typeof AppCreditsRoute
   '/dashboard': typeof AppDashboardRoute
+  '/data-tracker': typeof AppDataTrackerRoute
   '/entity-setup': typeof AppEntitySetupRoute
   '/green-finance': typeof AppGreenFinanceRoute
   '/home': typeof AppHomeRoute
   '/hotspots': typeof AppHotspotsRoute
-  '/interactive-inventory': typeof AppInteractiveInventoryRoute
-  '/inventory': typeof AppInventoryRoute
   '/inventory-boundary': typeof AppInventoryBoundaryRoute
-  '/inventory-setup': typeof AppInventorySetupRoute
   '/methodology': typeof AppMethodologyRoute
   '/notifications': typeof AppNotificationsRoute
   '/overview': typeof AppOverviewRoute
@@ -275,29 +297,32 @@ export interface FileRoutesByTo {
   '/team': typeof AppTeamRoute
   '/trends': typeof AppTrendsRoute
   '/vault': typeof AppVaultRoute
+  '/workstreams': typeof AppWorkstreamsRoute
+  '/survey/commute/$facilityId': typeof SurveyCommuteFacilityIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
+  '/compare': typeof CompareRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/historical': typeof HistoricalRoute
   '/onboard': typeof OnboardRoute
   '/request-access': typeof RequestAccessRoute
   '/reset-password': typeof ResetPasswordRoute
   '/setup': typeof SetupRoute
+  '/submit': typeof SubmitRoute
   '/_app/action-plan': typeof AppActionPlanRoute
   '/_app/admin': typeof AppAdminRoute
   '/_app/company-profile': typeof AppCompanyProfileRoute
   '/_app/credits': typeof AppCreditsRoute
   '/_app/dashboard': typeof AppDashboardRoute
+  '/_app/data-tracker': typeof AppDataTrackerRoute
   '/_app/entity-setup': typeof AppEntitySetupRoute
   '/_app/green-finance': typeof AppGreenFinanceRoute
   '/_app/home': typeof AppHomeRoute
   '/_app/hotspots': typeof AppHotspotsRoute
-  '/_app/interactive-inventory': typeof AppInteractiveInventoryRoute
-  '/_app/inventory': typeof AppInventoryRoute
   '/_app/inventory-boundary': typeof AppInventoryBoundaryRoute
-  '/_app/inventory-setup': typeof AppInventorySetupRoute
   '/_app/methodology': typeof AppMethodologyRoute
   '/_app/notifications': typeof AppNotificationsRoute
   '/_app/overview': typeof AppOverviewRoute
@@ -311,29 +336,32 @@ export interface FileRoutesById {
   '/_app/team': typeof AppTeamRoute
   '/_app/trends': typeof AppTrendsRoute
   '/_app/vault': typeof AppVaultRoute
+  '/_app/workstreams': typeof AppWorkstreamsRoute
+  '/survey/commute/$facilityId': typeof SurveyCommuteFacilityIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/compare'
     | '/forgot-password'
+    | '/historical'
     | '/onboard'
     | '/request-access'
     | '/reset-password'
     | '/setup'
+    | '/submit'
     | '/action-plan'
     | '/admin'
     | '/company-profile'
     | '/credits'
     | '/dashboard'
+    | '/data-tracker'
     | '/entity-setup'
     | '/green-finance'
     | '/home'
     | '/hotspots'
-    | '/interactive-inventory'
-    | '/inventory'
     | '/inventory-boundary'
-    | '/inventory-setup'
     | '/methodology'
     | '/notifications'
     | '/overview'
@@ -347,27 +375,30 @@ export interface FileRouteTypes {
     | '/team'
     | '/trends'
     | '/vault'
+    | '/workstreams'
+    | '/survey/commute/$facilityId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/compare'
     | '/forgot-password'
+    | '/historical'
     | '/onboard'
     | '/request-access'
     | '/reset-password'
     | '/setup'
+    | '/submit'
     | '/action-plan'
     | '/admin'
     | '/company-profile'
     | '/credits'
     | '/dashboard'
+    | '/data-tracker'
     | '/entity-setup'
     | '/green-finance'
     | '/home'
     | '/hotspots'
-    | '/interactive-inventory'
-    | '/inventory'
     | '/inventory-boundary'
-    | '/inventory-setup'
     | '/methodology'
     | '/notifications'
     | '/overview'
@@ -381,28 +412,31 @@ export interface FileRouteTypes {
     | '/team'
     | '/trends'
     | '/vault'
+    | '/workstreams'
+    | '/survey/commute/$facilityId'
   id:
     | '__root__'
     | '/'
     | '/_app'
+    | '/compare'
     | '/forgot-password'
+    | '/historical'
     | '/onboard'
     | '/request-access'
     | '/reset-password'
     | '/setup'
+    | '/submit'
     | '/_app/action-plan'
     | '/_app/admin'
     | '/_app/company-profile'
     | '/_app/credits'
     | '/_app/dashboard'
+    | '/_app/data-tracker'
     | '/_app/entity-setup'
     | '/_app/green-finance'
     | '/_app/home'
     | '/_app/hotspots'
-    | '/_app/interactive-inventory'
-    | '/_app/inventory'
     | '/_app/inventory-boundary'
-    | '/_app/inventory-setup'
     | '/_app/methodology'
     | '/_app/notifications'
     | '/_app/overview'
@@ -416,16 +450,22 @@ export interface FileRouteTypes {
     | '/_app/team'
     | '/_app/trends'
     | '/_app/vault'
+    | '/_app/workstreams'
+    | '/survey/commute/$facilityId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  CompareRoute: typeof CompareRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
+  HistoricalRoute: typeof HistoricalRoute
   OnboardRoute: typeof OnboardRoute
   RequestAccessRoute: typeof RequestAccessRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SetupRoute: typeof SetupRoute
+  SubmitRoute: typeof SubmitRoute
+  SurveyCommuteFacilityIdRoute: typeof SurveyCommuteFacilityIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -444,11 +484,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/compare': {
+      id: '/compare'
+      path: '/compare'
+      fullPath: '/compare'
+      preLoaderRoute: typeof CompareRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/forgot-password': {
       id: '/forgot-password'
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/historical': {
+      id: '/historical'
+      path: '/historical'
+      fullPath: '/historical'
+      preLoaderRoute: typeof HistoricalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboard': {
@@ -477,6 +531,13 @@ declare module '@tanstack/react-router' {
       path: '/setup'
       fullPath: '/setup'
       preLoaderRoute: typeof SetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/submit': {
+      id: '/submit'
+      path: '/submit'
+      fullPath: '/submit'
+      preLoaderRoute: typeof SubmitRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/action-plan': {
@@ -514,6 +575,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/data-tracker': {
+      id: '/_app/data-tracker'
+      path: '/data-tracker'
+      fullPath: '/data-tracker'
+      preLoaderRoute: typeof AppDataTrackerRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/entity-setup': {
       id: '/_app/entity-setup'
       path: '/entity-setup'
@@ -542,32 +610,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppHotspotsRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/interactive-inventory': {
-      id: '/_app/interactive-inventory'
-      path: '/interactive-inventory'
-      fullPath: '/interactive-inventory'
-      preLoaderRoute: typeof AppInteractiveInventoryRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/inventory': {
-      id: '/_app/inventory'
-      path: '/inventory'
-      fullPath: '/inventory'
-      preLoaderRoute: typeof AppInventoryRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/inventory-boundary': {
       id: '/_app/inventory-boundary'
       path: '/inventory-boundary'
       fullPath: '/inventory-boundary'
       preLoaderRoute: typeof AppInventoryBoundaryRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/inventory-setup': {
-      id: '/_app/inventory-setup'
-      path: '/inventory-setup'
-      fullPath: '/inventory-setup'
-      preLoaderRoute: typeof AppInventorySetupRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/methodology': {
@@ -661,6 +708,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppVaultRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/workstreams': {
+      id: '/_app/workstreams'
+      path: '/workstreams'
+      fullPath: '/workstreams'
+      preLoaderRoute: typeof AppWorkstreamsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/survey/commute/$facilityId': {
+      id: '/survey/commute/$facilityId'
+      path: '/survey/commute/$facilityId'
+      fullPath: '/survey/commute/$facilityId'
+      preLoaderRoute: typeof SurveyCommuteFacilityIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -670,14 +731,12 @@ interface AppRouteChildren {
   AppCompanyProfileRoute: typeof AppCompanyProfileRoute
   AppCreditsRoute: typeof AppCreditsRoute
   AppDashboardRoute: typeof AppDashboardRoute
+  AppDataTrackerRoute: typeof AppDataTrackerRoute
   AppEntitySetupRoute: typeof AppEntitySetupRoute
   AppGreenFinanceRoute: typeof AppGreenFinanceRoute
   AppHomeRoute: typeof AppHomeRoute
   AppHotspotsRoute: typeof AppHotspotsRoute
-  AppInteractiveInventoryRoute: typeof AppInteractiveInventoryRoute
-  AppInventoryRoute: typeof AppInventoryRoute
   AppInventoryBoundaryRoute: typeof AppInventoryBoundaryRoute
-  AppInventorySetupRoute: typeof AppInventorySetupRoute
   AppMethodologyRoute: typeof AppMethodologyRoute
   AppNotificationsRoute: typeof AppNotificationsRoute
   AppOverviewRoute: typeof AppOverviewRoute
@@ -691,6 +750,7 @@ interface AppRouteChildren {
   AppTeamRoute: typeof AppTeamRoute
   AppTrendsRoute: typeof AppTrendsRoute
   AppVaultRoute: typeof AppVaultRoute
+  AppWorkstreamsRoute: typeof AppWorkstreamsRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -699,14 +759,12 @@ const AppRouteChildren: AppRouteChildren = {
   AppCompanyProfileRoute: AppCompanyProfileRoute,
   AppCreditsRoute: AppCreditsRoute,
   AppDashboardRoute: AppDashboardRoute,
+  AppDataTrackerRoute: AppDataTrackerRoute,
   AppEntitySetupRoute: AppEntitySetupRoute,
   AppGreenFinanceRoute: AppGreenFinanceRoute,
   AppHomeRoute: AppHomeRoute,
   AppHotspotsRoute: AppHotspotsRoute,
-  AppInteractiveInventoryRoute: AppInteractiveInventoryRoute,
-  AppInventoryRoute: AppInventoryRoute,
   AppInventoryBoundaryRoute: AppInventoryBoundaryRoute,
-  AppInventorySetupRoute: AppInventorySetupRoute,
   AppMethodologyRoute: AppMethodologyRoute,
   AppNotificationsRoute: AppNotificationsRoute,
   AppOverviewRoute: AppOverviewRoute,
@@ -720,6 +778,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppTeamRoute: AppTeamRoute,
   AppTrendsRoute: AppTrendsRoute,
   AppVaultRoute: AppVaultRoute,
+  AppWorkstreamsRoute: AppWorkstreamsRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
@@ -727,11 +786,15 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  CompareRoute: CompareRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
+  HistoricalRoute: HistoricalRoute,
   OnboardRoute: OnboardRoute,
   RequestAccessRoute: RequestAccessRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SetupRoute: SetupRoute,
+  SubmitRoute: SubmitRoute,
+  SurveyCommuteFacilityIdRoute: SurveyCommuteFacilityIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

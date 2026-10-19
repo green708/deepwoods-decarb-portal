@@ -16,7 +16,7 @@ if ($email === '' || $password === '') {
 
 $pdo = dolphin_db();
 $stmt = $pdo->prepare(
-    'SELECT id, email, password_hash, role, must_change_password, client_id
+    'SELECT id, email, password_hash, role, must_change_password, client_id, entity_scope
      FROM users WHERE email = ?'
 );
 $stmt->execute([$email]);
@@ -38,4 +38,5 @@ dolphin_send_json([
     'role'               => $user['role'],
     'client_id'          => (int)$user['client_id'],
     'mustChangePassword' => (bool)$user['must_change_password'],
+    'entity_scope'       => $user['entity_scope'] !== null && $user['entity_scope'] !== '' ? (string)$user['entity_scope'] : null,
 ]);

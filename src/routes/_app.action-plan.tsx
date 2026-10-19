@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo } from "react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   LineChart, Line, Legend, CartesianGrid, PieChart, Pie, Cell,
@@ -13,7 +14,7 @@ import {
 } from "@/components/decarb/shared";
 import { useClientContext } from "@/lib/client-context";
 import {
-  useDecarbActions, useDecarbAssets, useInventory, useS1Breakdown,
+  useDecarbAssets, useInventory, useS1Breakdown,
   useS2ByFacility, useS3Summary, useIRECRegister, useGridMWh, getVal,
 } from "@/lib/api";
 import { useEntity, useFiscalYear } from "@/lib/entity";
@@ -133,6 +134,9 @@ function Stat({ label, value, sub, tone = "default" }: {
 const FUEL_COLORS = ["#1E6F5C", "#D97706", "#8B5CF6", "#64748B"];
 const CAT_COLORS  = ["#1E6F5C", "#3B82F6", "#64748B", "#8B5CF6", "#D97706"];
 
+const fyToYear = (fy: string) => { const m = fy.match(/\d+/); const n = m ? parseInt(m[0]) : 22; return n < 100 ? 2000 + n : n; };
+const yearToFy = (y: number) => `FY${String(y).slice(-2)}`;
+
 /* ══════════════════════════════════════════════════════════════════════════
    SCENARIO BUILDER VIEW
    ══════════════════════════════════════════════════════════════════════ */
@@ -140,12 +144,14 @@ const CAT_COLORS  = ["#1E6F5C", "#3B82F6", "#64748B", "#8B5CF6", "#D97706"];
 function ScenarioBuilder({
   state, setState, scenarios, saveScenario, loadScenario, reset,
   S1_BASE, S2LB_BASE, IREC_MAX, SBTI_BASE, SBTI_TARGET, fy,
+  glidepathYears, scenarioName, setScenarioName,
 }: {
   state: LeverState; setState: (s: LeverState) => void;
   scenarios: Scenario[]; saveScenario: () => void;
   loadScenario: (s: Scenario) => void; reset: () => void;
   S1_BASE: number; S2LB_BASE: number; IREC_MAX: number;
   SBTI_BASE: number; SBTI_TARGET: number; fy: string;
+  glidepathYears: string[]; scenarioName: string; setScenarioName: (n: string) => void;
 }) {
   const S1_S2_BASE = S1_BASE + S2LB_BASE;
   const irecReduction = state.irecMWh * IREC_FACTOR;
@@ -155,18 +161,15 @@ function ScenarioBuilder({
     ? Math.min(100, Math.max(0, ((S1_S2_BASE - afterIrec) / (S1_S2_BASE - SBTI_TARGET)) * 100))
     : 0;
 
-  const years = ["FY22", "FY23", "FY24", "FY25", "FY26", "FY27", "FY28", "FY29", "FY30"];
+  const years = glidepathYears;
+  const totalYrs = Math.max(years.length - 1, 1);
+  const irecStartIdx = Math.min(3, Math.floor(totalYrs / 2));
   const glidepath = years.map((y, i) => {
-    const target = SBTI_BASE - (i / 8) * (SBTI_BASE - SBTI_TARGET);
-    const projectedBase = SBTI_BASE - (i / 8) * (SBTI_BASE - 1150);
-    const projected = i >= 3 ? projectedBase - irecReduction : projectedBase;
-    const net = projected - (i >= 3 ? state.credits : 0);
-    return {
-      year: y,
-      target: Math.round(Math.max(0, target)),
-      projected: Math.round(Math.max(0, projected)),
-      net: Math.round(Math.max(0, net)),
-    };
+    const frac = i / totalYrs;
+    const target = Math.round(Math.max(0, SBTI_BASE - frac * (SBTI_BASE - SBTI_TARGET)));
+    const projected = Math.round(Math.max(0, target - (i >= irecStartIdx ? irecReduction : 0)));
+    const net = Math.round(Math.max(0, projected - (i >= irecStartIdx ? state.credits : 0)));
+    return { year: y, target, projected, net };
   });
 
   const thisYear = [
@@ -313,7 +316,7 @@ function ScenarioBuilder({
       </Card>
 
       <Card className="mb-5">
-        <CardHeader title="FY22–FY30 glidepath vs SBTi target"
+        <CardHeader title={`${years[0]}–${years[years.length - 1]} glidepath vs SBTi target`}
           subtitle="Only I-RECs move the projected line; credits show as separate dotted net-position line" />
         <div className="p-5">
           <div style={{ width: "100%", height: 320 }}>
@@ -364,9 +367,17 @@ function ScenarioBuilder({
         </div>
       </Card>
 
-      <div className="flex flex-wrap gap-2">
-        <button onClick={saveScenario}
-          className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-95"
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          value={scenarioName}
+          onChange={e => setScenarioName(e.target.value)}
+          placeholder="Scenario name (e.g. Conservative)"
+          className="rounded-md border px-3 py-2 text-sm text-[color:var(--ink)] outline-none focus:ring-2 focus:ring-[var(--scope1)]"
+          style={{ minWidth: 220 }}
+        />
+        <button onClick={saveScenario} disabled={!scenarioName.trim()}
+          className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-95 disabled:opacity-40 disabled:cursor-not-allowed"
           style={{ backgroundColor: "var(--brand-red)" }}>
           <Save className="h-4 w-4" /> Save scenario
         </button>
@@ -702,7 +713,7 @@ function ActionPlanView({
             </div>
           </div>
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-[color:var(--ink-muted)]">Scope 2 · {entity} {fy}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-[color:var(--ink-muted)]">Scope 2 LB · {entity} {fy}</div>
             <div className="mt-1 font-medium text-[color:var(--ink)]">
               <span className="font-bold" style={{ fontFamily: "var(--font-mono)" }}>{fmt(s2, 2)}</span> tCO₂e — close residual grid with I-RECs
             </div>
@@ -755,18 +766,27 @@ function ActionPlanPage() {
     ? Math.round(SBTI_BASE * (1 - ctx.targets.sbti_target_s12 / 100))
     : 500;
 
+  const baseYrNum    = fyToYear(baseYr);
+  const tgtYrNum     = ctx.targets.sbti_target_year ?? 2030;
+  const glidepathYears = Array.from(
+    { length: Math.max(tgtYrNum - baseYrNum + 1, 9) },
+    (_, i) => yearToFy(baseYrNum + i),
+  );
+
   const [view, setView] = useState<"plan" | "sb">("plan");
   const [state, setState] = useState<LeverState>({ irecMWh: 0, credits: 0 });
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [presetPulse, setPresetPulse] = useState(0);
+  const [scenarioName, setScenarioName] = useState("");
 
   const goToSB = () => { setView("sb"); setPresetPulse((n) => n + 1); };
   const onAddIrec    = () => { setState((s) => ({ ...s, irecMWh: IREC_MAX }));  goToSB(); };
   const onAddCredits = () => { setState((s) => ({ ...s, credits:  S1_BASE }));  goToSB(); };
   const saveScenario = () => {
-    const name = prompt("Name this scenario (e.g. Conservative, Aggressive)")?.trim();
+    const name = scenarioName.trim();
     if (!name) return;
     setScenarios((cur) => [...cur.filter((s) => s.name !== name), { name, state: { ...state } }]);
+    setScenarioName("");
   };
   const loadScenario = (s: Scenario) => setState({ ...s.state });
   const reset = () => setState({ irecMWh: 0, credits: 0 });
@@ -789,21 +809,24 @@ function ActionPlanPage() {
         ))}
       </div>
 
-      {view === "plan" ? (
-        <ActionPlanView
-          entity={entity} fy={fy} consolidatedCode={consolidatedCode}
-          onAddIrec={onAddIrec} onAddCredits={onAddCredits}
-        />
-      ) : (
-        <ScenarioBuilder key={presetPulse}
-          state={state} setState={setState}
-          scenarios={scenarios} saveScenario={saveScenario}
-          loadScenario={loadScenario} reset={reset}
-          S1_BASE={S1_BASE} S2LB_BASE={S2LB_BASE}
-          IREC_MAX={IREC_MAX} SBTI_BASE={SBTI_BASE} SBTI_TARGET={SBTI_TARGET}
-          fy={fy}
-        />
-      )}
+      <ErrorBoundary label={view === "plan" ? "Action Plan" : "Scenario Builder"}>
+        {view === "plan" ? (
+          <ActionPlanView
+            entity={entity} fy={fy} consolidatedCode={consolidatedCode}
+            onAddIrec={onAddIrec} onAddCredits={onAddCredits}
+          />
+        ) : (
+          <ScenarioBuilder key={presetPulse}
+            state={state} setState={setState}
+            scenarios={scenarios} saveScenario={saveScenario}
+            loadScenario={loadScenario} reset={reset}
+            S1_BASE={S1_BASE} S2LB_BASE={S2LB_BASE}
+            IREC_MAX={IREC_MAX} SBTI_BASE={SBTI_BASE} SBTI_TARGET={SBTI_TARGET}
+            fy={fy} glidepathYears={glidepathYears}
+            scenarioName={scenarioName} setScenarioName={setScenarioName}
+          />
+        )}
+      </ErrorBoundary>
     </div>
   );
 }

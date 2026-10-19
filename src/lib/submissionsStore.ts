@@ -11,6 +11,12 @@
 
 import { authFetch } from "./auth";
 
+// Module-level cache per client slug — eliminates the loading flash on re-mount.
+const _subsCache: Record<string, Submission[]> = {};
+
+export function getCachedSubmissions(clientSlug: string): Submission[] | null {
+  return _subsCache[clientSlug] ?? null;
+}
 
 export type DataEntryEntity = string;
 
@@ -62,7 +68,10 @@ export async function loadSubmissions(clientSlug: string, status?: SubmissionSta
     ...(status ? { status } : {}),
     ...(entity ? { entity } : {}),
   });
-  return authFetch(`submissions.php?${qs}`);
+  const result: Submission[] = await authFetch(`submissions.php?${qs}`);
+  // Cache only unfiltered fetches (status/entity filters are partial views)
+  if (!status && !entity) _subsCache[clientSlug] = result;
+  return result;
 }
 
 export async function loadAuditLog(clientSlug: string): Promise<AuditLogEntry[]> {

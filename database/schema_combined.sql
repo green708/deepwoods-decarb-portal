@@ -1,3 +1,4 @@
+-- SUPERSEDED by database/schema_v2.sql (canonical, complete). Kept for history only.
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Decarb Portal — schema_combined.sql
 -- Multi-client GHG portal — SINGLE FILE for fresh database import
@@ -15,6 +16,7 @@ CREATE TABLE IF NOT EXISTS clients (
   name                 VARCHAR(255) NOT NULL,
   slug                 VARCHAR(100) NOT NULL UNIQUE,
   drive_root_folder_id VARCHAR(255),
+  drive_refresh_token  TEXT          DEFAULT NULL,
   logo_url             VARCHAR(500)  DEFAULT '/deepwoods-logo.png',
   primary_color        VARCHAR(20)   DEFAULT '#1E6F5C',
   currency             VARCHAR(10)   DEFAULT 'INR',
@@ -25,6 +27,7 @@ CREATE TABLE IF NOT EXISTS clients (
   payment_status       ENUM('pending','paid','waived') NOT NULL DEFAULT 'pending',
   payment_date         DATE         DEFAULT NULL,
   payment_notes        TEXT         DEFAULT NULL,
+  account_owner        VARCHAR(255) DEFAULT NULL,
   created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -44,6 +47,12 @@ CREATE TABLE IF NOT EXISTS client_entities (
   is_consolidated TINYINT(1)   NOT NULL DEFAULT 0,
   consolidates    JSON         DEFAULT NULL,
   sort_order      INT          NOT NULL DEFAULT 0,
+  -- Legal entity detail (migration_002)
+  country         VARCHAR(100) DEFAULT NULL,
+  registration_no VARCHAR(100) DEFAULT NULL,
+  tax_id          VARCHAR(50)  DEFAULT NULL,
+  org_type        VARCHAR(100) DEFAULT NULL,
+  legal_address   TEXT         DEFAULT NULL,
   UNIQUE KEY uniq_entity (client_id, code),
   FOREIGN KEY (client_id) REFERENCES clients(id)
 ) ENGINE=InnoDB;
@@ -113,6 +122,8 @@ CREATE TABLE IF NOT EXISTS users (
   client_id            INT DEFAULT NULL,
   entity_scope         VARCHAR(20) DEFAULT NULL,
   must_change_password TINYINT(1) NOT NULL DEFAULT 1,
+  orientation_done     TINYINT(1) NOT NULL DEFAULT 0,
+  display_name         VARCHAR(120) DEFAULT NULL,
   created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (client_id) REFERENCES clients(id)
 ) ENGINE=InnoDB;
@@ -307,10 +318,14 @@ CREATE TABLE IF NOT EXISTS ghg_facilities (
   client_id     INT NOT NULL,
   entity        VARCHAR(20) NOT NULL,
   name          VARCHAR(255) NOT NULL,
+  short_name    VARCHAR(40) NULL COMMENT 'Short slug used in asset IDs — must be unique per client',
   location      VARCHAR(255),
   state         VARCHAR(100),
   grid_utility  VARCHAR(100),
   re_instrument VARCHAR(255),
+  status        VARCHAR(20) DEFAULT 'active',
+  is_hq         TINYINT(1)  NOT NULL DEFAULT 0 COMMENT 'Marks the HQ / registered office facility',
+  UNIQUE KEY uniq_fac_short (client_id, short_name),
   FOREIGN KEY (client_id) REFERENCES clients(id)
 ) ENGINE=InnoDB;
 
@@ -357,34 +372,159 @@ CREATE TABLE IF NOT EXISTS decarb_actions (
   priority    ENUM('High','Medium','Low') DEFAULT 'Medium',
   abatement_t DECIMAL(10,2),
   timeline    VARCHAR(100),
+  owner              VARCHAR(150) DEFAULT NULL,
+  start_date         DATE DEFAULT NULL,
+  end_date           DATE DEFAULT NULL,
+  cost               DECIMAL(14,2) DEFAULT NULL,
+  actual_abatement_t DECIMAL(14,2) DEFAULT NULL,
+  updated_at         TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (client_id) REFERENCES clients(id)
+) ENGINE=InnoDB;
+
+-- ── 21b. Calculation / verification status (per entity + year) ───────────────
+CREATE TABLE IF NOT EXISTS calc_status (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  client_id     INT NOT NULL,
+  entity        VARCHAR(20) NOT NULL,
+  fiscal_year   VARCHAR(10) NOT NULL,
+  status        ENUM('draft','calculated','verified','locked') NOT NULL DEFAULT 'draft',
+  calculated_at DATETIME NULL,
+  verified_at   DATETIME NULL,
+  verified_by   VARCHAR(255) NULL,
+  ef_version    VARCHAR(100) NULL,
+  notes         TEXT NULL,
+  updated_by    VARCHAR(255) NULL,
+  updated_at    TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_calc (client_id, entity, fiscal_year),
+  KEY idx_calc_client (client_id),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ── 21d. Staff activity trail ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS admin_activity (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  client_id  INT NULL,
+  actor      VARCHAR(255) NOT NULL,
+  action     VARCHAR(60)  NOT NULL,
+  detail     TEXT NULL,
+  created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_act_client (client_id, created_at),
+  KEY idx_act_created (created_at)
+) ENGINE=InnoDB;
+
+-- ── 21c. Reporting cycle (due dates + submitted / locked state) ──────────────
+CREATE TABLE IF NOT EXISTS reporting_cycles (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  client_id     INT NOT NULL,
+  entity        VARCHAR(20) NOT NULL,
+  fiscal_year   VARCHAR(10) NOT NULL,
+  data_due_date DATE NULL,
+  report_due_date DATE NULL,
+  status        ENUM('open','submitted','locked') NOT NULL DEFAULT 'open',
+  submitted_at  DATETIME NULL,
+  submitted_by  VARCHAR(255) NULL,
+  notes         TEXT NULL,
+  updated_by    VARCHAR(255) NULL,
+  updated_at    TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_cycle (client_id, entity, fiscal_year),
+  KEY idx_cycle_client (client_id),
+  KEY idx_cycle_due (data_due_date),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- ── 22. Asset / equipment register ───────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS decarb_assets (
-  id        INT AUTO_INCREMENT PRIMARY KEY,
-  client_id INT NOT NULL,
-  asset_id  VARCHAR(50) NOT NULL,
-  entity    VARCHAR(20) NOT NULL,
-  name      VARCHAR(500) NOT NULL,
-  facility  VARCHAR(255),
-  fuel_type VARCHAR(100),
-  scope     VARCHAR(20),
-  sub_type  VARCHAR(50),
-  status    VARCHAR(50) DEFAULT 'Active',
-  health    VARCHAR(50) DEFAULT 'Efficient',
-  unit      VARCHAR(20) DEFAULT 'tCO2e',
+  id               INT AUTO_INCREMENT PRIMARY KEY,
+  client_id        INT NOT NULL,
+  asset_id         VARCHAR(100) NOT NULL,
+  entity           VARCHAR(20) NOT NULL,
+  name             VARCHAR(500) NOT NULL,
+  facility         VARCHAR(255),
+  fuel_type        VARCHAR(100),
+  scope            VARCHAR(20),
+  sub_type         VARCHAR(50),
+  status           VARCHAR(50) DEFAULT 'Active',
+  health           VARCHAR(50) DEFAULT 'Efficient',
+  unit             VARCHAR(20) DEFAULT 'tCO2e',
+  -- Year range: NULL = active for all years; FY string e.g. 'FY26'
+  active_from_fy   VARCHAR(10) DEFAULT NULL,
+  active_through_fy VARCHAR(10) DEFAULT NULL,
   UNIQUE KEY uniq_asset (client_id, asset_id),
   FOREIGN KEY (client_id) REFERENCES clients(id)
 ) ENGINE=InnoDB;
 
--- ── 23. Scope 1 equipment timeseries ─────────────────────────────────────────
+-- ── 22a. Inventory boundary — Scope 1 assets ────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS inv_scope1_assets (
+  id                       INT AUTO_INCREMENT PRIMARY KEY,
+  client_id                INT NOT NULL,
+  client_ref               VARCHAR(100) NOT NULL,    -- stable frontend id (e.g. s1-1234567890)
+  fiscal_year              VARCHAR(10) NOT NULL,
+  subcategory              VARCHAR(50) NOT NULL,     -- stationary | mobile | fugitive
+  name                     VARCHAR(500) NOT NULL,
+  facility_id              VARCHAR(100) DEFAULT NULL, -- numeric ghg_facilities.id or entity code
+  status                   VARCHAR(50) DEFAULT 'active',
+  fuel_type                VARCHAR(100) DEFAULT NULL,
+  is_biogenic              TINYINT(1) NOT NULL DEFAULT 0,
+  equipment_type           VARCHAR(100) DEFAULT NULL,
+  nameplate_capacity_value DECIMAL(14,4) DEFAULT NULL,
+  nameplate_capacity_unit  VARCHAR(30) DEFAULT NULL,
+  commissioning_date       DATE DEFAULT NULL,
+  vehicle_type             VARCHAR(100) DEFAULT NULL,
+  vehicle_count            INT DEFAULT NULL,
+  ownership                VARCHAR(50) DEFAULT NULL,
+  refrigerant_or_gas       VARCHAR(100) DEFAULT NULL,
+  refrigerant_charge_kg    DECIMAL(14,4) DEFAULT NULL,
+  annual_leakage_pct       DECIMAL(8,4) DEFAULT NULL,
+  installation_date        DATE DEFAULT NULL,
+  FOREIGN KEY (client_id) REFERENCES clients(id)
+) ENGINE=InnoDB;
+
+-- ── 22b. Inventory boundary — Scope 2 sources ────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS inv_scope2_sources (
+  id                     INT AUTO_INCREMENT PRIMARY KEY,
+  client_id              INT NOT NULL,
+  client_ref             VARCHAR(100) NOT NULL,    -- stable frontend id
+  fiscal_year            VARCHAR(10) NOT NULL,
+  category               VARCHAR(50) NOT NULL,     -- electricity | steam | heat | cooling
+  name                   VARCHAR(500) NOT NULL,
+  facility_id            VARCHAR(100) DEFAULT NULL,
+  status                 VARCHAR(50) DEFAULT 'active',
+  supplier               VARCHAR(255) DEFAULT NULL,
+  grid_connection_type   VARCHAR(50) DEFAULT NULL, -- metered | estimated
+  grid_region            VARCHAR(100) DEFAULT NULL,
+  consumer_number        VARCHAR(100) DEFAULT NULL,
+  renewable_procurement  JSON DEFAULT NULL,
+  contract_type          VARCHAR(50) DEFAULT NULL,
+  source_description     TEXT DEFAULT NULL,
+  is_low_carbon          TINYINT(1) NOT NULL DEFAULT 0,
+  FOREIGN KEY (client_id) REFERENCES clients(id)
+) ENGINE=InnoDB;
+
+-- ── 23. Monthly tracker drafts (raw input from client data submissions) ──────
+
+CREATE TABLE IF NOT EXISTS tracker_drafts (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  client_id   INT NOT NULL,
+  entity      VARCHAR(20) NOT NULL,
+  fiscal_year VARCHAR(10) NOT NULL,
+  asset_id    VARCHAR(100) NOT NULL,
+  period      VARCHAR(20) NOT NULL,   -- e.g. 'APR-25', 'APR-25__lb', 'annual'
+  value       DECIMAL(18,4),
+  edited_by   VARCHAR(255),
+  updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_draft (client_id, entity, fiscal_year, asset_id, period),
+  FOREIGN KEY (client_id) REFERENCES clients(id)
+) ENGINE=InnoDB;
+
+-- ── 24. Scope 1 equipment timeseries ─────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS s1_equipment (
   id        INT AUTO_INCREMENT PRIMARY KEY,
   client_id INT NOT NULL,
-  asset_id  VARCHAR(50) NOT NULL,
+  asset_id  VARCHAR(100) NOT NULL,
   year      VARCHAR(10) NOT NULL,
   tco2e     DECIMAL(14,4),
   UNIQUE KEY uniq_s1eq (client_id, asset_id, year),

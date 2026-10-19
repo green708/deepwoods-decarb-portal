@@ -134,8 +134,8 @@ export function DNF({ block = false, label }: { block?: boolean; label?: string 
   if (block) {
     return (
       <div className="grid place-items-center rounded-lg border border-dashed border-[var(--border)] bg-[var(--muted)] px-4 py-10 text-center">
-        <div className="text-sm font-semibold text-[color:var(--ink-muted)]">DNF — Data Not Found</div>
-        {label && <div className="mt-1 text-[11px] text-[color:var(--ink-muted)]">{label}</div>}
+        <div className="text-sm font-semibold text-[color:var(--ink-muted)]">Not available yet</div>
+        <div className="mt-1 max-w-sm text-[11px] text-[color:var(--ink-muted)]">{label ?? "This fills in automatically once your data has been calculated."}</div>
       </div>
     );
   }

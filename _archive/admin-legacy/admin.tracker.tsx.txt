@@ -1,0 +1,142 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
+import { AlertTriangle, Download, FileBarChart2, Mail } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { FACILITIES, MONTHS } from "@/lib/ghg/registry";
+import { GhgStoreProvider, useGhgStore } from "@/lib/ghg/store";
+import { ProgressRing } from "@/components/ghg/ProgressRing";
+import { TrackerGrid } from "@/components/ghg/TrackerGrid";
+import { Scope3Cards } from "@/components/ghg/Scope3Cards";
+import { cn } from "@/lib/utils";
+
+export const Route = createFileRoute("/admin/tracker")({
+  head: () => ({
+    meta: [
+      { title: "Admin Tracker · Featherlite GHG FY26" },
+      { name: "description", content: "Consultant tracker: facility × equipment × month status grid with cell-level detail, gap detection and reminders." },
+      { property: "og:title", content: "Admin Tracker · Featherlite GHG FY26" },
+      { property: "og:description", content: "Deepwoods consultant command centre for Featherlite FY26 GHG data collection." },
+    ],
+  }),
+  component: () => <GhgStoreProvider><TrackerPage /></GhgStoreProvider>,
+});
+
+function isFilled(v: unknown) {
+  if (Array.isArray(v)) return v.some((x) => x !== null && x !== undefined);
+  return v !== null && v !== undefined;
+}
+
+function TrackerPage() {
+  const { overallProgress, facilityProgress, getCell } = useGhgStore();
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Compute gaps (missing month slots per equipment)
+  const gaps = FACILITIES.flatMap((f) =>
+    f.equipment.flatMap((e) => {
+      if (e.mode === "annual") {
+        const c = getCell(e.id, "annual");
+        return isFilled(c?.value) ? [] : [{ facility: f.name, equipment: e.name, month: "Annual", id: e.id }];
+      }
+      return MONTHS.flatMap((m) => {
+        const c = getCell(e.id, m.key);
+        if (!c || !isFilled(c.value)) return [{ facility: f.name, equipment: e.name, month: m.short, id: e.id }];
+        return [];
+      });
+    })
+  );
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="sticky top-[52px] z-30 border-b bg-card/95 backdrop-blur">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-4 px-4 py-3">
+          <div>
+            <h1 className="text-xl font-bold text-navy">FOS FY26 — Data Collection Tracker</h1>
+            <p className="text-xs text-muted-foreground">Consultant view · 5 facilities · 25 equipment sources · 12 months</p>
+          </div>
+          <div className="ml-auto flex items-center gap-3">
+            <ProgressRing value={overallProgress} size={52} />
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <FileBarChart2 className="h-3.5 w-3.5" /> Generate Interim Report
+            </Button>
+            <Button size="sm" className="gap-1.5">
+              <Download className="h-3.5 w-3.5" /> Export Tracker (XLSX)
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto flex max-w-[1600px] gap-4 px-4 py-4">
+        <aside className={cn(
+          "shrink-0 space-y-2 transition-all",
+          sidebarOpen ? "w-[220px]" : "w-12",
+        )}>
+          <div className="flex items-center justify-between">
+            {sidebarOpen && <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Facilities</span>}
+            <button
+              onClick={() => setSidebarOpen((v) => !v)}
+              className="rounded-md border border-input px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent"
+            >{sidebarOpen ? "«" : "»"}</button>
+          </div>
+          {sidebarOpen && FACILITIES.map((f) => {
+            const pct = facilityProgress(f.id);
+            return (
+              <a
+                key={f.id}
+                href={`#facility-${f.id}`}
+                className="flex items-center justify-between rounded-md border bg-card px-2.5 py-2 text-xs hover:bg-accent"
+              >
+                <div>
+                  <div className="font-semibold text-navy">{f.name}</div>
+                  <div className="text-[10px] text-muted-foreground">{f.utility}</div>
+                </div>
+                <Badge variant="outline" className="tabular-nums">{Math.round(pct * 100)}%</Badge>
+              </a>
+            );
+          })}
+          {sidebarOpen && (
+            <div className="mt-6 space-y-2 rounded-md border bg-critical-soft/60 p-3 text-xs">
+              <div className="flex items-center gap-2 font-semibold text-critical">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Data Gaps ({gaps.length})
+              </div>
+              <ul className="max-h-56 space-y-1 overflow-auto text-[11px] text-muted-foreground">
+                {gaps.slice(0, 30).map((g, i) => (
+                  <li key={i} className="truncate">
+                    <span className="font-mono text-[10px]">{g.id}</span> · {g.month}
+                  </li>
+                ))}
+                {gaps.length > 30 && <li className="italic">+ {gaps.length - 30} more…</li>}
+              </ul>
+              <Button size="sm" variant="outline" className="mt-2 w-full gap-1.5">
+                <Mail className="h-3.5 w-3.5" /> Send reminder
+              </Button>
+            </div>
+          )}
+        </aside>
+
+        <div className="min-w-0 flex-1">
+          <Tabs defaultValue="s12">
+            <TabsList>
+              <TabsTrigger value="s12">Scope 1 &amp; 2 Tracker</TabsTrigger>
+              <TabsTrigger value="s3">Scope 3 Tracker</TabsTrigger>
+            </TabsList>
+            <TabsContent value="s12" className="mt-3">
+              <TrackerGrid />
+              <p className="mt-3 text-[11px] text-muted-foreground">
+                Cell colours — <span className="mx-1 inline-block h-2 w-2 rounded ghg-cell-received" /> received ·
+                <span className="mx-1 inline-block h-2 w-2 rounded ghg-cell-partial" /> partial ·
+                <span className="mx-1 inline-block h-2 w-2 rounded ghg-cell-missing" /> missing ·
+                <span className="mx-1 inline-block h-2 w-2 rounded ghg-cell-empty" /> empty
+              </p>
+            </TabsContent>
+            <TabsContent value="s3" className="mt-3">
+              <Scope3Cards />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+    </div>
+  );
+}

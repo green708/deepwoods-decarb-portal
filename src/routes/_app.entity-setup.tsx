@@ -21,9 +21,29 @@ const CTINT    = "#FEF2F2";
 const FOREST   = "#1E4D2B";
 
 const INDUSTRIES = [
-  "Manufacturing", "Textiles & Apparel", "Chemicals", "Food & Beverage",
-  "IT / Technology", "Financial Services", "Real Estate & Construction",
-  "Logistics & Transportation", "Furniture Manufacturing", "Other",
+  "Agriculture & Forestry",
+  "Automotive & Mobility",
+  "Chemicals & Materials",
+  "Construction & Infrastructure",
+  "Consumer Goods & Retail",
+  "Education",
+  "Energy & Utilities",
+  "Financial Services",
+  "Food & Beverage",
+  "Healthcare & Pharmaceuticals",
+  "Hospitality & Tourism",
+  "IT / Technology & Software",
+  "Logistics & Transportation",
+  "Manufacturing — Discrete",
+  "Manufacturing — Process",
+  "Media & Entertainment",
+  "Mining & Metals",
+  "Professional Services",
+  "Real Estate",
+  "Telecommunications",
+  "Textiles & Apparel",
+  "Waste & Recycling",
+  "Other",
 ];
 
 const ORG_TYPES_LEGAL = [
@@ -38,32 +58,40 @@ interface TeamMember { name: string; email: string; role: string; }
 
 interface WizardState {
   // Step 1 — Company Details
-  is_india:       boolean;
-  gstin:          string;
-  legalName:      string;
-  operatingName:  string;
-  industry:       string;
-  org_type:       string;
-  is_msme:        boolean;
-  udyam_number:   string;
-  legal_address:  string;
-  website:        string;
+  is_india:          boolean;
+  gstin:             string;
+  legalName:         string;
+  operatingName:     string;
+  industry:          string;
+  org_type:          string;
+  reporting_model:   string;
+  reporting_period:  string;   // 'FY' | 'CY' | 'custom'
+  fy_start_month:    string;   // 1-12, used when reporting_period = 'custom'
+  is_msme:           boolean;
+  udyam_number:      string;
+  legal_address:     string;
+  website:           string;
   // Step 4 — Plan
-  selected_plan:  string;
-  logo_preview:   string | null;
+  selected_plan:     string;
+  logo_preview:      string | null;
   // Step 2 — Facilities
-  facilities:     Facility[];
+  facilities:        Facility[];
   // Step 3 — Team
-  team:           TeamMember[];
+  team:              TeamMember[];
+  // Add-entity mode: the person who will manage this entity going forward.
+  // Optional — the org admin can leave it blank and assign one later from Team settings.
+  entityAdminEmail:  string;
 }
 
 const INIT: WizardState = {
   is_india: true, gstin: "",
-  legalName: "", operatingName: "", industry: "", org_type: "", is_msme: false, udyam_number: "",
+  legalName: "", operatingName: "", industry: "", org_type: "", reporting_model: "consolidated", reporting_period: "FY", fy_start_month: "4",
+  is_msme: false, udyam_number: "",
   legal_address: "", website: "", logo_preview: null,
   facilities: [{ name: "Head Office", address: "" }],
   team: [{ name: "", email: "", role: "viewer" }],
   selected_plan: "professional",
+  entityAdminEmail: "",
 };
 
 const STEPS = [
@@ -72,6 +100,13 @@ const STEPS = [
   { label: "Manage Team",     short: "Team",       icon: Users },
   { label: "Payment",         short: "Payment",    icon: CreditCard },
   { label: "Submit",          short: "Submit",     icon: ClipboardCheck },
+];
+
+// Simplified 3-step flow used when adding a 2nd+ entity to an existing account
+const ADD_ENTITY_STEPS = [
+  { label: "Entity Details", short: "Entity",     icon: Building2 },
+  { label: "Facilities",     short: "Facilities", icon: MapPin },
+  { label: "Submit",         short: "Submit",     icon: ClipboardCheck },
 ];
 
 function makeCode(s: string): string {
@@ -85,12 +120,19 @@ function EntitySetupPage() {
 
   // config.setup_complete arrives as boolean true (PHP json_decode) or string "true"
   const isFirstSetup = ctx.config.setup_complete !== true && ctx.config.setup_complete !== "true";
+  const activeSteps  = isFirstSetup ? STEPS : ADD_ENTITY_STEPS;
 
   const [step, setStep]       = useState(0);
   const [data, setData]       = useState<WizardState>({ ...INIT, legalName: isFirstSetup ? (ctx.client.name ?? "") : "" });
   const [loading, setLoading] = useState(false);
   const [prefilling, setPrefilling] = useState(isFirstSetup);
   const [error, setError]     = useState<string | null>(null);
+  // Set only when an entity admin was requested AND the invite needs the org admin's
+  // attention (email failed to send, or the account couldn't be created) — shown as a
+  // confirmation panel with the temp password before leaving the wizard.
+  const [inviteResult, setInviteResult] = useState<
+    { email: string; created: boolean; email_sent: boolean; temp_password?: string; error?: string } | null
+  >(null);
 
   const update = (patch: Partial<WizardState>) => setData(p => ({ ...p, ...patch }));
 
@@ -120,9 +162,19 @@ function EntitySetupPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+
   const canNext = (): boolean => {
     if (step === 0) {
-      return data.legalName.trim() !== "" && data.industry !== "" && data.legal_address.trim() !== "";
+      if (!isFirstSetup) {
+        // Add-entity mode: only entity name is required; admin email is optional but must be valid if given
+        const adminEmail = data.entityAdminEmail.trim();
+        if (adminEmail !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) return false;
+        return data.legalName.trim() !== "";
+      }
+      if (!data.legalName.trim() || !data.industry || !data.legal_address.trim() || !data.org_type) return false;
+      if (data.is_india && data.gstin.trim() && !GSTIN_RE.test(data.gstin.trim().toUpperCase())) return false;
+      return true;
     }
     if (step === 1) {
       return data.facilities.length > 0 && data.facilities.every(f => f.name.trim() !== "");
@@ -134,12 +186,29 @@ function EntitySetupPage() {
     setError(null);
     setLoading(true);
     try {
-      const parentCode     = makeCode(data.legalName);
-      const reportingModel = "consolidated";
+      // First setup: use admin-set code from DB if available, else generate from name.
+      // Adding a 2nd+ entity: always generate a fresh code and auto-increment to avoid collisions.
+      const existingNonConsolidated = ctx.entities.filter(e => !e.is_consolidated);
+      const isFirstSetup = existingNonConsolidated.length === 0;
+      const existingCodes = new Set(ctx.entities.map(e => e.code));
+
+      let parentCode: string;
+      if (isFirstSetup) {
+        parentCode = ctx.entities.find(e => e.is_consolidated)?.code
+                  ?? ctx.entities[0]?.code
+                  ?? makeCode(data.legalName);
+      } else {
+        const base = makeCode(data.legalName);
+        parentCode = base;
+        let n = 1;
+        while (existingCodes.has(parentCode)) { parentCode = base + n++; }
+      }
+      const reportingModel = data.reporting_model || "consolidated";
 
       const entities = [
         { code: parentCode, name: data.legalName,
-          short_name: data.operatingName || data.legalName.slice(0, 8), is_consolidated: false },
+          short_name: data.operatingName || data.legalName.slice(0, 8), is_consolidated: false,
+          legal_address: data.legal_address },
       ];
 
       const legalEntities = [
@@ -160,23 +229,53 @@ function EntitySetupPage() {
         .filter(m => m.email.trim() !== "")
         .map(m => ({ name: m.name.trim(), email: m.email.trim().toLowerCase(), role: m.role }));
 
-      await authFetch("client-setup.php", {
+      // Add-entity mode sends only entity-specific data — never touches client-level config
+      const payload = isFirstSetup ? {
+        company_name:     data.legalName,
+        operating_name:   data.operatingName || undefined,
+        industry:         data.industry,
+        country:          data.is_india ? "India" : "Other",
+        is_msme:          data.is_msme,
+        udyam_number:     data.udyam_number  || undefined,
+        website:          data.website       || undefined,
+        reporting_model:  reportingModel,
+        reporting_period: data.reporting_period === "custom" ? "FY" : data.reporting_period,
+        fy_start_month:   data.reporting_period === "FY" ? 4
+                        : data.reporting_period === "CY" ? 1
+                        : parseInt(data.fy_start_month, 10) || 4,
+        logo_url:         data.logo_preview  || undefined,
+        facility_count:   data.facilities.length,
+        facilities:       data.facilities.map(f => ({ name: f.name, location: f.address })),
+        selected_plan:    data.selected_plan,
+        entities,
+        legal_entities:        legalEntities,
+        reporting_engagements: reportingEngagements,
+        team_members:          teamMembers,
+      } : {
+        // Add-entity: entity + facilities, plus the entity admin invite (optional)
+        facility_count: data.facilities.length,
+        facilities:     data.facilities.map(f => ({ name: f.name, location: f.address })),
+        entities,
+        legal_entities: legalEntities,
+        entity_admin_email: data.entityAdminEmail.trim() || undefined,
+      };
+
+      const result = await authFetch("client-setup.php", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          company_name:    data.legalName,
-          industry:        data.industry,
-          country:         data.is_india ? "India" : "Other",
-          reporting_model: reportingModel,
-          logo_url:        data.logo_preview || undefined,
-          facility_count:  data.facilities.length,
-          selected_plan:   data.selected_plan,
-          entities,
-          legal_entities:        legalEntities,
-          reporting_engagements: reportingEngagements,
-          team_members:          teamMembers,
-        }),
+        body: JSON.stringify(payload),
       });
+
+      const invite = result?.entity_admin_invite as
+        { email: string; created: boolean; email_sent: boolean; temp_password?: string; error?: string } | null | undefined;
+
+      // Only interrupt the redirect if the org admin actually needs to do something —
+      // a failed invite with a temp password to share manually, or an outright error.
+      if (invite && !invite.email_sent) {
+        setInviteResult(invite);
+        setLoading(false);
+        return;
+      }
 
       clearClientContext();
       window.location.href = "/register";
@@ -191,6 +290,33 @@ function EntitySetupPage() {
       <div style={{ minHeight: "100vh", background: PAPER, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <Loader2 style={{ width: 24, height: 24, color: CANOPY, animation: "spin 1s linear infinite" }} />
         <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+      </div>
+    );
+  }
+
+  if (inviteResult) {
+    const continueToApp = () => { clearClientContext(); window.location.href = "/register"; };
+    return (
+      <div style={{ minHeight: "100vh", background: PAPER, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div style={{ width: "100%", maxWidth: 480, background: "white", border: `1px solid ${HAIRLINE}`, borderRadius: 16, padding: "32px 36px", boxShadow: "0 2px 12px rgba(30,79,60,0.06)" }}>
+          <h2 style={{ margin: "0 0 8px", fontSize: 19, fontWeight: 800, color: INK }}>
+            Entity added — but the admin invite needs attention
+          </h2>
+          <p style={{ margin: "0 0 16px", fontSize: 13, color: SLATE, lineHeight: 1.6 }}>
+            {inviteResult.error
+              ? `We couldn't invite ${inviteResult.email}: ${inviteResult.error}. You can assign an entity admin later from Team settings.`
+              : `${inviteResult.email} was created, but the invitation email couldn't be sent. Share this temporary password with them directly.`}
+          </p>
+          {inviteResult.temp_password && (
+            <div style={{ padding: "12px 16px", borderRadius: 10, background: "#FEF3C7", border: "1px solid #FDE68A", marginBottom: 16 }}>
+              <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#92400E" }}>Temporary password</p>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 700, fontFamily: "monospace", letterSpacing: 1, color: "#92400E" }}>{inviteResult.temp_password}</p>
+            </div>
+          )}
+          <button type="button" onClick={continueToApp} className="lov-btn-primary" style={{ width: "100%", justifyContent: "center" }}>
+            Continue
+          </button>
+        </div>
       </div>
     );
   }
@@ -215,7 +341,7 @@ function EntitySetupPage() {
       {/* Stepper bar */}
       <div style={{ background: "white", borderBottom: `1px solid ${HAIRLINE}`, padding: "16px 48px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center" }}>
-          {STEPS.map((s, i) => {
+          {activeSteps.map((s, i) => {
             const done   = i < step;
             const active = i === step;
             return (
@@ -240,7 +366,7 @@ function EntitySetupPage() {
                     {s.short}
                   </span>
                 </div>
-                {i < STEPS.length - 1 && (
+                {i < activeSteps.length - 1 && (
                   <div style={{ flex: 1, height: 1, background: i < step ? CANOPY : HAIRLINE, margin: "0 8px" }} />
                 )}
               </Fragment>
@@ -253,10 +379,10 @@ function EntitySetupPage() {
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "40px 48px 80px" }}>
         <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase",
           color: CANOPY, margin: "0 0 6px" }}>
-          Step {step + 1} of {STEPS.length}
+          Step {step + 1} of {activeSteps.length}
         </p>
         <h1 style={{ fontSize: 28, fontWeight: 800, margin: "0 0 28px", color: INK, letterSpacing: "-0.03em" }}>
-          {STEPS[step].label}
+          {activeSteps[step].label}
         </h1>
 
         <div style={{
@@ -264,11 +390,14 @@ function EntitySetupPage() {
           borderRadius: 16, padding: "36px 40px",
           boxShadow: "0 2px 12px rgba(30,79,60,0.06), 0 1px 3px rgba(0,0,0,0.04)",
         }}>
-          {step === 0 && <CompanyDetailsStep data={data} update={update} />}
-          {step === 1 && <FacilitiesStep     data={data} update={update} onBackToCompany={() => setStep(0)} />}
-          {step === 2 && <TeamStep           data={data} update={update} />}
-          {step === 3 && <PaymentStep selectedPlan={data.selected_plan} onPlanChange={p => update({ selected_plan: p })} />}
-          {step === 4 && <SubmitStep         data={data} />}
+          {step === 0 && (isFirstSetup
+            ? <CompanyDetailsStep data={data} update={update} />
+            : <EntityDetailsStep  data={data} update={update} />
+          )}
+          {step === 1 && <FacilitiesStep data={data} update={update} onBackToCompany={() => setStep(0)} />}
+          {isFirstSetup && step === 2 && <TeamStep    data={data} update={update} />}
+          {isFirstSetup && step === 3 && <PaymentStep selectedPlan={data.selected_plan} onPlanChange={p => update({ selected_plan: p })} />}
+          {(isFirstSetup ? step === 4 : step === 2) && <SubmitStep data={data} isAddEntity={!isFirstSetup} />}
         </div>
 
         {error && (
@@ -285,7 +414,7 @@ function EntitySetupPage() {
             </button>
           ) : <div />}
 
-          {step < STEPS.length - 1 ? (
+          {step < activeSteps.length - 1 ? (
             <button type="button"
               onClick={() => canNext() && setStep(s => s + 1)}
               disabled={!canNext()}
@@ -300,7 +429,7 @@ function EntitySetupPage() {
           ) : (
             <button type="button" onClick={handleSubmit} disabled={loading} className="lov-btn-primary">
               {loading && <Loader2 style={{ width: 15, height: 15, animation: "lov-spin 1s linear infinite" }} />}
-              {loading ? "Submitting…" : "Submit registration"}
+              {loading ? "Submitting…" : isFirstSetup ? "Submit registration" : "Add entity"}
             </button>
           )}
         </div>
@@ -309,10 +438,77 @@ function EntitySetupPage() {
   );
 }
 
+// ── Add-entity Step 0: Entity Details ────────────────────────────────────────
+
+function EntityDetailsStep({ data, update }: { data: WizardState; update: (p: Partial<WizardState>) => void }) {
+  const [touched, setTouched] = useState({ legalName: false, entityAdminEmail: false });
+  const touch = (k: keyof typeof touched) => setTouched(t => ({ ...t, [k]: true }));
+  const err = touched.legalName && !data.legalName.trim() ? "Entity name is required" : "";
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const adminEmailErr = touched.entityAdminEmail && data.entityAdminEmail.trim() !== "" && !EMAIL_RE.test(data.entityAdminEmail.trim())
+    ? "Enter a valid email address" : "";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      <p style={{ margin: 0, fontSize: 13, color: SLATE, lineHeight: 1.6 }}>
+        Enter the details of the legal entity you are adding. Each entity tracks GHG data independently.
+      </p>
+
+      <Field label="Legal name of the entity" required error={err}
+        hint="The exact registered name of this legal entity (e.g. Navitas Data Sciences Private Limited).">
+        <input className={`lov-input${err ? " lov-input-error" : ""}`}
+          value={data.legalName}
+          onChange={e => update({ legalName: e.target.value })}
+          onBlur={() => touch("legalName")}
+          placeholder="e.g. Navitas Logistics Private Limited"
+          autoFocus />
+      </Field>
+
+      <Field label="Registered address"
+        hint="Official address of this entity — used for GHG reporting boundary documentation.">
+        <textarea className="lov-input" rows={2} value={data.legal_address}
+          onChange={e => update({ legal_address: e.target.value })}
+          placeholder="e.g. 4th Floor, NSEZ Tower, Noida, UP 201305" />
+      </Field>
+
+      <Field label="Organisation type"
+        hint="Legal form of this entity.">
+        <select className="lov-input" value={data.org_type}
+          onChange={e => update({ org_type: e.target.value })}>
+          <option value="">Select type…</option>
+          {ORG_TYPES_LEGAL.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </Field>
+
+      <Field label="Entity admin's email" error={adminEmailErr}
+        hint="Optional. This person gets full access to this entity — its facilities, team and data. Leave blank to assign one later from Team settings.">
+        <input className={`lov-input${adminEmailErr ? " lov-input-error" : ""}`}
+          type="email"
+          value={data.entityAdminEmail}
+          onChange={e => update({ entityAdminEmail: e.target.value })}
+          onBlur={() => touch("entityAdminEmail")}
+          placeholder="e.g. admin@theirentity.com" />
+      </Field>
+    </div>
+  );
+}
+
 // ── Step 1: Company Details ───────────────────────────────────────────────────
 
 function CompanyDetailsStep({ data, update }: { data: WizardState; update: (p: Partial<WizardState>) => void }) {
   const logoRef = useRef<HTMLInputElement>(null);
+  const [touched, setTouched] = useState({ legalName: false, industry: false, org_type: false, legal_address: false, gstin: false });
+  const touch = (k: keyof typeof touched) => setTouched(t => ({ ...t, [k]: true }));
+
+  const GSTIN_RE_LOCAL = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+  const errs = {
+    legalName:     touched.legalName     && !data.legalName.trim()     ? "Legal name is required" : "",
+    industry:      touched.industry      && !data.industry              ? "Please select an industry" : "",
+    org_type:      touched.org_type      && !data.org_type              ? "Please select an organisation type" : "",
+    legal_address: touched.legal_address && !data.legal_address.trim() ? "Legal address is required" : "",
+    gstin: touched.gstin && data.is_india && data.gstin.trim() && !GSTIN_RE_LOCAL.test(data.gstin.trim().toUpperCase())
+      ? "Enter a valid 15-character GSTIN (e.g. 27AAPFU0939F1ZV)" : "",
+  };
 
   const handleLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -343,9 +539,11 @@ function CompanyDetailsStep({ data, update }: { data: WizardState; update: (p: P
         </Field>
 
         <Field label="GSTIN" required={data.is_india}
-          hint="Your 15-character GST Identification Number, as shown on your GST registration certificate.">
-          <input className="lov-input" value={data.gstin}
+          hint="Your 15-character GST Identification Number, as shown on your GST registration certificate."
+          error={errs.gstin}>
+          <input className={`lov-input${errs.gstin ? " lov-input-error" : ""}`} value={data.gstin}
             onChange={e => update({ gstin: e.target.value.toUpperCase() })}
+            onBlur={() => touch("gstin")}
             placeholder={data.is_india ? "15-character GST Identification Number" : "Not applicable"}
             maxLength={15} disabled={!data.is_india} />
         </Field>
@@ -354,9 +552,11 @@ function CompanyDetailsStep({ data, update }: { data: WizardState; update: (p: P
       {/* Legal name + Operating name */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         <Field label="Legal name of the organisation" required
-          hint="The exact registered name on your incorporation or registration certificate — this is what will appear on official reports.">
-          <input className="lov-input" value={data.legalName}
+          hint="The exact registered name on your incorporation or registration certificate — this is what will appear on official reports."
+          error={errs.legalName}>
+          <input className={`lov-input${errs.legalName ? " lov-input-error" : ""}`} value={data.legalName}
             onChange={e => update({ legalName: e.target.value })}
+            onBlur={() => touch("legalName")}
             placeholder="Exact registered name" />
         </Field>
         <Field label="Operating name of the organisation (if different)"
@@ -370,57 +570,101 @@ function CompanyDetailsStep({ data, update }: { data: WizardState; update: (p: P
       {/* Industry + Org type */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         <Field label="Industry" required
-          hint="Choose the sector closest to your primary business activity — this affects the default emission factors used in your calculations.">
-          <select className="lov-select" value={data.industry}
-            onChange={e => update({ industry: e.target.value })}>
+          hint="Choose the sector closest to your primary business activity — this affects the default emission factors used in your calculations."
+          error={errs.industry}>
+          <select className={`lov-select${errs.industry ? " lov-input-error" : ""}`} value={data.industry}
+            onChange={e => update({ industry: e.target.value })}
+            onBlur={() => touch("industry")}>
             <option value="">Select an industry</option>
             {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
           </select>
         </Field>
         <Field label="Organisational Type" required
-          hint="Your legal structure, as stated on your registration documents.">
-          <select className="lov-select" value={data.org_type}
-            onChange={e => update({ org_type: e.target.value })}>
+          hint="Your legal structure, as stated on your registration documents."
+          error={errs.org_type}>
+          <select className={`lov-select${errs.org_type ? " lov-input-error" : ""}`} value={data.org_type}
+            onChange={e => update({ org_type: e.target.value })}
+            onBlur={() => touch("org_type")}>
             <option value="">Select a type</option>
             {ORG_TYPES_LEGAL.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </Field>
       </div>
 
-      {/* MSME */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <Field label="Is your organisation registered as an MSME?"
-          hint="Select Yes if you hold an Udyam (or equivalent) MSME registration.">
-          <div className="lov-yn">
-            {["Yes", "No"].map(opt => {
-              const active = opt === "Yes" ? data.is_msme : !data.is_msme;
-              return (
-                <button key={opt} type="button" onClick={() => update({ is_msme: opt === "Yes", udyam_number: opt === "No" ? "" : data.udyam_number })}
-                  className={active ? "lov-yn-btn active" : "lov-yn-btn"}>
-                  {opt}
-                </button>
-              );
-            })}
-          </div>
+      {/* Reporting model */}
+      <Field label="Consolidation / Reporting Approach" required
+        hint="How your organisation consolidates GHG emissions. Operational control is the most common approach for GHG Protocol compliance.">
+        <select className="lov-select" value={data.reporting_model}
+          onChange={e => update({ reporting_model: e.target.value })}>
+          <option value="consolidated">Operational Control (consolidated reporting)</option>
+          <option value="equity_share">Equity Share</option>
+          <option value="financial_control">Financial Control</option>
+          <option value="separate">Separate entities (no consolidated roll-up)</option>
+        </select>
+      </Field>
+
+      {/* Reporting period — CY vs FY */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+        <Field label="Reporting Year Type" required
+          hint="How does your organisation define its reporting year? Most Indian companies use a Financial Year (Apr–Mar).">
+          <select className="lov-select" value={data.reporting_period}
+            onChange={e => update({ reporting_period: e.target.value, fy_start_month: e.target.value === "FY" ? "4" : e.target.value === "CY" ? "1" : data.fy_start_month })}>
+            <option value="FY">Financial Year (Apr–Mar, Indian standard)</option>
+            <option value="CY">Calendar Year (Jan–Dec)</option>
+            <option value="custom">Custom fiscal year (specify start month)</option>
+          </select>
         </Field>
-        {data.is_msme && (
-          <Field label="Udyam Registration Number"
-            hint="Your 19-character Udyam number (e.g. UDYAM-XX-00-0000000). Found on your Udyam Registration Certificate.">
-            <input className="lov-input" value={data.udyam_number}
-              onChange={e => update({ udyam_number: e.target.value.toUpperCase() })}
-              placeholder="UDYAM-XX-00-0000000" maxLength={25} />
+        {data.reporting_period === "custom" && (
+          <Field label="Fiscal Year Start Month" required
+            hint="Which month does your fiscal year start? (e.g. 10 for October, giving an Oct–Sep year)">
+            <select className="lov-select" value={data.fy_start_month}
+              onChange={e => update({ fy_start_month: e.target.value })}>
+              {["January","February","March","April","May","June","July","August","September","October","November","December"].map((m, i) => (
+                <option key={i+1} value={String(i+1)}>{m}</option>
+              ))}
+            </select>
           </Field>
         )}
       </div>
 
+      {/* MSME — India-specific */}
+      {data.is_india && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <Field label="Is your organisation registered as an MSME?"
+            hint="Select Yes if you hold an Udyam (or equivalent) MSME registration.">
+            <div className="lov-yn">
+              {["Yes", "No"].map(opt => {
+                const active = opt === "Yes" ? data.is_msme : !data.is_msme;
+                return (
+                  <button key={opt} type="button" onClick={() => update({ is_msme: opt === "Yes", udyam_number: opt === "No" ? "" : data.udyam_number })}
+                    className={active ? "lov-yn-btn active" : "lov-yn-btn"}>
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+          {data.is_msme && (
+            <Field label="Udyam Registration Number"
+              hint="Your 19-character Udyam number (e.g. UDYAM-XX-00-0000000). Found on your Udyam Registration Certificate.">
+              <input className="lov-input" value={data.udyam_number}
+                onChange={e => update({ udyam_number: e.target.value.toUpperCase() })}
+                placeholder="UDYAM-XX-00-0000000" maxLength={25} />
+            </Field>
+          )}
+        </div>
+      )}
+
       {/* Legal address */}
       <Field label="Legal Address" required
-        hint="Your registered head office address. This will automatically become your first facility in the next step, so double-check it here.">
-        <textarea className="lov-textarea" rows={3} value={data.legal_address}
+        hint="Your registered head office address. This will automatically become your first facility in the next step, so double-check it here."
+        error={errs.legal_address}>
+        <textarea className={`lov-textarea${errs.legal_address ? " lov-input-error" : ""}`} rows={3} value={data.legal_address}
           onChange={e => update({
             legal_address: e.target.value,
             facilities: [{ name: "Head Office", address: e.target.value }, ...data.facilities.slice(1)],
           })}
+          onBlur={() => touch("legal_address")}
           placeholder="Full registered head-office address" />
       </Field>
 
@@ -680,7 +924,7 @@ function TeamStep({ data, update }: { data: WizardState; update: (p: Partial<Wiz
             <Field label="Role">
               <select className="lov-select" value={m.role}
                 onChange={e => patchMember(i, { role: e.target.value })}>
-                <option value="sustainability_team">Sustainability Team</option>
+                <option value="sustainability_team">Admin</option>
                 <option value="client_uploader">Data Contributor</option>
                 <option value="client_leadership">Viewer</option>
               </select>
@@ -938,7 +1182,45 @@ function PaymentStep({ selectedPlan, onPlanChange }: { selectedPlan: string; onP
 
 // ── Step 5: Submit / Review ───────────────────────────────────────────────────
 
-function SubmitStep({ data }: { data: WizardState }) {
+function SubmitStep({ data, isAddEntity }: { data: WizardState; isAddEntity?: boolean }) {
+  if (isAddEntity) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        <p style={{ margin: 0, fontSize: 13, color: SLATE, lineHeight: 1.6 }}>
+          Review the new entity details before adding it to your account.
+        </p>
+
+        <ReviewSection title="Entity Details">
+          <RR label="Entity name" value={data.legalName || "—"} />
+          {data.legal_address && <RR label="Registered address" value={data.legal_address} />}
+          {data.org_type && <RR label="Org type" value={data.org_type} />}
+        </ReviewSection>
+
+        <ReviewSection title="Facilities">
+          {data.facilities.map((f, i) => (
+            <RR key={i} label={i === 0 ? "Primary site" : `Facility ${i + 1}`}
+              value={[f.name, f.address].filter(Boolean).join(" — ") || "—"} />
+          ))}
+        </ReviewSection>
+
+        <ReviewSection title="Entity Admin">
+          <RR label="Invite" value={data.entityAdminEmail.trim() || "None — assign one later from Team settings"} />
+        </ReviewSection>
+
+        <div style={{
+          padding: "14px 18px", borderRadius: 10,
+          background: "#EEF3F0", border: `1px solid ${HAIRLINE}`,
+          fontSize: 13, color: SLATE, lineHeight: 1.6,
+        }}>
+          <strong style={{ color: INK }}>What happens next:</strong> The new legal entity and its facilities will be
+          added to your account immediately.{data.entityAdminEmail.trim()
+            ? " An invitation email will be sent to the entity admin right away."
+            : " You can then start submitting GHG data for this entity."}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <p style={{ margin: 0, fontSize: 13, color: SLATE, lineHeight: 1.6 }}>
@@ -997,8 +1279,8 @@ function SubmitStep({ data }: { data: WizardState }) {
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
-function Field({ label, required, hint, children }: {
-  label: string; required?: boolean; hint?: string; children: React.ReactNode;
+function Field({ label, required, hint, error, children }: {
+  label: string; required?: boolean; hint?: string; error?: string; children: React.ReactNode;
 }) {
   return (
     <div>
@@ -1007,9 +1289,11 @@ function Field({ label, required, hint, children }: {
         {required && <span style={{ fontSize: 10, color: CORAL }}>●</span>}
       </div>
       {children}
-      {hint && (
+      {error ? (
+        <p style={{ margin: "7px 0 0", fontSize: 12, color: CORAL, lineHeight: 1.6 }}>{error}</p>
+      ) : hint ? (
         <p style={{ margin: "7px 0 0", fontSize: 12, color: "#94A3B8", lineHeight: 1.6 }}>{hint}</p>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -1040,6 +1324,7 @@ function RR({ label, value }: { label: string; value: string }) {
 const LOV_CSS = `
 .lov-input,.lov-select,.lov-textarea{width:100%;padding:10px 14px;border:1.5px solid ${HAIRLINE};border-radius:9px;font-size:14px;color:${INK};background:white;font-family:inherit;outline:none;box-sizing:border-box;transition:border-color 0.15s,box-shadow 0.15s;appearance:auto}
 .lov-input:focus,.lov-select:focus,.lov-textarea:focus{border-color:${CANOPY};box-shadow:0 0 0 3px rgba(30,111,92,0.12)}
+.lov-input-error{border-color:${CORAL} !important}.lov-input-error:focus{box-shadow:0 0 0 3px rgba(220,38,38,0.12) !important}
 .lov-input::placeholder,.lov-textarea::placeholder{color:#BCC5BF}
 .lov-textarea{resize:vertical;min-height:80px;line-height:1.6}
 .lov-add-link{display:inline-flex;align-items:center;gap:6px;padding:0;background:none;border:none;color:${CANOPY};font-size:13px;font-weight:600;cursor:pointer;margin-top:4px}

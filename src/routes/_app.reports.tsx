@@ -94,7 +94,10 @@ function Reports() {
                 {isOpen && (
                   <div className="border-t">
                     {docs.length === 0 ? (
-                      <div className="px-5 py-4 text-sm italic text-muted-foreground">No documents for {year}.</div>
+                      <div className="flex flex-col gap-1 px-5 py-5">
+                        <p className="text-sm text-muted-foreground">No reports published for {year} yet.</p>
+                        <p className="text-xs text-muted-foreground">Reports are added by your Deepwoods consultant at the end of each reporting cycle. Contact <a href="mailto:support@deepwoodsgreen.com" className="underline">support@deepwoodsgreen.com</a> if you expected a report here.</p>
+                      </div>
                     ) : (
                       <div className="divide-y">
                         {CAT_ORDER.map(cat => {

@@ -11,7 +11,7 @@ $url = 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query([
     'client_id' => $config['drive']['oauth_client_id'],
     'redirect_uri' => $config['drive']['oauth_redirect_uri'],
     'response_type' => 'code',
-    'scope' => 'https://www.googleapis.com/auth/drive',
+    'scope' => 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets',
     'access_type' => 'offline',
     'prompt' => 'consent',
 ]);
