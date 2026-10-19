@@ -30,6 +30,7 @@ $body     = dolphin_json_body();
 $clientId = isset($body['client_id']) ? (int)$body['client_id'] : 0;
 $email    = trim(strtolower($body['email'] ?? ''));
 $role     = $body['role'] ?? '';
+$displayName = isset($body['display_name']) && is_string($body['display_name']) ? trim($body['display_name']) : '';
 
 $allowedRoles = ['sustainability_team', 'client_uploader', 'client_leadership'];
 
@@ -46,6 +47,9 @@ if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
 }
 if (!in_array($role, $allowedRoles, true)) {
     dolphin_send_json(['error' => 'Invalid role. Allowed: ' . implode(', ', $allowedRoles)], 400);
+}
+if (mb_strlen($displayName) > 120) {
+    dolphin_send_json(['error' => 'display_name must be 120 characters or fewer'], 400);
 }
 
 $pdo = dolphin_db();
@@ -65,13 +69,14 @@ $tempPassword = bin2hex(random_bytes(8)); // 16-char hex string
 
 try {
     $pdo->prepare(
-        'INSERT INTO users (email, password_hash, role, client_id, must_change_password)
-         VALUES (?, ?, ?, ?, 1)'
+        'INSERT INTO users (email, password_hash, role, client_id, must_change_password, display_name)
+         VALUES (?, ?, ?, ?, 1, ?)'
     )->execute([
         $email,
         password_hash($tempPassword, PASSWORD_BCRYPT),
         $role,
         $clientId,
+        $displayName !== '' ? $displayName : null,
     ]);
 } catch (PDOException $e) {
     if ($e->getCode() === '23000') {

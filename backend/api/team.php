@@ -33,11 +33,21 @@ $method = $_SERVER['REQUEST_METHOD'];
 // ── GET — list team members for this client ────────────────────────────────────
 
 if ($method === 'GET') {
-    $stmt = $pdo->prepare(
-        'SELECT id, email, role, entity_scope, must_change_password, created_at
-         FROM users WHERE client_id = ? ORDER BY created_at ASC'
-    );
-    $stmt->execute([$clientId]);
+    // Entity-scoped admins (e.g. an entity admin) only see their own entity's team —
+    // org-wide admins (entity_scope NULL) see everyone at the client.
+    if (!empty($authUser['entity_scope'])) {
+        $stmt = $pdo->prepare(
+            'SELECT id, email, role, entity_scope, must_change_password, created_at
+             FROM users WHERE client_id = ? AND entity_scope = ? ORDER BY created_at ASC'
+        );
+        $stmt->execute([$clientId, $authUser['entity_scope']]);
+    } else {
+        $stmt = $pdo->prepare(
+            'SELECT id, email, role, entity_scope, must_change_password, created_at
+             FROM users WHERE client_id = ? ORDER BY created_at ASC'
+        );
+        $stmt->execute([$clientId]);
+    }
     $rows = $stmt->fetchAll();
     // Normalise types
     foreach ($rows as &$r) {
@@ -75,6 +85,11 @@ if ($method === 'POST') {
         if (!$chk->fetch()) {
             dolphin_send_json(['error' => 'entity_scope does not match a known entity for this client'], 400);
         }
+    }
+    // An entity-scoped admin (e.g. an entity admin) can never grant access wider than
+    // their own entity — force the invite to their own scope regardless of what was sent.
+    if (!empty($authUser['entity_scope'])) {
+        $entityScope = $authUser['entity_scope'];
     }
 
     $tempPassword = bin2hex(random_bytes(8)); // 16-char hex string
@@ -125,8 +140,8 @@ if ($method === 'POST') {
             );
 
             $roleLabel = [
-                'sustainability_team' => 'ESG Manager',
-                'client_uploader'     => 'Data Submitter',
+                'sustainability_team' => 'Admin',
+                'client_uploader'     => 'Data Contributor',
                 'client_leadership'   => 'Viewer',
             ][$role] ?? $role;
 
@@ -181,11 +196,15 @@ if ($method === 'DELETE') {
         dolphin_send_json(['error' => 'id query parameter is required'], 400);
     }
     // Must belong to this client
-    $stmt = $pdo->prepare('SELECT id, email FROM users WHERE id = ? AND client_id = ?');
+    $stmt = $pdo->prepare('SELECT id, email, entity_scope FROM users WHERE id = ? AND client_id = ?');
     $stmt->execute([$userId, $clientId]);
     $target = $stmt->fetch();
     if (!$target) {
         dolphin_send_json(['error' => 'User not found in your team'], 404);
+    }
+    // Entity-scoped admins may only remove members of their own entity
+    if (!empty($authUser['entity_scope']) && $target['entity_scope'] !== $authUser['entity_scope']) {
+        dolphin_send_json(['error' => 'Not authorised to remove this team member'], 403);
     }
     // Prevent self-deletion
     if ((int)$authUser['id'] === $userId) {

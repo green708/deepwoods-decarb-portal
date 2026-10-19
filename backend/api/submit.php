@@ -8,6 +8,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $authUser = dolphin_require_auth();
+dolphin_block_read_only_writes($authUser);
 dolphin_require_active_client($authUser);
 dolphin_require_payment($authUser);
 
@@ -77,11 +78,15 @@ if ($driveClientId !== '') {
             $config['drive']['token_path']
         );
 
-        // Mirror structure: <client root>/<entity>/<year>/Portal Uploads/<dataset name>/
-        $entityFolder = $drive->findOrCreateFolder($clientRow['drive_root_folder_id'], $entity);
-        $yearFolder   = $drive->findOrCreateFolder($entityFolder, $year);
-        $portalFolder = $drive->findOrCreateFolder($yearFolder, 'Portal Uploads');
-        $datasetFolder = $drive->findOrCreateFolder($portalFolder, $datasetName !== '' ? $datasetName : $datasetId);
+        // Folder structure: <client root>/Decarb Portal/<entity>/<year>/<scope>/<asset name>/
+        // Scope is derived from the dataset_id prefix (inv-s1- or inv-s2-); falls back to 'Other'.
+        $scopeLabel    = str_starts_with($datasetId, 'inv-s1-') ? 'Scope 1'
+                       : (str_starts_with($datasetId, 'inv-s2-') ? 'Scope 2' : 'Other');
+        $decarbFolder  = $drive->findOrCreateFolder($clientRow['drive_root_folder_id'], 'Decarb Portal');
+        $entityFolder  = $drive->findOrCreateFolder($decarbFolder, $entity);
+        $yearFolder    = $drive->findOrCreateFolder($entityFolder, $year);
+        $scopeFolder   = $drive->findOrCreateFolder($yearFolder, $scopeLabel);
+        $datasetFolder = $drive->findOrCreateFolder($scopeFolder, $datasetName !== '' ? $datasetName : $datasetId);
 
         $insertFile = $pdo->prepare(
             'INSERT INTO submission_files (submission_id, original_name, drive_file_id, drive_file_link, kind) VALUES (?, ?, ?, ?, ?)'
@@ -104,6 +109,34 @@ if ($driveClientId !== '') {
                 $uploaded = $drive->uploadFile($datasetFolder, $tmpName, $name, $type);
                 $insertFile->execute([$submissionId, $name, $uploaded['id'], $uploaded['webViewLink'], 'document']);
                 $fileRows[] = ['name' => $name, 'driveLink' => $uploaded['webViewLink'], 'kind' => 'document'];
+            }
+        }
+
+        // Append every uploaded file to the client's Evidence Upload Log sheet
+        // (inside Decarb Portal — one sheet per client, auto-created on first upload).
+        if (!empty($fileRows)) {
+            try {
+                $logSheet = $drive->findOrCreateSheet($decarbFolder, 'Evidence Upload Log');
+                if ($logSheet['new']) {
+                    $drive->appendSheetRows($logSheet['id'], [[
+                        'Timestamp', 'Entity', 'Year', 'Scope', 'Asset',
+                        'File Name', 'Kind', 'Drive Link', 'Uploaded By', 'Submission #',
+                    ]]);
+                }
+                $ts = date('Y-m-d H:i:s');
+                $dataRows = [];
+                foreach ($fileRows as $f) {
+                    $dataRows[] = [
+                        $ts, $entity, $year, $scopeLabel,
+                        $datasetName ?: $datasetId,
+                        $f['name'], $f['kind'], $f['driveLink'],
+                        $submittedBy, (string)$submissionId,
+                    ];
+                }
+                $drive->prependSheetRows($logSheet['id'], $dataRows);
+            } catch (Throwable $logErr) {
+                // Non-fatal: files are safely in Drive; only the log append failed.
+                error_log('submit.php sheet log failed for submission #' . $submissionId . ': ' . $logErr->getMessage());
             }
         }
     } catch (Throwable $e) {

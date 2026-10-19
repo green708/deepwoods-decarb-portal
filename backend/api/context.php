@@ -13,6 +13,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 $user      = dolphin_require_auth();
 $client_id = (int)($user['client_id'] ?? 0);
 
+$displayName = null;
+try {
+    $dnStmt = $pdo->prepare('SELECT display_name FROM users WHERE id = ?');
+    $dnStmt->execute([$user['id']]);
+    $displayName = $dnStmt->fetchColumn() ?: null;
+} catch (PDOException $e) {
+    // migration 010 not applied yet
+}
+
 // ── Deepwoods staff (admin, coordinator) have no client_id ────────────────────
 // Return a minimal platform context so they can reach /admin without a client.
 $deepwoodsRoles = ['deepwoods_admin', 'deepwoods_coordinator'];
@@ -41,6 +50,12 @@ if (!$client_id && in_array($user['role'], $deepwoodsRoles, true)) {
             'sbti_target_year' => 2030,
         ],
         'config'           => (object)[],
+        'user'             => [
+            'email'        => $user['email'] ?? null,
+            'role'         => $user['role'] ?? null,
+            'entity_scope' => $user['entity_scope'] ?? null,
+            'display_name' => $displayName,
+        ],
     ]);
 }
 
@@ -57,7 +72,11 @@ if (!$client) { http_response_code(404); echo json_encode(['error' => 'Client no
 // ── 2. Entities ───────────────────────────────────────────────────────────────
 $stmt = $pdo->prepare(
     "SELECT code, name, short_name AS short, is_consolidated,
-            consolidates, sort_order, org_type
+            consolidates, sort_order, org_type,
+            COALESCE(country, '') AS country,
+            COALESCE(registration_no, '') AS registration_no,
+            COALESCE(tax_id, '') AS tax_id,
+            COALESCE(legal_address, '') AS legal_address
      FROM client_entities WHERE client_id = ? ORDER BY sort_order"
 );
 $stmt->execute([$client_id]);
@@ -76,21 +95,29 @@ if (!empty($user['entity_scope'])) {
 }
 
 // ── 3. Reporting years ────────────────────────────────────────────────────────
+// Union three sources so years derived from detailed submission tables (which
+// are populated first) always appear even before GHG rollups are computed.
 $years = [];
 try {
     $stmt = $pdo->prepare(
-        "SELECT DISTINCT year FROM ghg_inventory
-         WHERE client_id = ? ORDER BY year ASC"
+        "SELECT DISTINCT year AS y FROM ghg_inventory WHERE client_id = ?
+         UNION
+         SELECT DISTINCT fiscal_year FROM inv_scope1_assets WHERE client_id = ?
+         UNION
+         SELECT DISTINCT fiscal_year FROM inv_scope2_sources WHERE client_id = ?
+         ORDER BY y ASC"
     );
-    $stmt->execute([$client_id]);
-    $years = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'year');
+    $stmt->execute([$client_id, $client_id, $client_id]);
+    $years = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'y');
 } catch (PDOException $e) {
-    // ghg_inventory table missing on fresh install — fall through to config fallback
+    // Older install may be missing one of these tables — fall through
 }
 
-// If no inventory yet, fall back to client_config
-if (empty($years)) {
-    $years = json_decode(getConfig($pdo, $client_id, 'reporting_years', '[]'), true);
+// Belt-and-suspenders: merge in any years pinned via client_config
+$configYears = json_decode(getConfig($pdo, $client_id, 'reporting_years', '[]'), true);
+if (!empty($configYears)) {
+    $years = array_values(array_unique(array_merge($years, $configYears)));
+    sort($years);
 }
 
 // ── 4. Enabled pages ──────────────────────────────────────────────────────────
@@ -102,7 +129,7 @@ $enabled_pages = json_decode(getConfig($pdo, $client_id, 'enabled_pages',
 
 // ── 5. Scope 3 boundary ───────────────────────────────────────────────────────
 $s3_boundary = json_decode(getConfig($pdo, $client_id, 's3_boundary',
-    '["Cat 1","Cat 2","Cat 3","Cat 4","Cat 5","Cat 6","Cat 7","Cat 9","Cat 11","Cat 12"]'),
+    '["Cat 1","Cat 2","Cat 3","Cat 4","Cat 5","Cat 6","Cat 7","Cat 8","Cat 9","Cat 10","Cat 11","Cat 12","Cat 13","Cat 14","Cat 15"]'),
     true
 );
 
@@ -155,11 +182,28 @@ try {
     $reporting_engagements = [];
 }
 
-// ── Team member count ────────────────────────────────────────────────────────
+// ── Team member count (total + per entity) ───────────────────────────────────
 try {
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE client_id = ?");
     $stmt->execute([$client_id]);
     $config['team_count'] = (int)$stmt->fetchColumn();
+
+    // Per-entity counts: users with a non-null entity_scope
+    $stmt2 = $pdo->prepare(
+        "SELECT entity_scope, COUNT(*) AS cnt
+         FROM users WHERE client_id = ? AND entity_scope IS NOT NULL
+         GROUP BY entity_scope"
+    );
+    $stmt2->execute([$client_id]);
+    $entityTeamCounts = [];
+    foreach ($stmt2->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $entityTeamCounts[$row['entity_scope']] = (int)$row['cnt'];
+    }
+    // Attach team_count to each entity object
+    foreach ($entities as &$e) {
+        $e['team_count'] = $entityTeamCounts[$e['code']] ?? 0;
+    }
+    unset($e);
 } catch (PDOException $e) {
     $config['team_count'] = 0;
 }
@@ -191,6 +235,25 @@ try {
     if (!isset($config['facility_count'])) $config['facility_count'] = 0;
 }
 
+// ── GHG Facilities (per-client, for Scope 3 facility selector) ───────────────
+$ghgFacilities = [];
+try {
+    $fStmt = $pdo->prepare(
+        "SELECT id, entity, name, location, state, short_name, status, is_hq
+         FROM ghg_facilities WHERE client_id = ?
+         ORDER BY entity, name"
+    );
+    $fStmt->execute([$client_id]);
+    $ghgFacilities = $fStmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($ghgFacilities as &$gf) {
+        $gf['id']    = (int)$gf['id'];
+        $gf['is_hq'] = (bool)$gf['is_hq'];
+    }
+    unset($gf);
+} catch (PDOException $e) {
+    // ghg_facilities table may not exist on older installs — return empty array
+}
+
 // ── 9. Assemble response ─────────────────────────────────────────────────────
 echo json_encode([
     'client' => [
@@ -217,6 +280,13 @@ echo json_encode([
     'config'                => $config,
     'reporting_model'       => $reporting_model,
     'reporting_engagements' => $reporting_engagements,
+    'facilities'            => $ghgFacilities,
+    'user'                  => [
+        'email'        => $user['email'] ?? null,
+        'role'         => $user['role'] ?? null,
+        'entity_scope' => $user['entity_scope'] ?? null,
+        'display_name' => $displayName,
+    ],
 ]);
 
 // ── Helper ────────────────────────────────────────────────────────────────────

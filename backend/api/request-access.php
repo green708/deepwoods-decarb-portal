@@ -15,7 +15,9 @@ if ($method === 'GET') {
     $pdo  = dolphin_db();
     $stmt = $pdo->prepare(
         'SELECT company, legal_name, operating_name, industry, org_type,
-                is_india, gstin, is_msme, udyam_number, legal_address, website, logo_url
+                is_india, gstin, is_msme, udyam_number, legal_address, website, logo_url,
+                name, designation, phone,
+                ghg_done_before, ghg_requirement, services_needed, services_other
          FROM client_requests
          WHERE email = ?
          ORDER BY created_at DESC
@@ -70,8 +72,20 @@ if ($errors) {
     dolphin_send_json(['error' => implode(' ', $errors)], 422);
 }
 
-// ── Insert into DB ───────────────────────────────────────────────────────────
+// ── Check for duplicate email ─────────────────────────────────────────────────
 $pdo = dolphin_db();
+
+$dupCheck = $pdo->prepare('SELECT id FROM client_requests WHERE email = ? LIMIT 1');
+$dupCheck->execute([$email]);
+if ($dupCheck->fetch()) {
+    dolphin_send_json([
+        'ok'               => false,
+        'already_registered' => true,
+        'message'          => 'This email address has already been submitted.',
+    ]);
+}
+
+// ── Insert into DB ───────────────────────────────────────────────────────────
 
 function ra_is_unknown_col(PDOException $e): bool {
     return str_contains($e->getMessage(), 'Unknown column') || $e->getCode() === '42S22';

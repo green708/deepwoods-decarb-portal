@@ -22,6 +22,11 @@ dolphin_require_payment($user);
 if ($user['role'] !== 'sustainability_team') {
     dolphin_send_json(['error' => 'Only ESG Managers may configure the inventory boundary'], 403);
 }
+// The emissions boundary is a client-wide setting, not per-entity — entity admins
+// shouldn't be able to reconfigure Scope 1/2/3 boundary for the whole client.
+if (!empty($user['entity_scope'])) {
+    dolphin_send_json(['error' => 'Entity admins cannot configure the client-wide inventory boundary. Contact your org admin.'], 403);
+}
 
 $clientId = (int)($user['client_id'] ?? 0);
 if (!$clientId) { dolphin_send_json(['error' => 'User is not associated with a client'], 403); }

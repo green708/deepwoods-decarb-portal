@@ -280,8 +280,12 @@ HTML;
         $clientId = (int)$pdo->lastInsertId();
 
         // 2. Create the default consolidated entity
-        $entityCode = strtoupper(preg_replace('/[^a-zA-Z0-9]/', '', $slug));
-        $entityCode = substr($entityCode, 0, 6) ?: 'ENTITY';
+        // Use admin-supplied entity_code if present; fall back to slug-derived code
+        $entityCode = strtoupper(preg_replace('/[^a-zA-Z0-9]/', '', $body['entity_code'] ?? ''));
+        if ($entityCode === '') {
+            $entityCode = strtoupper(preg_replace('/[^a-zA-Z0-9]/', '', $slug));
+            $entityCode = substr($entityCode, 0, 6) ?: 'ENTITY';
+        }
         $entityStmt = $pdo->prepare(
             'INSERT IGNORE INTO client_entities (client_id, code, name, short_name, is_consolidated, sort_order)
              VALUES (?, ?, ?, ?, 1, 1)'
