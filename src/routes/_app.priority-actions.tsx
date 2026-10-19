@@ -3,7 +3,8 @@ import { useState, useEffect, useCallback } from "react";
 import { PageBody, PageHeader } from "@/components/portal";
 import { AlertCircle, RefreshCw, ChevronRight, Mail, Bell, BellOff, Clock, Calendar, Send, CheckCircle2, Loader2 } from "lucide-react";
 import { usePriorityItems } from "@/lib/api";
-import { useEntity } from "@/lib/entity";
+import { useEntity, useFiscalYear } from "@/lib/entity";
+import { useHomeSummary } from "@/lib/api-admin";
 import { useClientContext } from "@/lib/client-context";
 import { getToken, getEmail, isDemo } from "@/lib/auth";
 
@@ -70,7 +71,9 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
 function PriorityActions() {
   const { entity } = useEntity();
   const { entities } = useClientContext();
+  const { fy } = useFiscalYear();
   const { data: priorityData } = usePriorityItems(entity);
+  const { data: summary } = useHomeSummary(entity, fy);
   const consolidatedCode = entities.find(e => e.is_consolidated)?.code;
   const [tab, setTab] = useState<TabId>("action-needed");
 
@@ -136,8 +139,20 @@ function PriorityActions() {
     } catch { setSendMsg({ ok: false, text: "Network error" }); } finally { setSending(false); }
   }
 
-  const actions = (priorityData ?? []).filter(i => i.type === "action").filter(a => entity === consolidatedCode || a.entity === "All" || a.entity === entity);
-  const updates = (priorityData ?? []).filter(i => i.type === "update").filter(u => entity === consolidatedCode || u.entity === "All" || u.entity === entity);
+  const live = (summary?.alerts ?? []).map((a) => ({
+    id: -1 - Math.abs([...a.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)),
+    type: a.severity === "low" ? ("update" as const) : ("action" as const),
+    entity: entity,
+    title: a.title,
+    detail: a.detail,
+    priority: a.severity === "high" ? ("High" as const) : a.severity === "medium" ? ("Medium" as const) : ("Low" as const),
+    link: a.link,
+    age: "Right now",
+    tag: null as string | null,
+  }));
+  const allItems = [...live, ...(priorityData ?? [])];
+  const actions = allItems.filter(i => i.type === "action").filter(a => entity === consolidatedCode || a.entity === "All" || a.entity === entity);
+  const updates = allItems.filter(i => i.type === "update").filter(u => entity === consolidatedCode || u.entity === "All" || u.entity === entity);
   const highCount = actions.filter(a => a.priority === "High").length;
 
   return (
@@ -166,6 +181,13 @@ function PriorityActions() {
         {/* ── ACTION NEEDED ── */}
         {tab === "action-needed" && (
           <div className="space-y-2">
+            {actions.length === 0 && (
+              <div className="rounded-xl border border-dashed bg-card px-6 py-12 text-center">
+                <CheckCircle2 className="mx-auto mb-3 h-8 w-8 text-[#1E6F5C]" />
+                <p className="text-sm font-semibold text-[var(--navy)]">You're all caught up</p>
+                <p className="mt-1 text-xs text-muted-foreground">Nothing needs your attention right now. We'll flag overdue data, replies from Deepwoods and reviews here.</p>
+              </div>
+            )}
             {actions.map(item => (
               <div key={item.id} className="flex items-start gap-4 rounded-xl border bg-card p-4 hover:border-slate-300 transition">
                 <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#FEE2E2]">
@@ -191,6 +213,13 @@ function PriorityActions() {
         {/* ── UPDATES ── */}
         {tab === "updates" && (
           <div className="space-y-2">
+            {updates.length === 0 && (
+              <div className="rounded-xl border border-dashed bg-card px-6 py-12 text-center">
+                <RefreshCw className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                <p className="text-sm font-semibold text-[var(--navy)]">No updates yet</p>
+                <p className="mt-1 text-xs text-muted-foreground">Verified results, new reports and changes to your plan will show up here.</p>
+              </div>
+            )}
             {updates.map(item => (
               <div key={item.id} className="flex items-start gap-4 rounded-xl border bg-card p-4 hover:border-slate-300 transition">
                 <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#EEF2FF]">
@@ -215,7 +244,7 @@ function PriorityActions() {
 
         {/* ── EMAIL SETTINGS ── */}
         {tab === "email-settings" && (
-          <div className="max-w-2xl space-y-6">
+          <div className="space-y-6">
             {loading && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
                 <Loader2 className="h-4 w-4 animate-spin" /> Loading preferences…

@@ -64,7 +64,8 @@ export function LoginForm({ onNavigate }: { onNavigate: (v: AuthView) => void })
 
   const handleDemo = () => {
     loginDemo();
-    navigate({ to: "/home" });
+    const orientationDone = localStorage.getItem("decarb_orientation_done");
+    navigate({ to: orientationDone ? "/home" : "/onboard" });
   };
 
   return (
@@ -143,6 +144,24 @@ export function LoginForm({ onNavigate }: { onNavigate: (v: AuthView) => void })
             <p className="mt-2.5 text-[0.72rem] font-semibold text-[#86EFAC]">Request access →</p>
           </div>
         </Link>
+
+        {/* Demo access — Featherlite live portal preview */}
+        <button
+          type="button"
+          onClick={handleDemo}
+          className="group flex w-full items-center justify-between rounded-xl border border-border px-4 py-3 text-left transition-colors hover:border-[#1E6F5C]/40 hover:bg-[#F0FDF4] focus:outline-none focus-visible:ring-[3px] focus-visible:ring-[#1E6F5C]/25"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-white">
+              <img src="/featherlite-logo.png" alt="Featherlite" className="size-7 object-contain" />
+            </div>
+            <div>
+              <p className="text-[0.875rem] font-semibold text-foreground">Featherlite demo</p>
+              <p className="text-[0.72rem] text-muted-foreground">Explore the live FY25 portal — no login needed</p>
+            </div>
+          </div>
+          <ChevronRight className="size-4 flex-shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5 group-hover:text-[#1E6F5C]" aria-hidden />
+        </button>
 
         <SecurityNote>
           Secure access to your organisation's sustainability workspace.

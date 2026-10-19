@@ -27,5 +27,17 @@ export default defineConfig(async ({ command }) => {
     );
   }
 
-  return { plugins };
+  // In dev mode, proxy /backend/ to the local PHP server (php -S localhost:8787)
+  const server = command === "serve"
+    ? {
+        proxy: {
+          "/backend": {
+            target: "http://localhost:8787",
+            changeOrigin: true,
+          },
+        },
+      }
+    : undefined;
+
+  return { plugins, server };
 });

@@ -1,0 +1,3706 @@
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { PageBody, PageHeader, LockedState } from "@/components/portal";
+import { getRole, getToken, ROLE_META, authFetch } from "@/lib/auth";
+import { CheckCircle2, XCircle, RefreshCw, ListChecks, ScrollText, Users, Lock, Unlock, ChevronDown, ChevronRight, Building2, Clock, FileCheck, AlertCircle, Loader2, Search, Zap, Plus, X, Workflow, UserPlus, FileText, ClipboardList, Copy, Check, Paintbrush, CreditCard, ShieldCheck, Pencil, MessageSquare, ChevronLeft, HardDriveUpload, Link2, Link2Off, Upload, FileUp, Trash2, ExternalLink, FolderOpen } from "lucide-react";
+import { toast } from "sonner";
+import { useActivationClients, useUpdateClientInvoice, useClients, useNdcAllClientsSummary, useNdcThreadsSummary, useDataHealth, type ApiClient, type ActivationClient } from "@/lib/api";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
+import { ThreadPanel } from "@/components/threads/ThreadPanel";
+import { parseLedger, type LedgerParseResult } from "@/lib/ledger-parser";
+
+export const Route = createFileRoute("/_app/admin")({ component: Admin });
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type ClientStatus = "Onboarding" | "Boundary Set" | "Data Collection" | "Review" | "Report Ready" | "Complete";
+type Cat3Relevance = "relevant" | "not_relevant" | "unsure" | null;
+
+type Client = {
+  id: string;
+  company: string;
+  entity: string;
+  industry: string;
+  country: string;
+  onboardedDate: string;
+  fy: string;
+  contactName: string;
+  contactEmail: string;
+  status: ClientStatus;
+  dataProgress: number; // 0–100
+  facilitiesCount: number;
+  scope3Screened: boolean;
+  reportUrl?: string;
+  notes?: string;
+};
+
+type RelevanceRow = { catNo: number; catName: string; relevance: Cat3Relevance; };
+
+// ── Map API client record → local engagement row ─────────────────────────────
+
+function apiClientToEngagement(
+  c: ApiClient,
+  statusOverrides: Record<string, ClientStatus>,
+  screened: Set<string>,
+): Client {
+  const id = String(c.id);
+  const base: ClientStatus = !c.is_active
+    ? "Onboarding"
+    : c.setup_complete !== "true"
+    ? "Onboarding"
+    : "Boundary Set";
+  const status: ClientStatus = statusOverrides[id] ?? base;
+  return {
+    id,
+    company: c.name,
+    entity: c.slug.replace(/-/g, "").toUpperCase().slice(0, 3),
+    industry: c.industry ?? "—",
+    country: "—",
+    onboardedDate: c.activated_at?.slice(0, 10) ?? c.created_at.slice(0, 10),
+    fy: c.reporting_period ?? "FY",
+    contactName: "—",
+    contactEmail: "—",
+    status,
+    dataProgress:
+      status === "Complete" || status === "Report Ready" ? 100
+      : status === "Review" ? 90
+      : status === "Data Collection" ? 50
+      : c.setup_complete === "true" ? 10
+      : 0,
+    facilitiesCount: c.entity_count || 1,
+    scope3Screened: screened.has(id),
+  };
+}
+
+const SCOPE3_CATEGORIES = [
+  {no:1,name:"Purchased Goods & Services"},
+  {no:2,name:"Capital Goods"},
+  {no:3,name:"Fuel & Energy-Related Activities"},
+  {no:4,name:"Upstream Transportation & Distribution"},
+  {no:5,name:"Waste Generated in Operations"},
+  {no:6,name:"Business Travel"},
+  {no:7,name:"Employee Commuting"},
+  {no:8,name:"Upstream Leased Assets"},
+  {no:9,name:"Downstream Transportation & Distribution"},
+  {no:10,name:"Processing of Sold Products"},
+  {no:11,name:"Use of Sold Products"},
+  {no:12,name:"End-of-Life Treatment of Sold Products"},
+  {no:13,name:"Downstream Leased Assets"},
+  {no:14,name:"Franchises"},
+  {no:15,name:"Investments"},
+];
+
+// Screening data is maintained in local session state (Deepwoods coordination tool)
+// Keys are string(client.id); values are 15-element Cat3Relevance arrays.
+
+// ── Status helpers ────────────────────────────────────────────────────────────
+
+const STATUS_CONFIG: Record<ClientStatus,{label:string;color:string;bg:string;icon:React.ReactNode}> = {
+  "Onboarding":     {label:"Onboarding",    color:"#6B7280",bg:"#F3F4F6",    icon:<Clock className="w-3 h-3"/>},
+  "Boundary Set":   {label:"Boundary Set",  color:"#1D4ED8",bg:"#DBEAFE",    icon:<Building2 className="w-3 h-3"/>},
+  "Data Collection":{label:"Data Collection",color:"#D97706",bg:"#FEF3C7",   icon:<Loader2 className="w-3 h-3"/>},
+  "Review":         {label:"Under Review",  color:"#7C3AED",bg:"#EDE9FE",    icon:<ListChecks className="w-3 h-3"/>},
+  "Report Ready":   {label:"Report Ready",  color:"#065F46",bg:"#D1FAE5",    icon:<FileCheck className="w-3 h-3"/>},
+  "Complete":       {label:"Complete",      color:"#1E6F5C",bg:"#E6F4EF",    icon:<CheckCircle2 className="w-3 h-3"/>},
+};
+
+function StatusPill({status}:{status:ClientStatus}) {
+  const cfg = STATUS_CONFIG[status];
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{color:cfg.color,background:cfg.bg}}>
+      {cfg.icon}{cfg.label}
+    </span>
+  );
+}
+
+// ── Create Client modal ───────────────────────────────────────────────────────
+
+function CreateClientModal({ open, onClose, onCreated }: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [form, setForm] = useState({ name: "", slug: "", currency: "INR", reporting_period: "FY" });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (form.name) {
+      const auto = form.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      setForm(f => ({ ...f, slug: auto }));
+    }
+  }, [form.name]);
+
+  const handleSubmit = async () => {
+    if (!form.name.trim() || !form.slug) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await authFetch("clients.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          slug: form.slug,
+          currency: form.currency,
+          reporting_period: form.reporting_period,
+        }),
+      });
+      toast.success(`${form.name} created — pending activation`);
+      onCreated();
+      onClose();
+      setForm({ name: "", slug: "", currency: "INR", reporting_period: "FY" });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to create client");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-base font-bold text-[var(--navy)]">New client</h2>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mb-4">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--navy-2)]">Company name</label>
+          <input
+            value={form.name}
+            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            placeholder="Acme Products Pvt. Ltd."
+            className="w-full rounded-lg border border-[var(--border)] px-3.5 py-2.5 text-sm text-[var(--navy)] outline-none focus:border-[#1E6F5C] focus:ring-2 focus:ring-[#1E6F5C]/15"
+          />
+        </div>
+
+        <div className="mb-4">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--navy-2)]">Portal slug</label>
+          <input
+            value={form.slug}
+            onChange={e => setForm(f => ({ ...f, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") }))}
+            placeholder="acme-products"
+            className="w-full rounded-lg border border-[var(--border)] bg-slate-50 px-3.5 py-2.5 font-mono text-sm text-[var(--navy)] outline-none focus:border-[#1E6F5C] focus:bg-white focus:ring-2 focus:ring-[#1E6F5C]/15"
+          />
+          <p className="mt-1 text-[11px] text-slate-400">Auto-generated from name. Must be unique across all clients.</p>
+        </div>
+
+        <div className="mb-5 grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--navy-2)]">Currency</label>
+            <select value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))}
+              className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-[var(--navy)] outline-none focus:border-[#1E6F5C]">
+              <option value="INR">INR</option>
+              <option value="USD">USD</option>
+              <option value="EUR">EUR</option>
+              <option value="GBP">GBP</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--navy-2)]">Fiscal year</label>
+            <select value={form.reporting_period} onChange={e => setForm(f => ({ ...f, reporting_period: e.target.value }))}
+              className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-[var(--navy)] outline-none focus:border-[#1E6F5C]">
+              <option value="FY">FY (Apr–Mar)</option>
+              <option value="CY">CY (Jan–Dec)</option>
+            </select>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+            <AlertCircle className="h-4 w-4 shrink-0" />{error}
+          </div>
+        )}
+
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+          Client is created in <strong>Pending</strong> state. Use{" "}
+          <strong>Approve Payment &amp; Activate</strong> in the Client Activation tab once payment is confirmed externally.
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--border)] py-2.5 text-sm font-medium text-[var(--navy)] hover:bg-slate-50">Cancel</button>
+          <button onClick={handleSubmit} disabled={!form.name.trim() || !form.slug || submitting}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#1E6F5C] py-2.5 text-sm font-semibold text-white disabled:opacity-40 hover:brightness-110">
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Create client
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Invite User modal ─────────────────────────────────────────────────────────
+
+function InviteUserModal({ clientId, clientName, open, onClose }: {
+  clientId: number;
+  clientName: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [form, setForm] = useState({ email: "", role: "sustainability_team" });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (!form.email.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await authFetch("invite-user.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: clientId,
+          email: form.email.trim(),
+          role: form.role,
+        }),
+      });
+      let msg = `Invited ${res.email} — temp password: ${res.temp_password}. Ask them to change it on first login.`;
+      if (res.email_sent) msg += " · Welcome email sent.";
+      toast.success(msg, { duration: 10000 });
+      onClose();
+      setForm({ email: "", role: "sustainability_team" });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to invite user");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold text-[var(--navy)]">Invite user</h2>
+            <p className="mt-0.5 text-xs text-slate-400">{clientName}</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mb-4">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--navy-2)]">Email address</label>
+          <input
+            value={form.email}
+            onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+            placeholder="client@example.com"
+            type="email"
+            className="w-full rounded-lg border border-[var(--border)] px-3.5 py-2.5 text-sm text-[var(--navy)] outline-none focus:border-[#1E6F5C] focus:ring-2 focus:ring-[#1E6F5C]/15"
+          />
+        </div>
+
+        <div className="mb-5">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--navy-2)]">Role</label>
+          <select
+            value={form.role}
+            onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+            className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-[var(--navy)] outline-none focus:border-[#1E6F5C]"
+          >
+            <option value="sustainability_team">Admin (Full access)</option>
+            <option value="client_uploader">Data Contributor (Submission only)</option>
+            <option value="client_leadership">Viewer (Read-only)</option>
+          </select>
+        </div>
+
+        {error && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+            <AlertCircle className="h-4 w-4 shrink-0" />{error}
+          </div>
+        )}
+
+        <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-700">
+          A temporary password will be generated. The user must change it on first login. Copy and share the credentials securely after submission.
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--border)] py-2.5 text-sm font-medium text-[var(--navy)] hover:bg-slate-50">Cancel</button>
+          <button onClick={handleSubmit} disabled={!form.email.trim() || submitting}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#1E6F5C] py-2.5 text-sm font-semibold text-white disabled:opacity-40 hover:brightness-110">
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+            Send invite
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Invoice modal ─────────────────────────────────────────────────────────────
+
+type PaymentStatus = "pending" | "paid" | "waived";
+
+function InvoiceModal({ client, open, onClose }: {
+  client: ActivationClient | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const updateInvoice = useUpdateClientInvoice();
+  const [form, setForm] = useState<{
+    invoice_ref: string;
+    payment_status: PaymentStatus;
+    payment_date: string;
+    payment_notes: string;
+  }>({ invoice_ref: "", payment_status: "pending", payment_date: "", payment_notes: "" });
+
+  useEffect(() => {
+    if (client) {
+      setForm({
+        invoice_ref:    client.invoice_ref    ?? "",
+        payment_status: client.payment_status ?? "pending",
+        payment_date:   client.payment_date   ?? "",
+        payment_notes:  client.payment_notes  ?? "",
+      });
+    }
+  }, [client]);
+
+  const handleSave = async () => {
+    if (!client) return;
+    try {
+      const result = await updateInvoice.mutateAsync({
+        client_id:      client.id,
+        invoice_ref:    form.invoice_ref    || null,
+        payment_status: form.payment_status,
+        payment_date:   form.payment_date   || null,
+        payment_notes:  form.payment_notes  || null,
+      });
+      if (result?.was_activation) {
+        if (result.email_sent) {
+          toast.success("Payment approved. Access activation email sent.");
+        } else {
+          toast.warning("Payment approved, but the access activation email could not be delivered.");
+        }
+      } else {
+        toast.success("Invoice details saved");
+      }
+      onClose();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    }
+  };
+
+  if (!open || !client) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold text-[var(--navy)]">Invoice &amp; payment</h2>
+            <p className="mt-0.5 text-xs text-slate-400">{client.name}</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mb-4">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--navy-2)]">Invoice reference</label>
+          <input
+            value={form.invoice_ref}
+            onChange={e => setForm(f => ({ ...f, invoice_ref: e.target.value }))}
+            placeholder="INV-2026-001"
+            className="w-full rounded-lg border border-[var(--border)] px-3.5 py-2.5 text-sm text-[var(--navy)] outline-none focus:border-[#1E6F5C] focus:ring-2 focus:ring-[#1E6F5C]/15"
+          />
+        </div>
+
+        <div className="mb-4">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--navy-2)]">Payment status</label>
+          <select
+            value={form.payment_status}
+            onChange={e => setForm(f => ({ ...f, payment_status: e.target.value as PaymentStatus }))}
+            className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-[var(--navy)] outline-none focus:border-[#1E6F5C]"
+          >
+            <option value="pending">Pending</option>
+            <option value="paid">Paid</option>
+            <option value="waived">Waived</option>
+          </select>
+        </div>
+
+        <div className="mb-4">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--navy-2)]">Payment date</label>
+          <input
+            type="date"
+            value={form.payment_date}
+            onChange={e => setForm(f => ({ ...f, payment_date: e.target.value }))}
+            className="w-full rounded-lg border border-[var(--border)] px-3.5 py-2.5 text-sm text-[var(--navy)] outline-none focus:border-[#1E6F5C] focus:ring-2 focus:ring-[#1E6F5C]/15"
+          />
+        </div>
+
+        <div className="mb-5">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--navy-2)]">Notes</label>
+          <textarea
+            rows={2}
+            value={form.payment_notes}
+            onChange={e => setForm(f => ({ ...f, payment_notes: e.target.value }))}
+            placeholder="Bank ref, waiver reason, etc."
+            className="w-full rounded-lg border border-[var(--border)] px-3.5 py-2.5 text-sm text-[var(--navy)] outline-none focus:border-[#1E6F5C] focus:ring-2 focus:ring-[#1E6F5C]/15 resize-none"
+          />
+        </div>
+
+        <div className="mb-4 rounded-xl border border-[#C5E4D0] bg-[#F0FAF5] px-4 py-3 text-xs text-[#2D6A4F]">
+          Payment is handled <strong>externally</strong> by Deepwoods. Setting status to <strong>Paid</strong> or{" "}
+          <strong>Waived</strong> for the first time unlocks the complete customer workspace and sends the
+          client their access confirmation email.
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--border)] py-2.5 text-sm font-medium text-[var(--navy)] hover:bg-slate-50">Cancel</button>
+          <button onClick={handleSave} disabled={updateInvoice.isPending}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#1E6F5C] py-2.5 text-sm font-semibold text-white disabled:opacity-40 hover:brightness-110">
+            {updateInvoice.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Payments tab ─────────────────────────────────────────────────────────────
+
+function PaymentsTab() {
+  const { data: clients = [], isLoading, refetch } = useActivationClients();
+  const updateInvoice = useUpdateClientInvoice();
+  const [invoiceTarget, setInvoiceTarget] = useState<ActivationClient | null>(null);
+  const [search, setSearch] = useState("");
+
+  const filtered = clients.filter(c =>
+    c.name.toLowerCase().includes(search.toLowerCase()) ||
+    c.slug.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const pending = filtered.filter(c => c.payment_status === "pending" || !c.payment_status);
+  const completed = filtered.filter(c => c.payment_status === "paid" || c.payment_status === "waived");
+
+  const quickMark = async (c: ActivationClient, status: "paid" | "waived" | "pending") => {
+    try {
+      const result = await updateInvoice.mutateAsync({ client_id: c.id, payment_status: status });
+      if (result?.was_activation) {
+        toast.success(status === "paid"
+          ? "Payment confirmed — portal unlocked and activation email sent."
+          : "Waiver applied — portal unlocked and activation email sent.");
+      } else {
+        toast.success(`Payment status set to ${status}`);
+      }
+      refetch();
+    } catch (e) {
+      toast.error((e as Error).message ?? "Update failed");
+    }
+  };
+
+  const PAY_CFG: Record<string, { label: string; bg: string; text: string; border: string }> = {
+    paid:    { label: "Paid",    bg: "bg-[#E6F4EF]", text: "text-[#1E6F5C]", border: "border-[#A8D5BD]" },
+    waived:  { label: "Waived", bg: "bg-[#EFF6FF]",  text: "text-[#1D4ED8]", border: "border-[#93C5FD]" },
+    pending: { label: "Pending",bg: "bg-amber-50",    text: "text-amber-700", border: "border-amber-200" },
+  };
+
+  function PayStatusPill({ status }: { status: string }) {
+    const cfg = PAY_CFG[status] ?? PAY_CFG.pending;
+    return (
+      <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${cfg.bg} ${cfg.text} ${cfg.border}`}>
+        {cfg.label}
+      </span>
+    );
+  }
+
+  function ClientPayRow({ c }: { c: ActivationClient }) {
+    const isPaid = c.payment_status === "paid" || c.payment_status === "waived";
+    return (
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-white px-5 py-4 shadow-sm"
+        style={{ borderColor: "var(--border)" }}>
+        {/* Avatar */}
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white text-xs font-bold"
+          style={{ background: "var(--deepwoods-green, #1E6F5C)" }}>
+          {c.slug.slice(0, 2).toUpperCase()}
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <p className="truncate text-sm font-semibold" style={{ color: "var(--navy)" }}>{c.name}</p>
+          <p className="text-[11px]" style={{ color: "var(--navy-2)" }}>
+            {c.slug}
+            {c.invoice_ref ? ` · ${c.invoice_ref}` : ""}
+            {c.payment_date ? ` · ${new Date(c.payment_date).toLocaleDateString("en-IN")}` : ""}
+          </p>
+        </div>
+
+        {/* Status pill */}
+        <PayStatusPill status={c.payment_status ?? "pending"} />
+
+        {/* Portal access badge */}
+        {c.is_active ? (
+          <span className="flex items-center gap-1 rounded-full bg-[#E6F4EF] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1E6F5C]">
+            <Unlock className="h-3 w-3" /> Portal active
+          </span>
+        ) : (
+          <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+            <Lock className="h-3 w-3" /> Locked
+          </span>
+        )}
+
+        {/* Actions */}
+        <div className="flex items-center gap-2">
+          {!isPaid && (
+            <>
+              <button
+                onClick={() => quickMark(c, "paid")}
+                disabled={updateInvoice.isPending}
+                className="flex items-center gap-1.5 rounded-lg bg-[#1E6F5C] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-50"
+              >
+                <CheckCircle2 className="h-3 w-3" /> Mark Paid
+              </button>
+              <button
+                onClick={() => quickMark(c, "waived")}
+                disabled={updateInvoice.isPending}
+                className="flex items-center gap-1.5 rounded-lg border border-[#93C5FD] bg-[#EFF6FF] px-3 py-1.5 text-xs font-semibold text-[#1D4ED8] hover:bg-[#DBEAFE] disabled:opacity-50"
+              >
+                Waive
+              </button>
+            </>
+          )}
+          {isPaid && (
+            <button
+              onClick={() => quickMark(c, "pending")}
+              disabled={updateInvoice.isPending}
+              className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-slate-50 disabled:opacity-50"
+              style={{ borderColor: "var(--border)", color: "var(--navy-2)" }}
+            >
+              <XCircle className="h-3 w-3" /> Revert to Pending
+            </button>
+          )}
+          <button
+            onClick={() => setInvoiceTarget(c)}
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-slate-50"
+            style={{ borderColor: "var(--border)", color: "var(--navy)" }}
+          >
+            <FileText className="h-3 w-3" /> Details
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <InvoiceModal client={invoiceTarget} open={invoiceTarget !== null} onClose={() => setInvoiceTarget(null)} />
+
+      <div className="space-y-5">
+        {/* Summary strip */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Total clients",     value: clients.length,    color: "var(--navy)" },
+            { label: "Payment pending",   value: clients.filter(c => !c.payment_status || c.payment_status === "pending").length, color: "#D97706" },
+            { label: "Payment complete",  value: clients.filter(c => c.payment_status === "paid" || c.payment_status === "waived").length, color: "#1E6F5C" },
+          ].map(s => (
+            <div key={s.label} className="rounded-xl border bg-white px-4 py-3 shadow-sm" style={{ borderColor: "var(--border)" }}>
+              <p className="text-xs font-medium" style={{ color: "var(--navy-2)" }}>{s.label}</p>
+              <p className="text-2xl font-bold mt-0.5" style={{ color: s.color }}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Search */}
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search clients…"
+            className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm"
+            style={{ borderColor: "var(--border)" }} />
+        </div>
+
+        {isLoading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading clients…
+          </div>
+        )}
+
+        {/* Pending section */}
+        {pending.length > 0 && (
+          <section>
+            <div className="mb-2 flex items-center gap-2">
+              <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-600">
+                Payment Pending ({pending.length})
+              </span>
+            </div>
+            <div className="space-y-2">
+              {pending.map(c => <ClientPayRow key={c.id} c={c} />)}
+            </div>
+          </section>
+        )}
+
+        {/* Completed section */}
+        {completed.length > 0 && (
+          <section>
+            <div className="mb-2 flex items-center gap-2">
+              <CheckCircle2 className="h-3.5 w-3.5 text-[#1E6F5C]" />
+              <span className="text-xs font-bold uppercase tracking-wider text-[#1E6F5C]">
+                Payment Complete ({completed.length})
+              </span>
+            </div>
+            <div className="space-y-2">
+              {completed.map(c => <ClientPayRow key={c.id} c={c} />)}
+            </div>
+          </section>
+        )}
+
+        {!isLoading && clients.length === 0 && (
+          <div className="rounded-xl border border-dashed px-6 py-10 text-center text-sm text-slate-400"
+            style={{ borderColor: "var(--border)" }}>
+            No clients found.
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+type AdminTab = "activation" | "clients" | "queue" | "screening" | "log" | "requests" | "branding" | "payments" | "verification" | "entities" | "queries" | "data-health" | "drive" | "ledger" | "documents" | "data-gaps";
+
+// ── Access Requests tab ───────────────────────────────────────────────────────
+
+type ReqStatus = "new" | "contacted" | "converted" | "rejected";
+interface InternalNote { text: string; added_at: string; }
+interface ClientReq {
+  id: number; name: string; company: string; email: string;
+  phone: string; designation: string; employees: string; message: string; industry: string;
+  is_india: number; gstin: string; legal_name: string; operating_name: string;
+  org_type: string; is_msme: number | null; legal_address: string; website: string;
+  ghg_done_before: boolean | null; ghg_requirement: string | null;
+  services_needed: string[] | null; services_other: string | null;
+  internal_notes: InternalNote[] | null;
+  status: ReqStatus; created_at: string; updated_at: string;
+}
+interface ConvResult { slug: string; inviteEmail: string; tempPassword: string | null; emailSent: boolean; smtpDiag: string | null; }
+
+const REQ_STATUS: Record<ReqStatus, { label: string; cls: string }> = {
+  new:       { label: "New",       cls: "bg-amber-100 text-amber-700 border border-amber-200" },
+  contacted: { label: "Contacted", cls: "bg-blue-100 text-blue-700 border border-blue-200" },
+  converted: { label: "Converted", cls: "bg-[#E6F4EF] text-[#1E6F5C] border border-[#C5E4D0]" },
+  rejected:  { label: "Rejected",  cls: "bg-slate-100 text-slate-500 border border-slate-200" },
+};
+
+function slugify(s: string) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function RequestsTab() {
+  const role = getRole();
+  const isAdmin = role === "deepwoods_admin";
+  const qc = useQueryClient();
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [convertTarget, setConvertTarget] = useState<ClientReq | null>(null);
+  const [convertResult, setConvertResult] = useState<ConvResult | null>(null);
+  const [emailResults, setEmailResults] = useState<Map<number, boolean>>(new Map());
+  const [noteTexts, setNoteTexts] = useState<Map<number, string>>(new Map());
+  const [emailTexts, setEmailTexts] = useState<Map<number, string>>(new Map());
+  const [showEmailBox, setShowEmailBox] = useState<Set<number>>(new Set());
+  const [sendingEmail, setSendingEmail] = useState<number | null>(null);
+  const [emailSentFor, setEmailSentFor] = useState<Set<number>>(new Set());
+
+  const { data: requests = [], isLoading, error } = useQuery<ClientReq[]>({
+    queryKey: ["client-requests"],
+    queryFn: () => authFetch("client-requests.php"),
+  });
+
+  const patchStatus = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: "contacted" | "rejected" }) =>
+      authFetch("client-requests.php", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["client-requests"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const addNote = useMutation({
+    mutationFn: ({ id, note }: { id: number; note: string }) =>
+      authFetch("client-requests.php", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, note }),
+      }),
+    onSuccess: (_data, variables) => {
+      setNoteTexts(prev => { const m = new Map(prev); m.set(variables.id, ""); return m; });
+      qc.invalidateQueries({ queryKey: ["client-requests"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const toggleExpand = (id: number) =>
+    setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const toggleEmailBox = (id: number) =>
+    setShowEmailBox(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const sendEmail = async (req: ClientReq) => {
+    const msg = (emailTexts.get(req.id) ?? "").trim();
+    if (!msg) return;
+    setSendingEmail(req.id);
+    try {
+      await authFetch("client-requests.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send_email", id: req.id, message: msg }),
+      });
+      setEmailSentFor(prev => new Set(prev).add(req.id));
+      setEmailTexts(prev => { const m = new Map(prev); m.set(req.id, ""); return m; });
+      setShowEmailBox(prev => { const n = new Set(prev); n.delete(req.id); return n; });
+      toast.success("Email sent to " + req.email);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSendingEmail(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {isLoading && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading requests…
+        </div>
+      )}
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {(error as Error).message}
+        </div>
+      )}
+      {!isLoading && !error && requests.length === 0 && (
+        <div className="rounded-xl border border-[var(--border)] bg-white p-10 text-center text-sm text-muted-foreground">
+          No access requests yet. When companies submit a request via the portal, they appear here.
+        </div>
+      )}
+      {requests.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-card shadow-sm">
+          {requests.map((req, idx) => {
+            const isOpen = expanded.has(req.id);
+            const sc = REQ_STATUS[req.status];
+            const canAct = req.status !== "converted" && req.status !== "rejected";
+            const notes = req.internal_notes ?? [];
+            const noteText = noteTexts.get(req.id) ?? "";
+            const emailText = emailTexts.get(req.id) ?? "";
+            const isEmailOpen = showEmailBox.has(req.id);
+            const services = req.services_needed ?? [];
+            return (
+              <div key={req.id} className={idx > 0 ? "border-t border-[var(--border)]" : ""}>
+                <button
+                  type="button"
+                  onClick={() => toggleExpand(req.id)}
+                  className="flex w-full items-center gap-4 px-5 py-4 text-left hover:bg-[#F9FAFB] transition-colors"
+                >
+                  {isOpen
+                    ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-[var(--navy)]">{req.company}</span>
+                      <span className="text-xs text-muted-foreground">·</span>
+                      <span className="text-xs text-muted-foreground">{req.name}</span>
+                      {req.designation && (
+                        <span className="text-xs text-muted-foreground">· {req.designation}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="text-xs text-muted-foreground">{req.email}</span>
+                      {notes.length > 0 && (
+                        <span className="text-[10px] rounded-full px-2 py-0.5 bg-amber-50 border border-amber-200 text-amber-700 font-semibold">
+                          {notes.length} note{notes.length > 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {services.length > 0 && (
+                        <span className="text-[10px] rounded-full px-2 py-0.5 bg-[#E6F4EF] border border-[#C5E4D0] text-[#1E6F5C] font-semibold">
+                          {services.length} service{services.length > 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${sc.cls}`}>{sc.label}</span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground hidden sm:block">
+                    {new Date(req.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}
+                  </span>
+                </button>
+
+                {isOpen && (
+                  <div className="border-t border-[var(--border)] bg-[#FAFAFA] px-6 py-5 space-y-6">
+
+                    {/* ── KYC Section ── */}
+                    {(services.length > 0 || req.ghg_done_before !== null) && (
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-[#1E6F5C] mb-3 flex items-center gap-2">
+                          <span className="inline-block w-0.5 h-3.5 rounded bg-[#1E6F5C]" />
+                          KYC — GHG Reporting
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          {req.ghg_done_before !== null && (
+                            <div>
+                              <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">GHG Reported Before</div>
+                              <div className="text-sm text-[var(--navy)]">{Number(req.ghg_done_before) === 1 ? "Yes" : "No"}</div>
+                              {req.ghg_requirement && (
+                                <p className="text-sm text-[var(--navy)] mt-1 leading-relaxed whitespace-pre-wrap">{req.ghg_requirement}</p>
+                              )}
+                            </div>
+                          )}
+                          {services.length > 0 && (
+                            <div>
+                              <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Looking For</div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {services.map(s => (
+                                  <span key={s} className="rounded-full px-2.5 py-1 bg-[#ECF7F3] text-[#1E6F5C] text-xs font-semibold border border-[#C5E4D0]">
+                                    {s}
+                                  </span>
+                                ))}
+                                {req.services_other && (
+                                  <span className="text-xs text-muted-foreground self-center">· {req.services_other}</span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── Org Details ── */}
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-[#1E6F5C] mb-3 flex items-center gap-2">
+                        <span className="inline-block w-0.5 h-3.5 rounded bg-[#1E6F5C]" />
+                        Organisation Information
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-3 text-sm">
+                        {[
+                          ["Company", req.company],
+                          ["Legal name", req.legal_name || "—"],
+                          ["Operating name", req.operating_name || "—"],
+                          ["Industry", req.industry || "—"],
+                          ["Org type", req.org_type || "—"],
+                          ["Registered in India", Number(req.is_india) === 1 ? "Yes" : "No"],
+                          ["GSTIN", req.gstin || "—"],
+                          ["MSME", req.is_msme === null ? "—" : Number(req.is_msme) === 1 ? "Yes" : "No"],
+                          ["Website", req.website || "—"],
+                          ["Submitted", new Date(req.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' })],
+                        ].map(([label, value]) => (
+                          <div key={label}>
+                            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">{label}</div>
+                            <div className="text-sm text-[var(--navy)]">{value}</div>
+                          </div>
+                        ))}
+                        {req.legal_address && (
+                          <div className="col-span-full">
+                            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Legal Address</div>
+                            <p className="text-sm text-[var(--navy)] leading-relaxed whitespace-pre-wrap">{req.legal_address}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── Contact ── */}
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-[#1E6F5C] mb-3 flex items-center gap-2">
+                        <span className="inline-block w-0.5 h-3.5 rounded bg-[#1E6F5C]" />
+                        Contact Details
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-3 text-sm">
+                        {[
+                          ["Name", req.name],
+                          ["Designation", req.designation || "—"],
+                          ["Email", req.email],
+                          ["Phone", req.phone || "—"],
+                        ].map(([label, value]) => (
+                          <div key={label}>
+                            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">{label}</div>
+                            <div className="text-sm text-[var(--navy)]">{value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* ── Actions ── */}
+                    {canAct && (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {req.status === "new" && (
+                          <button
+                            type="button"
+                            onClick={() => patchStatus.mutate({ id: req.id, status: "contacted" })}
+                            disabled={patchStatus.isPending}
+                            className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                          >
+                            <Check className="h-3.5 w-3.5" /> Mark contacted
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => toggleEmailBox(req.id)}
+                          className="flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100"
+                        >
+                          <FileText className="h-3.5 w-3.5" /> {isEmailOpen ? "Hide" : "Send email"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => patchStatus.mutate({ id: req.id, status: "rejected" })}
+                          disabled={patchStatus.isPending}
+                          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                        >
+                          <X className="h-3.5 w-3.5" /> Reject
+                        </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => setConvertTarget(req)}
+                            className="ml-auto flex items-center gap-1.5 rounded-lg bg-[#1E6F5C] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110"
+                          >
+                            <UserPlus className="h-3.5 w-3.5" /> Approve & Invite
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ── Send email panel ── */}
+                    {isEmailOpen && (
+                      <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-3">
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-violet-700">
+                          Send email to {req.name} ({req.email})
+                        </div>
+                        <textarea
+                          rows={4}
+                          value={emailText}
+                          onChange={e => setEmailTexts(prev => { const m = new Map(prev); m.set(req.id, e.target.value); return m; })}
+                          placeholder="Type your message to the contact here. We'll send it as a branded email from Deepwoods."
+                          className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm text-[var(--navy)] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-300 resize-none"
+                        />
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => sendEmail(req)}
+                            disabled={!emailText.trim() || sendingEmail === req.id}
+                            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                          >
+                            {sendingEmail === req.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                            Send email
+                          </button>
+                          {emailSentFor.has(req.id) && (
+                            <span className="text-xs text-violet-700 font-semibold flex items-center gap-1">
+                              <Check className="h-3.5 w-3.5" /> Sent
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── Internal notes thread ── */}
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-2">
+                        <span className="inline-block w-0.5 h-3.5 rounded bg-amber-400" />
+                        Internal Notes
+                        {notes.length > 0 && <span className="text-[10px] font-normal">({notes.length})</span>}
+                      </div>
+
+                      {notes.length > 0 && (
+                        <div className="space-y-2 mb-3">
+                          {notes.map((n, ni) => (
+                            <div key={ni} className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3">
+                              <p className="text-sm text-[var(--navy)] leading-relaxed whitespace-pre-wrap">{n.text}</p>
+                              <p className="text-[10px] text-muted-foreground mt-1.5">
+                                {new Date(n.added_at).toLocaleString()}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex gap-2 items-end">
+                        <textarea
+                          rows={2}
+                          value={noteText}
+                          onChange={e => setNoteTexts(prev => { const m = new Map(prev); m.set(req.id, e.target.value); return m; })}
+                          placeholder="Add an internal note visible only to Deepwoods staff…"
+                          className="flex-1 rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--navy)] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1E6F5C]/30 resize-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => { if (noteText.trim()) addNote.mutate({ id: req.id, note: noteText.trim() }); }}
+                          disabled={!noteText.trim() || addNote.isPending}
+                          className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50 self-end"
+                        >
+                          {addNote.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                          Add note
+                        </button>
+                      </div>
+                    </div>
+
+                    {req.status === "rejected" && (
+                      <p className="text-xs text-muted-foreground">Rejection email sent. No account was created.</p>
+                    )}
+                    {req.status === "converted" && (
+                      <p className="text-xs font-medium" style={{
+                        color: !emailResults.has(req.id)
+                          ? "#6B7280"
+                          : emailResults.get(req.id) ? "#1E6F5C" : "#B45309",
+                      }}>
+                        {!emailResults.has(req.id)
+                          ? "Converted to client — email delivery status unavailable."
+                          : emailResults.get(req.id)
+                            ? "Converted — invitation email sent successfully."
+                            : "Converted — invitation email could not be sent."}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {convertTarget && (
+        <AcceptModal
+          request={convertTarget}
+          onClose={() => setConvertTarget(null)}
+          onSuccess={(result) => {
+            const reqId = convertTarget!.id;
+            setConvertTarget(null);
+            setConvertResult(result);
+            setEmailResults(prev => new Map(prev).set(reqId, result.emailSent));
+            qc.invalidateQueries({ queryKey: ["client-requests"] });
+          }}
+        />
+      )}
+      {convertResult && (
+        <AcceptSuccessModal result={convertResult} onClose={() => setConvertResult(null)} />
+      )}
+    </div>
+  );
+}
+
+function AcceptModal({ request, onClose, onSuccess }: {
+  request: ClientReq;
+  onClose: () => void;
+  onSuccess: (r: ConvResult) => void;
+}) {
+  const [name, setName]   = useState(request.company);
+  const [slug, setSlug]   = useState(slugify(request.company));
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [slugTouched, setSlugTouched] = useState(false);
+  const handleNameChange = (v: string) => {
+    setName(v);
+    if (!slugTouched) setSlug(slugify(v));
+  };
+
+  const inp = "w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--navy)] focus:border-[#1E6F5C] focus:outline-none";
+  const lbl = "mb-1 block text-[10px] font-bold uppercase tracking-widest text-muted-foreground";
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await authFetch("client-requests.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "convert",
+          id: request.id,
+          name,
+          slug,
+          invite_email: request.email,
+          invite_role: "sustainability_team",
+        }),
+      });
+      onSuccess({
+        slug: res.slug,
+        inviteEmail: res.invite_email ?? request.email,
+        tempPassword: res.temp_password ?? null,
+        emailSent: !!res.email_sent,
+        smtpDiag: res.smtp_diag ?? null,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Approval failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-xl bg-card p-6 shadow-2xl">
+        <div className="mb-4 flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-[var(--navy)]">Approve & Invite</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Creates the account and sends login credentials to <strong>{request.email}</strong> in one step.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded p-1 hover:bg-slate-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* What happens summary */}
+        <div className="mb-4 rounded-lg border border-[#C5E4D0] bg-[#F0FAF5] px-3 py-2.5 text-xs text-[#1E6F5C] space-y-1">
+          <p className="font-semibold">This will automatically:</p>
+          <p>1. Create the client account</p>
+          <p>2. Create login for <strong>{request.email}</strong> (Sustainability Team role)</p>
+          <p>3. Generate a temporary password and send credentials by email</p>
+          <p>4. Mark this request as accepted</p>
+        </div>
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          After approval, go to <strong>Entity Codes</strong> tab to set a unique entity code for this client.
+        </div>
+
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
+        )}
+
+        <form onSubmit={submit} className="space-y-3">
+          <div>
+            <label className={lbl}>Client name *</label>
+            <input value={name} onChange={e => handleNameChange(e.target.value)} required className={inp} />
+          </div>
+          <div>
+            <label className={lbl}>Slug * <span className="normal-case font-normal text-muted-foreground">(URL identifier)</span></label>
+            <input
+              value={slug}
+              onChange={e => { setSlugTouched(true); setSlug(e.target.value); }}
+              required pattern="[-a-z0-9]+"
+              className={inp}
+            />
+            <p className="mt-0.5 text-[10px] text-muted-foreground">Lowercase letters, numbers and hyphens only</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50">Cancel</button>
+            <button type="submit" disabled={loading || !name.trim() || !slug}
+              className="flex items-center gap-2 rounded-lg bg-[#1E6F5C] px-5 py-2 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-50">
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {loading ? "Approving…" : "Approve & Invite"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+const SMTP_DIAG_LABELS: Record<string, string> = {
+  smtp_accepted:              "SMTP accepted the message for delivery.",
+  smtp_connection_failed:     "SMTP connection failed — server unreachable on port 587.",
+  smtp_starttls_failed:       "STARTTLS negotiation failed — TLS upgrade rejected.",
+  smtp_auth_failed:           "SMTP authentication failed — App Password may be invalid.",
+  smtp_recipient_rejected:    "SMTP recipient rejected — server refused the To address.",
+  smtp_message_rejected:      "SMTP message rejected — server refused the message (policy or content).",
+  smtp_config_missing:        "SMTP configuration missing — check config.php smtp keys.",
+  email_skipped_user_exists:  "User account already existed — email was not attempted.",
+  smtp_error:                 "Unclassified SMTP error — check PHP error log for details.",
+};
+
+function AcceptSuccessModal({ result, onClose }: { result: ConvResult; onClose: () => void }) {
+  const diagLabel = result.smtpDiag ? (SMTP_DIAG_LABELS[result.smtpDiag] ?? result.smtpDiag) : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-sm rounded-xl bg-card p-6 shadow-2xl text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#E6F4EF]">
+          <Check className="h-6 w-6 text-[#1E6F5C]" />
+        </div>
+        <h3 className="mb-1 text-base font-bold text-[var(--navy)]">Client account created!</h3>
+        <p className="mb-4 text-xs text-muted-foreground">
+          Workspace <code className="font-mono font-semibold">{result.slug}</code> is live.
+        </p>
+
+        {result.emailSent ? (
+          <div className="rounded-xl border border-[#C5E4D0] bg-[#F0FAF5] px-4 py-3 text-left mb-4 space-y-1">
+            <p className="text-xs font-semibold text-[#1E6F5C]">EMAIL SENT</p>
+            <p className="text-xs text-[#1E6F5C]">
+              Client account created and invitation email accepted by SMTP.
+            </p>
+            <p className="text-[11px] text-[#1E6F5C]/70">Sent to: <strong>{result.inviteEmail}</strong></p>
+            {diagLabel && (
+              <p className="text-[11px] text-[#1E6F5C]/60 font-mono">{diagLabel}</p>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left mb-4 space-y-2">
+            <p className="text-xs font-semibold text-amber-800">
+              {result.smtpDiag === 'email_skipped_user_exists'
+                ? "EMAIL NOT ATTEMPTED"
+                : result.smtpDiag
+                  ? "EMAIL FAILED"
+                  : "EMAIL STATUS UNAVAILABLE"}
+            </p>
+            <p className="text-xs text-amber-700">
+              {result.smtpDiag === 'email_skipped_user_exists'
+                ? "Client account created, but the user already existed — invitation email was not sent."
+                : result.smtpDiag
+                  ? "Client account created, but the invitation email could not be sent."
+                  : "Email delivery status unavailable."}
+            </p>
+            {diagLabel && (
+              <p className="text-[11px] font-mono text-amber-600">{diagLabel}</p>
+            )}
+            {result.tempPassword && (
+              <>
+                <p className="text-[11px] text-amber-700 pt-1">Share these credentials manually:</p>
+                <p className="text-[11px] text-amber-700">Email: <strong>{result.inviteEmail}</strong></p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 rounded bg-amber-100 px-2 py-1 text-sm font-mono font-semibold text-amber-900 break-all">
+                    {result.tempPassword}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => { navigator.clipboard.writeText(result.tempPassword!); toast.success("Copied"); }}
+                    className="shrink-0 rounded p-1 text-amber-600 hover:bg-amber-200"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        <button type="button" onClick={onClose}
+          className="w-full rounded-lg bg-[#1E6F5C] px-4 py-2 text-sm font-semibold text-white hover:brightness-110">
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Verification tab component (ISO 14064-3 / CDP C10 / GRI 2-5) ─────────────
+
+type AssuranceLevel = "limited" | "reasonable" | "none";
+type AssuranceStandard = "ISAE3410" | "ISO14064-3" | "AA1000AS" | "other";
+
+interface VerificationRecord {
+  reportingYear: string;
+  assuranceLevel: AssuranceLevel;
+  standard: AssuranceStandard;
+  provider: string;
+  scopeCovered: string;
+  savedAt?: string;
+}
+
+function VerificationTab() {
+  const [records, setRecords] = useState<VerificationRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<VerificationRecord>({
+    reportingYear: "",
+    assuranceLevel: "limited",
+    standard: "ISAE3410",
+    provider: "",
+    scopeCovered: "",
+  });
+
+  useEffect(() => {
+    authFetch("verification-status.php")
+      .then((d: { records: VerificationRecord[] }) => setRecords(d.records ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    if (!form.reportingYear || !form.provider || !form.scopeCovered) {
+      toast.error("Reporting year, provider, and scope covered are required.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = [
+        ...records.filter(r => r.reportingYear !== form.reportingYear),
+        { ...form, savedAt: new Date().toISOString().slice(0, 10) },
+      ].sort((a, b) => b.reportingYear.localeCompare(a.reportingYear));
+      await authFetch("verification-status.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ records: updated }),
+      });
+      setRecords(updated);
+      toast.success("Verification record saved.");
+      setForm({ reportingYear: "", assuranceLevel: "limited", standard: "ISAE3410", provider: "", scopeCovered: "" });
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const LEVEL_LABELS: Record<AssuranceLevel, string> = {
+    limited: "Limited Assurance",
+    reasonable: "Reasonable Assurance",
+    none: "No Assurance",
+  };
+  const STD_LABELS: Record<AssuranceStandard, string> = {
+    ISAE3410: "ISAE 3410",
+    "ISO14064-3": "ISO 14064-3",
+    AA1000AS: "AA1000AS",
+    other: "Other",
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-base font-bold mb-1" style={{ color: "var(--navy)" }}>Third-Party Verification / Assurance</h3>
+        <p className="text-sm" style={{ color: "var(--navy-2)" }}>
+          Required by CDP C10, ISO 14064-3, and GRI 2-5. Record the assurance provider, level, and standard for each reporting year.
+          An "Assured" badge will appear on the client dashboard once a record exists.
+        </p>
+      </div>
+
+      {/* Add / edit record */}
+      <div className="bg-white rounded-xl border p-5 shadow-sm" style={{ borderColor: "var(--border)" }}>
+        <p className="text-xs font-bold uppercase tracking-wider mb-4" style={{ color: "var(--navy-2)" }}>Add / Update Record</p>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--navy-2)" }}>Reporting Year *</label>
+            <input
+              className="w-full rounded-lg border px-3.5 py-2 text-sm"
+              style={{ borderColor: "var(--border)" }}
+              placeholder="e.g. FY25"
+              value={form.reportingYear}
+              onChange={e => setForm(f => ({ ...f, reportingYear: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--navy-2)" }}>Assurance Level *</label>
+            <select
+              className="w-full rounded-lg border px-3.5 py-2 text-sm"
+              style={{ borderColor: "var(--border)" }}
+              value={form.assuranceLevel}
+              onChange={e => setForm(f => ({ ...f, assuranceLevel: e.target.value as AssuranceLevel }))}
+            >
+              <option value="limited">Limited Assurance</option>
+              <option value="reasonable">Reasonable Assurance</option>
+              <option value="none">No Assurance (self-declaration)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--navy-2)" }}>Assurance Standard *</label>
+            <select
+              className="w-full rounded-lg border px-3.5 py-2 text-sm"
+              style={{ borderColor: "var(--border)" }}
+              value={form.standard}
+              onChange={e => setForm(f => ({ ...f, standard: e.target.value as AssuranceStandard }))}
+            >
+              <option value="ISAE3410">ISAE 3410</option>
+              <option value="ISO14064-3">ISO 14064-3</option>
+              <option value="AA1000AS">AA1000AS</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--navy-2)" }}>Provider Name *</label>
+            <input
+              className="w-full rounded-lg border px-3.5 py-2 text-sm"
+              style={{ borderColor: "var(--border)" }}
+              placeholder="e.g. Ernst & Young LLP"
+              value={form.provider}
+              onChange={e => setForm(f => ({ ...f, provider: e.target.value }))}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--navy-2)" }}>Scope Covered *</label>
+            <input
+              className="w-full rounded-lg border px-3.5 py-2 text-sm"
+              style={{ borderColor: "var(--border)" }}
+              placeholder="e.g. Scope 1 and 2 for all consolidated entities; Scope 3 Cat 1, 3, 6"
+              value={form.scopeCovered}
+              onChange={e => setForm(f => ({ ...f, scopeCovered: e.target.value }))}
+            />
+          </div>
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="mt-4 flex items-center gap-2 rounded-lg bg-[#1E6F5C] px-4 py-2 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+          Save Record
+        </button>
+      </div>
+
+      {/* Existing records */}
+      {loading ? (
+        <p className="text-sm" style={{ color: "var(--navy-2)" }}>Loading…</p>
+      ) : records.length === 0 ? (
+        <p className="text-sm" style={{ color: "var(--navy-2)" }}>No verification records yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {records.map(r => (
+            <div key={r.reportingYear} className="bg-white rounded-xl border px-5 py-4 flex flex-wrap gap-4 items-center shadow-sm" style={{ borderColor: "var(--border)" }}>
+              <div className="flex items-center gap-2 shrink-0">
+                <ShieldCheck className="w-4 h-4" style={{ color: "#1E6F5C" }} />
+                <span className="text-sm font-bold" style={{ color: "var(--navy)" }}>{r.reportingYear}</span>
+              </div>
+              <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">{LEVEL_LABELS[r.assuranceLevel]}</span>
+              <span className="text-xs font-mono" style={{ color: "var(--navy-2)" }}>{STD_LABELS[r.standard]}</span>
+              <span className="text-sm" style={{ color: "var(--navy-2)" }}>{r.provider}</span>
+              <span className="text-xs" style={{ color: "var(--slate)", flex: 1 }}>{r.scopeCovered}</span>
+              {r.savedAt && <span className="text-xs shrink-0" style={{ color: "var(--slate)" }}>Saved {r.savedAt}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Branding tab component ────────────────────────────────────────────────────
+
+interface BrandingClient { id: number; name: string; logo_url: string | null; primary_color: string; }
+
+function BrandingTab() {
+  const qc = useQueryClient();
+
+  const { data: raw = [] } = useQuery<ActivationClient[]>({
+    queryKey: ["activation-clients"],
+    queryFn: () => authFetch("activate-client.php"),
+  });
+
+  const [editing, setEditing] = useState<number | null>(null);
+  const [logoUrl, setLogoUrl] = useState("");
+  const [color, setColor]   = useState("#1E6F5C");
+  const [saving, setSaving] = useState(false);
+  const logoRef = useRef<HTMLInputElement>(null);
+
+  const clients: BrandingClient[] = raw.map(c => ({
+    id: c.id, name: c.name,
+    logo_url: ((c as unknown) as BrandingClient).logo_url ?? null,
+    primary_color: ((c as unknown) as BrandingClient).primary_color ?? "#1E6F5C",
+  }));
+
+  const openEdit = (c: BrandingClient) => {
+    setEditing(c.id);
+    setLogoUrl(c.logo_url ?? "");
+    setColor(c.primary_color ?? "#1E6F5C");
+  };
+
+  const handleLogoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setLogoUrl(ev.target?.result as string ?? "");
+    reader.readAsDataURL(file);
+  };
+
+  const save = async () => {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      await authFetch("branding.php", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_id: editing, logo_url: logoUrl || null, primary_color: color }),
+      });
+      toast.success("Branding updated");
+      qc.invalidateQueries({ queryKey: ["activation-clients"] });
+      setEditing(null);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const initials = (name: string) =>
+    name.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm" style={{ color: "var(--navy-2)" }}>
+        Set each client's logo and primary brand colour. These appear in their portal sidebar and reports.
+      </p>
+
+      {clients.map(c => (
+        <div key={c.id} className="rounded-xl border bg-white p-4 shadow-sm" style={{ borderColor: "var(--border)" }}>
+          <div className="flex items-center gap-4">
+            {/* Logo preview */}
+            <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden border flex items-center justify-center bg-[#F9FAFB]"
+              style={{ borderColor: "var(--border)" }}>
+              {c.logo_url
+                ? <img src={c.logo_url} alt={c.name} className="w-full h-full object-contain" />
+                : <span className="text-sm font-bold" style={{ color: c.primary_color }}>{initials(c.name)}</span>
+              }
+            </div>
+
+            {/* Client name + colour swatch */}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold truncate" style={{ color: "var(--navy)" }}>{c.name}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <div className="w-4 h-4 rounded-full border" style={{ background: c.primary_color, borderColor: "var(--border)" }} />
+                <span className="text-xs font-mono" style={{ color: "var(--navy-2)" }}>{c.primary_color}</span>
+                {!c.logo_url && <span className="text-xs" style={{ color: "var(--navy-2)" }}>· No logo set</span>}
+              </div>
+            </div>
+
+            <button onClick={() => editing === c.id ? setEditing(null) : openEdit(c)}
+              className="flex-shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold hover:bg-[#F3F4F6] transition-colors"
+              style={{ borderColor: "var(--border)", color: "var(--navy)" }}>
+              {editing === c.id ? "Cancel" : "Customise"}
+            </button>
+          </div>
+
+          {/* Inline editor */}
+          {editing === c.id && (
+            <div className="mt-4 pt-4 border-t space-y-4" style={{ borderColor: "var(--border)" }}>
+              <input ref={logoRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                className="hidden" onChange={handleLogoFile} />
+
+              {/* Logo */}
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--navy-2)" }}>
+                  Logo
+                </label>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-lg border flex items-center justify-center bg-[#F9FAFB] flex-shrink-0"
+                    style={{ borderColor: "var(--border)" }}>
+                    {logoUrl
+                      ? <img src={logoUrl} alt="" className="w-full h-full object-contain rounded-lg" />
+                      : <span className="text-sm font-bold" style={{ color: color }}>{initials(c.name)}</span>
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <input value={logoUrl} onChange={e => setLogoUrl(e.target.value)}
+                      placeholder="https://company.com/logo.png"
+                      className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-[#1E6F5C]"
+                      style={{ borderColor: "var(--border)" }} />
+                    <button type="button" onClick={() => logoRef.current?.click()}
+                      className="text-xs font-semibold" style={{ color: "#1E6F5C" }}>
+                      ↑ Or upload from computer
+                    </button>
+                  </div>
+                  {logoUrl && (
+                    <button type="button" onClick={() => setLogoUrl("")}
+                      className="flex-shrink-0 rounded-lg border p-1.5 hover:bg-slate-100"
+                      style={{ borderColor: "var(--border)", color: "var(--navy-2)" }}>
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Primary colour */}
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--navy-2)" }}>
+                  Primary colour
+                </label>
+                <div className="flex items-center gap-3">
+                  <input type="color" value={color} onChange={e => setColor(e.target.value)}
+                    className="h-10 w-16 cursor-pointer rounded-lg border p-1" style={{ borderColor: "var(--border)" }} />
+                  <input value={color} onChange={e => setColor(e.target.value)}
+                    placeholder="#1E6F5C" maxLength={9}
+                    className="w-32 rounded-lg border px-3 py-2 text-sm font-mono outline-none focus:border-[#1E6F5C]"
+                    style={{ borderColor: "var(--border)" }} />
+                  <span className="text-xs" style={{ color: "var(--navy-2)" }}>Appears in nav sidebar and highlights</span>
+                </div>
+              </div>
+
+              {/* Preview */}
+              <div className="rounded-lg border p-3" style={{ borderColor: "var(--border)", background: "#F9FAFB" }}>
+                <p className="text-xs font-semibold mb-2" style={{ color: "var(--navy-2)" }}>Preview</p>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center overflow-hidden" style={{ background: color + "22" }}>
+                    {logoUrl
+                      ? <img src={logoUrl} alt="" className="w-full h-full object-contain" />
+                      : <span className="text-xs font-bold" style={{ color }}>{initials(c.name)}</span>
+                    }
+                  </div>
+                  <div className="h-5 rounded-full px-3 flex items-center text-white text-xs font-semibold"
+                    style={{ background: color }}>
+                    Active nav item
+                  </div>
+                  <div className="h-1 w-16 rounded-full" style={{ background: color }} />
+                </div>
+              </div>
+
+              <button onClick={save} disabled={saving}
+                className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                style={{ background: "#1E6F5C" }}>
+                {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {saving ? "Saving…" : "Save branding"}
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {clients.length === 0 && (
+        <div className="rounded-xl border bg-white py-12 text-center" style={{ borderColor: "var(--border)" }}>
+          <p className="text-sm" style={{ color: "var(--navy-2)" }}>No clients found.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Data Export modal ─────────────────────────────────────────────────────────
+
+function DataExportModal({ client, open, onClose }: {
+  client: ActivationClient | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [entity, setEntity] = useState("");
+  const [fy, setFy]         = useState("FY26");
+  const [busy, setBusy]     = useState(false);
+
+  useEffect(() => { if (open) { setEntity(""); setFy("FY26"); } }, [open]);
+
+  const download = async () => {
+    if (!client || !entity.trim() || !fy.trim()) return;
+    setBusy(true);
+    try {
+      // authFetch returns parsed JSON by default; for file downloads we need raw Response
+      const token = getToken() ?? "";
+      const response = await fetch(
+        `/api/data-tracker/export.php?client_id=${client.id}&entity=${encodeURIComponent(entity.trim())}&fy=${encodeURIComponent(fy.trim())}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!response.ok) { toast.error("Export failed — check entity code and FY"); return; }
+      const blob = await response.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `tracker_${entity.trim()}_${fy.trim()}_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      onClose();
+    } catch {
+      toast.error("Download failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open || !client) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold text-[var(--navy)]">Export tracker data</h2>
+            <p className="mt-0.5 text-xs text-slate-400">{client.name}</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="mb-4">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--navy-2)]">Entity code</label>
+          <input
+            value={entity}
+            onChange={e => setEntity(e.target.value.toUpperCase())}
+            placeholder="e.g. FP, RK, HQ"
+            className="w-full rounded-lg border border-[var(--border)] px-3.5 py-2.5 text-sm text-[var(--navy)] outline-none focus:border-[#1E6F5C] focus:ring-2 focus:ring-[#1E6F5C]/15"
+          />
+        </div>
+        <div className="mb-5">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[var(--navy-2)]">Fiscal year</label>
+          <input
+            value={fy}
+            onChange={e => setFy(e.target.value)}
+            placeholder="FY26"
+            className="w-full rounded-lg border border-[var(--border)] px-3.5 py-2.5 text-sm text-[var(--navy)] outline-none focus:border-[#1E6F5C] focus:ring-2 focus:ring-[#1E6F5C]/15"
+          />
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 rounded-lg border border-[var(--border)] py-2.5 text-sm font-medium text-[var(--navy)] hover:bg-slate-50">Cancel</button>
+          <button
+            onClick={download}
+            disabled={!entity.trim() || !fy.trim() || busy}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#1E6F5C] py-2.5 text-sm font-semibold text-white disabled:opacity-40 hover:brightness-110"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+            Download CSV
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Data Gaps tab ─────────────────────────────────────────────────────────────
+
+type GapAsset = {
+  asset_id: string;
+  name: string;
+  scope: string;
+  sub_type: string;
+  entity: string;
+  facility: string;
+  months: Record<string, boolean>;
+  filled: number;
+  total: number;
+  pct: number;
+};
+
+type GapsResponse = {
+  months: string[];
+  assets: GapAsset[];
+  summary: { total_points: number; filled: number; gaps: number; pct: number };
+  fy: string;
+};
+
+const FY_OPTIONS_GAPS = ["FY26", "FY25", "FY24", "FY23", "FY22"];
+const SCOPE_COLORS: Record<string, string> = {
+  "Scope 1": "#1E6F5C",
+  "Scope 2": "#2563EB",
+  "Scope 3": "#9333EA",
+};
+
+function DataGapsTab({ clients }: { clients: ApiClient[] }) {
+  const [clientId, setClientId]   = useState<number | null>(null);
+  const [fy, setFy]               = useState("FY25");
+  const [scopeFilter, setScopeFilter] = useState("");
+  const [expandedAsset, setExpandedAsset] = useState<string | null>(null);
+
+  const selectedClient = clients.find(c => c.id === clientId) ?? null;
+
+  const { data, isLoading, refetch } = useQuery<GapsResponse>({
+    queryKey: ["data-gaps", clientId, fy],
+    queryFn: async () => {
+      const token = getToken() ?? "";
+      const url = `/api/data-gaps.php?client_id=${clientId}&fy=${encodeURIComponent(fy)}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    enabled: !!clientId && !!fy,
+    staleTime: 60 * 1000,
+  });
+
+  const displayedAssets = (data?.assets ?? []).filter(a =>
+    !scopeFilter || a.scope === scopeFilter
+  );
+
+  const months = data?.months ?? [];
+
+  const cellColor = (has: boolean) =>
+    has ? "#D1FAE5" : "#FEE2E2";
+  const cellText = (has: boolean) =>
+    has ? "#065F46" : "#991B1B";
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl border border-[#C5E4D0] bg-[#F0FAF5] px-4 py-3.5">
+        <p className="text-xs font-semibold text-[#1E6F5C]">Data Gaps — monthly completeness</p>
+        <p className="mt-0.5 text-xs text-[#2D6A4F]">
+          Shows which months are missing client submission data for each registered asset.
+          Green = data submitted, Red = no data, Grey = not applicable (annual asset).
+        </p>
+      </div>
+
+      {/* Selectors */}
+      <div className="flex flex-wrap items-center gap-3">
+        <select value={clientId ?? ""} onChange={e => { setClientId(e.target.value ? Number(e.target.value) : null); setExpandedAsset(null); }}
+          className="rounded-lg border px-3 py-2 text-sm outline-none focus:border-[#1E6F5C]"
+          style={{ borderColor: "var(--border)" }}>
+          <option value="">— select client —</option>
+          {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select value={fy} onChange={e => setFy(e.target.value)}
+          className="rounded-lg border px-3 py-2 text-sm outline-none focus:border-[#1E6F5C]"
+          style={{ borderColor: "var(--border)" }}>
+          {FY_OPTIONS_GAPS.map(y => <option key={y}>{y}</option>)}
+        </select>
+        <select value={scopeFilter} onChange={e => setScopeFilter(e.target.value)}
+          className="rounded-lg border px-3 py-2 text-sm outline-none focus:border-[#1E6F5C]"
+          style={{ borderColor: "var(--border)" }}>
+          <option value="">All scopes</option>
+          <option value="Scope 1">Scope 1</option>
+          <option value="Scope 2">Scope 2</option>
+          <option value="Scope 3">Scope 3</option>
+        </select>
+        {clientId && (
+          <button onClick={() => refetch()} className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-slate-50"
+            style={{ borderColor: "var(--border)" }}>
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </button>
+        )}
+      </div>
+
+      {/* Summary strip */}
+      {data && (
+        <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-2 rounded-lg border px-4 py-2.5 bg-white" style={{ borderColor: "var(--border)" }}>
+            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+            <span className="text-sm font-bold text-emerald-700">{data.summary.pct}%</span>
+            <span className="text-xs" style={{ color: "var(--navy-2)" }}>completeness</span>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg border px-4 py-2.5 bg-white" style={{ borderColor: "var(--border)" }}>
+            <CheckCircle2 className="w-4 h-4 text-[#1E6F5C]" />
+            <span className="text-sm font-bold" style={{ color: "var(--navy)" }}>{data.summary.filled}</span>
+            <span className="text-xs" style={{ color: "var(--navy-2)" }}>data points filled</span>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2.5 bg-red-50">
+            <AlertCircle className="w-4 h-4 text-red-500" />
+            <span className="text-sm font-bold text-red-700">{data.summary.gaps}</span>
+            <span className="text-xs text-red-600">gaps</span>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg border px-4 py-2.5 bg-white" style={{ borderColor: "var(--border)" }}>
+            <span className="text-xs" style={{ color: "var(--navy-2)" }}>{data.assets.length} assets · {selectedClient?.name} · {fy}</span>
+          </div>
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="flex items-center justify-center gap-2 py-12 text-sm" style={{ color: "var(--navy-2)" }}>
+          <Loader2 className="h-5 w-5 animate-spin" /> Loading data gaps…
+        </div>
+      )}
+
+      {!clientId && !isLoading && (
+        <div className="rounded-xl border border-dashed py-12 text-center text-sm" style={{ borderColor: "var(--border)", color: "var(--navy-2)" }}>
+          Select a client and fiscal year to view data gaps.
+        </div>
+      )}
+
+      {/* Asset grid */}
+      {data && displayedAssets.length === 0 && (
+        <div className="rounded-xl border py-10 text-center text-sm italic" style={{ borderColor: "var(--border)", color: "var(--navy-2)" }}>
+          No assets found{scopeFilter ? ` for ${scopeFilter}` : ""}.
+        </div>
+      )}
+
+      {data && displayedAssets.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border bg-white" style={{ borderColor: "var(--border)" }}>
+          <table className="w-full text-xs" style={{ minWidth: 900 }}>
+            <thead>
+              <tr className="border-b" style={{ borderColor: "var(--border)", background: "#F9FAFB" }}>
+                <th className="sticky left-0 z-10 bg-[#F9FAFB] px-4 py-3 text-left font-bold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--navy-2)", minWidth: 200 }}>
+                  Asset
+                </th>
+                <th className="px-3 py-3 text-left font-bold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--navy-2)" }}>Scope</th>
+                <th className="px-3 py-3 text-left font-bold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--navy-2)" }}>Entity</th>
+                {months.map(m => (
+                  <th key={m} className="px-1.5 py-3 text-center font-bold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--navy-2)" }}>
+                    {m.slice(0, 3)}
+                  </th>
+                ))}
+                <th className="px-3 py-3 text-right font-bold uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--navy-2)" }}>Complete</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
+              {displayedAssets.map(asset => {
+                const scopeColor = SCOPE_COLORS[asset.scope] ?? "#666";
+                const isAnnual = "Annual" in asset.months;
+                return (
+                  <tr key={asset.asset_id} className="hover:bg-[#F9FAFB]">
+                    <td className="sticky left-0 z-10 bg-white px-4 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--navy)" }}>
+                      <div className="truncate max-w-[180px]" title={asset.name}>{asset.name}</div>
+                      {asset.facility && (
+                        <div className="text-[10px] mt-0.5" style={{ color: "var(--navy-2)" }}>{asset.facility}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white" style={{ background: scopeColor }}>
+                        {asset.scope}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] whitespace-nowrap" style={{ color: "var(--navy-2)" }}>{asset.entity}</td>
+                    {isAnnual ? (
+                      <>
+                        <td colSpan={months.length} className="px-2 py-2.5 text-center">
+                          <span className="rounded px-2 py-1 text-[10px] font-semibold"
+                            style={{ background: cellColor(asset.months["Annual"]), color: cellText(asset.months["Annual"]) }}>
+                            {asset.months["Annual"] ? "Annual data submitted" : "Annual data missing"}
+                          </span>
+                        </td>
+                      </>
+                    ) : (
+                      months.map(m => (
+                        <td key={m} className="px-1.5 py-2.5 text-center">
+                          <div className="mx-auto h-5 w-5 rounded"
+                            style={{ background: asset.months[m] ? "#D1FAE5" : "#FEE2E2" }}
+                            title={`${m}: ${asset.months[m] ? "filled" : "missing"}`}
+                          />
+                        </td>
+                      ))
+                    )}
+                    <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                      <span className={`text-xs font-bold ${asset.pct === 100 ? "text-emerald-600" : asset.pct >= 50 ? "text-amber-600" : "text-red-600"}`}>
+                        {asset.pct}%
+                      </span>
+                      <span className="ml-1 text-[10px]" style={{ color: "var(--navy-2)" }}>({asset.filled}/{asset.total})</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Ledger Import tab ─────────────────────────────────────────────────────────
+
+function LedgerImportTab({ clients }: { clients: ApiClient[] }) {
+  const qc = useQueryClient();
+  const fileRef  = useRef<HTMLInputElement>(null);
+  const [clientId, setClientId]   = useState<number | null>(null);
+  const [entity,   setEntity]     = useState("");
+  const [preview,  setPreview]    = useState<LedgerParseResult | null>(null);
+  const [file,     setFile]       = useState<File | null>(null);
+  const [parsing,  setParsing]    = useState(false);
+  const [importing,setImporting]  = useState(false);
+  const [confirm,  setConfirm]    = useState(false);
+
+  const selectedClient = clients.find(c => c.id === clientId) ?? null;
+
+  const handleFile = useCallback(async (f: File) => {
+    if (!clientId || !entity.trim()) {
+      toast.error("Select a client and enter an entity code first");
+      return;
+    }
+    setParsing(true);
+    try {
+      const parsed = await parseLedger(f, entity.trim().toUpperCase(), selectedClient?.reporting_period === "CY" ? "CY" : "FY", clientId);
+      if (!parsed.year) { toast.error("Could not detect fiscal year — is this the correct template?"); return; }
+      setFile(f);
+      setPreview(parsed);
+      setConfirm(true);
+    } catch (e) {
+      toast.error(`Parse error: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setParsing(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }, [clientId, entity, selectedClient]);
+
+  const doImport = async () => {
+    if (!preview || !clientId) return;
+    setImporting(true);
+    try {
+      const body = {
+        target_client_id: clientId,
+        entity: preview.entity,
+        year:   preview.year,
+        ghg_inventory:    preview.ghgInventory,
+        s1_by_facility:   preview.s1ByFacility,
+        s2_by_facility:   preview.s2ByFacility,
+        s2_breakdown:     preview.s2Breakdown,
+        scope3_summary:   preview.scope3Summary,
+        intensity_metrics: preview.intensityMetrics,
+        tracker_assets:   [],
+        tracker_drafts:   [],
+        irec_register:    preview.irecRegister ?? [],
+        decarb_actions:   preview.decarbActions ?? [],
+        peer_data:        preview.peerData ?? [],
+      };
+      const res = await authFetch("import/ledger.php", { method: "POST", body: JSON.stringify(body) });
+      const c = res.counts ?? {};
+      toast.success(`Imported ${preview.entity} ${preview.year} → ${c.ghg_inventory ?? 0} GHG rows, ${c.s1_by_facility ?? 0} S1 facilities, ${c.s2_by_facility ?? 0} S2 facilities`);
+      setConfirm(false); setPreview(null); setFile(null);
+      qc.invalidateQueries({ queryKey: ["ghg-inventory"] });
+    } catch (e) {
+      toast.error(`Import failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl border border-[#C5E4D0] bg-[#F0FAF5] px-4 py-3.5">
+        <p className="text-xs font-semibold text-[#1E6F5C]">Post-calculation import</p>
+        <p className="mt-0.5 text-xs text-[#2D6A4F]">
+          After completing GHG calculations offline, upload the filled client template here.
+          This populates the client's dashboards, overview, inventory and all reports — it does <strong>not</strong> touch their submission or tracker data.
+        </p>
+      </div>
+
+      {/* Client + entity selectors */}
+      <div className="rounded-xl border bg-white p-5 space-y-4" style={{ borderColor: "var(--border)" }}>
+        <h3 className="text-sm font-bold" style={{ color: "var(--navy)" }}>1. Select client &amp; entity</h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--navy-2)" }}>Client</label>
+            <select
+              value={clientId ?? ""}
+              onChange={e => { setClientId(e.target.value ? Number(e.target.value) : null); setEntity(""); setPreview(null); }}
+              className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:border-[#1E6F5C]"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <option value="">— select client —</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--navy-2)" }}>Entity code</label>
+            <input
+              value={entity}
+              onChange={e => { setEntity(e.target.value.toUpperCase()); setPreview(null); }}
+              placeholder="e.g. FP, HQ, ALL"
+              disabled={!clientId}
+              className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:border-[#1E6F5C] disabled:opacity-50"
+              style={{ borderColor: "var(--border)" }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* File upload */}
+      <div className="rounded-xl border bg-white p-5 space-y-3" style={{ borderColor: "var(--border)" }}>
+        <h3 className="text-sm font-bold" style={{ color: "var(--navy)" }}>2. Upload calculated results template</h3>
+        <label
+          className={`flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed px-6 py-10 transition ${!clientId || !entity.trim() ? "opacity-40 pointer-events-none" : "hover:border-[#1E6F5C] hover:bg-[#F0FAF5]"}`}
+          style={{ borderColor: "var(--border)" }}
+        >
+          {parsing ? <Loader2 className="h-8 w-8 animate-spin text-[#1E6F5C]" /> : <FileUp className="h-8 w-8" style={{ color: "var(--navy-2)" }} />}
+          <div className="text-center">
+            <p className="text-sm font-semibold" style={{ color: "var(--navy)" }}>{parsing ? "Parsing file…" : "Click to browse or drag & drop"}</p>
+            <p className="mt-1 text-xs" style={{ color: "var(--navy-2)" }}>Accepts the Decarb Portal client template (.xlsx)</p>
+          </div>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
+            disabled={!clientId || !entity.trim() || parsing}
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+        </label>
+      </div>
+
+      {/* Confirm dialog */}
+      {confirm && preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <CheckCircle2 className="h-6 w-6 text-[#1E6F5C] shrink-0" />
+              <div>
+                <h2 className="text-base font-bold text-[var(--navy)]">Confirm import</h2>
+                <p className="text-xs text-slate-400">{selectedClient?.name} · {preview.entity} · {preview.year}</p>
+              </div>
+            </div>
+            <div className="mb-5 grid grid-cols-2 gap-2 text-sm">
+              {[
+                ["GHG inventory rows",  preview.ghgInventory.length],
+                ["S1 facility rows",    preview.s1ByFacility.length],
+                ["S2 facility rows",    preview.s2ByFacility.length],
+                ["Scope 3 categories",  preview.scope3Summary.length],
+                ["I-REC rows",          preview.irecRegister?.length ?? 0],
+                ["Decarb actions",      preview.decarbActions?.length ?? 0],
+                ["Peers",               preview.peerData?.length ?? 0],
+              ].map(([label, val]) => (
+                <div key={String(label)} className="flex items-center justify-between rounded-lg border px-3 py-2" style={{ borderColor: "var(--border)" }}>
+                  <span className="text-xs text-slate-500">{label}</span>
+                  <span className={`text-sm font-bold ${Number(val) > 0 ? "text-[#1E6F5C]" : "text-slate-300"}`}>{String(val)}</span>
+                </div>
+              ))}
+            </div>
+            {preview.templateFormat === "client-template" && (
+              <div className="mb-4 rounded-lg border border-[#C5E4D0] bg-[#F0FAF5] px-3 py-2 text-xs text-[#1E6F5C] font-medium">
+                Client template format detected
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button onClick={() => setConfirm(false)} disabled={importing}
+                className="flex-1 rounded-lg border py-2.5 text-sm font-medium text-[var(--navy)] hover:bg-slate-50 disabled:opacity-40"
+                style={{ borderColor: "var(--border)" }}>Cancel</button>
+              <button onClick={doImport} disabled={importing}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#1E6F5C] py-2.5 text-sm font-semibold text-white disabled:opacity-40 hover:brightness-110">
+                {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                {importing ? "Importing…" : "Confirm import"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Documents tab ─────────────────────────────────────────────────────────────
+
+const DOC_TYPES = [
+  "GHG Report",
+  "I-REC Statement",
+  "Verification Report",
+  "Audit Report",
+  "Methodology Note",
+  "Intensity Metrics Report",
+  "Scope 3 Assessment",
+  "Decarbonisation Action Plan",
+  "Board Summary",
+  "Other",
+];
+
+function DocumentsTab({ clients }: { clients: ApiClient[] }) {
+  const [clientId, setClientId] = useState<number | null>(null);
+  const [entity,   setEntity]   = useState("");
+  const [fy,       setFy]       = useState("FY25");
+  const [title,    setTitle]    = useState("");
+  const [docType,  setDocType]  = useState("GHG Report");
+  const [link,     setLink]     = useState("");
+  const [saving,   setSaving]   = useState(false);
+  const [deleting, setDeleting] = useState<number | null>(null);
+
+  const selectedClient = clients.find(c => c.id === clientId) ?? null;
+
+  const { data: docs, refetch: refetchDocs } = useQuery({
+    queryKey: ["vault-admin-docs", clientId],
+    queryFn: async () => {
+      if (!clientId) return [];
+      const token = getToken() ?? "";
+      const res = await fetch(`/api/vault-admin.php?client_id=${clientId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      return res.json() as Promise<{ id: number; entity: string; fy: string; title: string; doc_type: string; drive_link: string | null; uploaded_at: string }[]>;
+    },
+    enabled: !!clientId,
+  });
+
+  const save = async () => {
+    if (!clientId || !entity.trim() || !fy.trim() || !title.trim()) {
+      toast.error("Fill in all required fields"); return;
+    }
+    setSaving(true);
+    try {
+      await authFetch("vault-admin.php", {
+        method: "POST",
+        body: JSON.stringify({ client_id: clientId, entity: entity.trim().toUpperCase(), year: fy.trim(), title: title.trim(), doc_type: docType, drive_link: link.trim() || null }),
+      });
+      toast.success("Document added to client vault");
+      setTitle(""); setLink("");
+      refetchDocs();
+    } catch (e) {
+      toast.error(`Failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (id: number) => {
+    setDeleting(id);
+    try {
+      await authFetch("vault-admin.php", { method: "DELETE", body: JSON.stringify({ id }) });
+      toast.success("Document removed");
+      refetchDocs();
+    } catch {
+      toast.error("Delete failed");
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl border border-[#C5E4D0] bg-[#F0FAF5] px-4 py-3.5">
+        <p className="text-xs font-semibold text-[#1E6F5C]">Client vault management</p>
+        <p className="mt-0.5 text-xs text-[#2D6A4F]">
+          Add GHG reports, I-REC statements, verification reports and other documents for a client.
+          Documents appear in the client's Vault page immediately.
+        </p>
+      </div>
+
+      {/* Add document form */}
+      <div className="rounded-xl border bg-white p-5 space-y-4" style={{ borderColor: "var(--border)" }}>
+        <h3 className="text-sm font-bold" style={{ color: "var(--navy)" }}>Add document</h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--navy-2)" }}>Client *</label>
+            <select
+              value={clientId ?? ""}
+              onChange={e => { setClientId(e.target.value ? Number(e.target.value) : null); setEntity(""); }}
+              className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:border-[#1E6F5C]"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <option value="">— select client —</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--navy-2)" }}>Entity code *</label>
+            <input value={entity} onChange={e => setEntity(e.target.value.toUpperCase())} placeholder="e.g. FP, HQ" disabled={!clientId}
+              className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:border-[#1E6F5C] disabled:opacity-50"
+              style={{ borderColor: "var(--border)" }} />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--navy-2)" }}>Fiscal year *</label>
+            <input value={fy} onChange={e => setFy(e.target.value)} placeholder="FY25"
+              className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:border-[#1E6F5C]"
+              style={{ borderColor: "var(--border)" }} />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--navy-2)" }}>Document type</label>
+            <select value={docType} onChange={e => setDocType(e.target.value)}
+              className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:border-[#1E6F5C]"
+              style={{ borderColor: "var(--border)" }}>
+              {DOC_TYPES.map(t => <option key={t}>{t}</option>)}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--navy-2)" }}>Document title *</label>
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. GHG Inventory Report FY2025 — Featherlite India"
+            className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:border-[#1E6F5C]"
+            style={{ borderColor: "var(--border)" }} />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--navy-2)" }}>
+            Google Drive link <span className="font-normal normal-case text-slate-400 ml-1">(upload to Drive first, then paste shareable link)</span>
+          </label>
+          <input value={link} onChange={e => setLink(e.target.value)} placeholder="https://drive.google.com/file/d/..."
+            className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:border-[#1E6F5C] font-mono text-xs"
+            style={{ borderColor: "var(--border)" }} />
+        </div>
+        <button onClick={save} disabled={saving || !clientId || !entity.trim() || !fy.trim() || !title.trim()}
+          className="flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40 hover:brightness-110"
+          style={{ background: "#1E6F5C" }}>
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          {saving ? "Adding…" : "Add to client vault"}
+        </button>
+      </div>
+
+      {/* Documents list */}
+      {clientId && (
+        <div className="rounded-xl border bg-white overflow-hidden" style={{ borderColor: "var(--border)" }}>
+          <div className="flex items-center gap-2 border-b px-5 py-3.5" style={{ borderColor: "var(--border)" }}>
+            <FolderOpen className="h-4 w-4 text-[#1E6F5C]" />
+            <span className="text-sm font-bold" style={{ color: "var(--navy)" }}>
+              {selectedClient?.name} — Vault ({docs?.length ?? 0} documents)
+            </span>
+          </div>
+          {!docs || docs.length === 0 ? (
+            <div className="py-10 text-center text-sm italic" style={{ color: "var(--navy-2)" }}>No documents added yet.</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="border-b" style={{ borderColor: "var(--border)", background: "#F9FAFB" }}>
+                <tr>
+                  {["Title", "Type", "Entity", "FY", "Added", ""].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--navy-2)" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
+                {docs.map(d => (
+                  <tr key={d.id} className="hover:bg-[#F9FAFB]">
+                    <td className="px-4 py-3 font-medium max-w-xs truncate" style={{ color: "var(--navy)" }}>{d.title}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="rounded-full border px-2 py-0.5 text-[10px] font-semibold" style={{ borderColor: "var(--border)", color: "var(--navy-2)" }}>{d.doc_type}</span>
+                    </td>
+                    <td className="px-4 py-3 text-xs font-mono" style={{ color: "var(--navy-2)" }}>{d.entity}</td>
+                    <td className="px-4 py-3 text-xs" style={{ color: "var(--navy-2)" }}>{d.fy}</td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ color: "var(--navy-2)" }}>{d.uploaded_at?.slice(0, 10)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2 justify-end">
+                        {d.drive_link && (
+                          <a href={d.drive_link} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-semibold hover:bg-slate-50"
+                            style={{ borderColor: "var(--border)", color: "var(--navy)" }}>
+                            <ExternalLink className="h-3 w-3" /> Open
+                          </a>
+                        )}
+                        <button onClick={() => remove(d.id)} disabled={deleting === d.id}
+                          className="flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 border-red-200 disabled:opacity-40">
+                          {deleting === d.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                          Remove
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Activation tab component ──────────────────────────────────────────────────
+
+function ActivationTab() {
+  const { data: clients, isLoading, error, refetch } = useActivationClients();
+  const qc = useQueryClient();
+  const [activating, setActivating] = useState<number | null>(null);
+  const [settingUpGhg, setSettingUpGhg] = useState<number | null>(null);
+  const [inviteTarget, setInviteTarget] = useState<{ id: number; name: string } | null>(null);
+  const [invoiceTarget, setInvoiceTarget] = useState<ActivationClient | null>(null);
+  const [exportTarget, setExportTarget] = useState<ActivationClient | null>(null);
+
+  const setActive = async (clientId: number, active: boolean) => {
+    setActivating(clientId);
+    try {
+      await authFetch("activate-client.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_id: clientId, active }),
+      });
+      qc.invalidateQueries({ queryKey: ["activation-clients"] });
+      toast.success(active ? "Client activated" : "Client deactivated");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setActivating(null);
+    }
+  };
+
+  const setupGhg = async (clientId: number, clientName: string) => {
+    setSettingUpGhg(clientId);
+    try {
+      const res = await authFetch("ghg/setup-client.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_id: clientId }),
+      });
+      qc.invalidateQueries({ queryKey: ["activation-clients"] });
+      const skipped = res?.results?.some((r: any) => r.status === "skipped");
+      const errored = res?.results?.some((r: any) => r.status === "error");
+      if (skipped) {
+        toast.success(`${clientName}: GHG rows prepared — Apps Script URL not yet configured`, { duration: 6000 });
+      } else if (errored) {
+        toast.error(`${clientName}: GHG setup encountered errors — check console`);
+      } else {
+        toast.success(`${clientName}: GHG automation set up for ${res.fy}`);
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "GHG setup failed");
+    } finally {
+      setSettingUpGhg(null);
+    }
+  };
+
+  if (isLoading) return (
+    <div className="flex items-center justify-center py-16">
+      <Loader2 className="h-7 w-7 animate-spin text-[#1E6F5C]" />
+    </div>
+  );
+  if (error) return (
+    <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+      <AlertCircle className="h-4 w-4 text-red-500" />
+      <p className="text-sm text-red-700">Failed to load clients. Check your session.</p>
+      <button onClick={() => refetch()} className="text-xs font-medium text-red-600 hover:underline">Retry</button>
+    </div>
+  );
+
+  const pending = (clients ?? []).filter((c) => !c.is_active);
+  const active  = (clients ?? []).filter((c) => c.is_active);
+
+  return (
+    <>
+      <InviteUserModal
+        clientId={inviteTarget?.id ?? 0}
+        clientName={inviteTarget?.name ?? ""}
+        open={inviteTarget !== null}
+        onClose={() => setInviteTarget(null)}
+      />
+      <InvoiceModal
+        client={invoiceTarget}
+        open={invoiceTarget !== null}
+        onClose={() => setInvoiceTarget(null)}
+      />
+      <DataExportModal
+        client={exportTarget}
+        open={exportTarget !== null}
+        onClose={() => setExportTarget(null)}
+      />
+      <div className="space-y-6">
+      <div className="rounded-xl border border-[#C5E4D0] bg-[#F0FAF5] px-4 py-3.5">
+        <p className="text-xs font-semibold text-[#1E6F5C]">Payment is account-level</p>
+        <p className="mt-0.5 text-xs text-[#2D6A4F]">
+          Once the client has completed organisation setup and you have confirmed payment externally,
+          use <strong>Approve Payment &amp; Activate</strong> to: record payment status · stamp activation date ·
+          unlock the complete workspace for all users · send the client their access confirmation email.
+          One approval unlocks the parent org, all legal entities, all reporting engagements, and the full portal.
+        </p>
+      </div>
+
+      {/* Pending */}
+      <section>
+        <div className="mb-2 flex items-center gap-2">
+          <Clock className="h-3.5 w-3.5 text-amber-500" />
+          <span className="text-xs font-bold uppercase tracking-wider text-amber-600">
+            Pending Activation ({pending.length})
+          </span>
+        </div>
+        {pending.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-center text-sm text-slate-400">
+            No clients pending activation
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {pending.map((c) => (
+              <div key={c.id} className="flex items-center gap-4 rounded-xl border border-amber-200 bg-white px-4 py-3.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-700">
+                  {c.slug.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="truncate text-sm font-semibold text-[var(--navy)]">{c.name}</p>
+                  <p className="text-[11px] text-slate-400">
+                    {c.slug} · {c.user_count} user{c.user_count !== 1 ? "s" : ""} · Created {new Date(c.created_at).toLocaleDateString("en-IN")}
+                  </p>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                  c.payment_status === "paid"   ? "bg-[#E6F4EF] text-[#1E6F5C]" :
+                  c.payment_status === "waived" ? "bg-blue-50 text-blue-700" :
+                  "bg-amber-100 text-amber-600"
+                }`}>
+                  {c.payment_status === "paid" ? "Paid" : c.payment_status === "waived" ? "Waived" : "Pending"}
+                </span>
+                <button
+                  onClick={() => setInvoiceTarget(c)}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#1E6F5C] px-3.5 py-2 text-xs font-bold text-white hover:brightness-110"
+                  title="Record payment and unlock the complete customer workspace"
+                >
+                  <Unlock className="h-3 w-3" />
+                  Approve Payment &amp; Activate
+                </button>
+                <button
+                  onClick={() => setInviteTarget({ id: c.id, name: c.name })}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-[#1E6F5C] hover:text-[#1E6F5C]"
+                >
+                  <UserPlus className="h-3 w-3" />
+                  Invite user
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Active */}
+      <section>
+        <div className="mb-2 flex items-center gap-2">
+          <CheckCircle2 className="h-3.5 w-3.5 text-[#1E6F5C]" />
+          <span className="text-xs font-bold uppercase tracking-wider text-[#1E6F5C]">
+            Active Clients ({active.length})
+          </span>
+        </div>
+        {active.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-center text-sm text-slate-400">
+            No active clients yet
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {active.map((c) => (
+              <div key={c.id} className="flex items-center gap-3 rounded-xl border border-[#C5E4D0] bg-white px-4 py-3.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#E6F4EF] text-xs font-bold text-[#1E6F5C]">
+                  {c.slug.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="truncate text-sm font-semibold text-[var(--navy)]">{c.name}</p>
+                  <p className="text-[11px] text-slate-400">
+                    {c.slug} · {c.user_count} user{c.user_count !== 1 ? "s" : ""}
+                    {c.activated_at ? ` · Activated ${new Date(c.activated_at).toLocaleDateString("en-IN")}` : ""}
+                    {c.setup_complete === "true" ? " · Setup complete" : ""}
+                    {c.ghg_setup_done === "true" ? " · GHG ready" : ""}
+                  </p>
+                </div>
+                <span className="rounded-full bg-[#E6F4EF] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#1E6F5C]">
+                  Active
+                </span>
+                {c.setup_complete === "true" && (
+                  <button
+                    onClick={() => setupGhg(c.id, c.name)}
+                    disabled={settingUpGhg === c.id}
+                    title={c.ghg_setup_done === "true" ? "Re-run GHG setup (idempotent)" : "Set up GHG tracking in Google Sheet"}
+                    className="flex items-center gap-1.5 rounded-lg border border-[#1E6F5C] px-3 py-1.5 text-xs font-medium text-[#1E6F5C] disabled:opacity-50 hover:bg-[#E6F4EF]"
+                  >
+                    {settingUpGhg === c.id
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : <Workflow className="h-3 w-3" />}
+                    {c.ghg_setup_done === "true" ? "GHG ready" : "Setup GHG"}
+                  </button>
+                )}
+                <button
+                  onClick={() => setInvoiceTarget(c)}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-[#1E6F5C] hover:text-[#1E6F5C]"
+                  title="View or update payment record"
+                >
+                  <FileText className="h-3 w-3" />
+                  Payment details
+                </button>
+                <button
+                  onClick={() => setExportTarget(c)}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-[#1E6F5C] hover:text-[#1E6F5C]"
+                  title="Download tracker data as CSV"
+                >
+                  <ClipboardList className="h-3 w-3" />
+                  Export data
+                </button>
+                <button
+                  onClick={() => setInviteTarget({ id: c.id, name: c.name })}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-[#1E6F5C] hover:text-[#1E6F5C]"
+                >
+                  <UserPlus className="h-3 w-3" />
+                  Invite user
+                </button>
+                <button
+                  onClick={() => setActive(c.id, false)}
+                  disabled={activating === c.id}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 disabled:opacity-50 hover:border-red-200 hover:text-red-600"
+                >
+                  {activating === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Lock className="h-3 w-3" />}
+                  Deactivate
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+    </>
+  );
+}
+
+// ── Entities admin tab ────────────────────────────────────────────────────────
+
+interface AdminEntity {
+  id: number;
+  client_id: number;
+  client_name: string;
+  client_slug: string;
+  code: string;
+  entity_name: string;
+  short_name: string;
+  is_consolidated: boolean;
+  legal_address: string | null;
+  org_type: string | null;
+  code_duplicate: boolean;
+}
+
+function EntitiesAdminTab() {
+  const qc = useQueryClient();
+  const [editingId, setEditingId]     = useState<number | null>(null);
+  const [editCode, setEditCode]       = useState('');
+  const [editName, setEditName]       = useState('');
+  const [editOrgType, setEditOrgType] = useState('');
+  const [saving, setSaving]           = useState(false);
+  const [saveError, setSaveError]     = useState<string | null>(null);
+  const [search, setSearch]       = useState('');
+
+  const { data: entities = [], isLoading } = useQuery<AdminEntity[]>({
+    queryKey: ['admin-entities'],
+    queryFn: () => authFetch('admin-entities.php'),
+    staleTime: 30 * 1000,
+  });
+
+  const filtered = entities.filter(e =>
+    e.client_name.toLowerCase().includes(search.toLowerCase()) ||
+    e.code.toLowerCase().includes(search.toLowerCase()) ||
+    e.entity_name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const startEdit = (e: AdminEntity) => {
+    setEditingId(e.id);
+    setEditCode(e.code);
+    setEditName(e.short_name || e.entity_name);
+    setEditOrgType(e.org_type || '');
+    setSaveError(null);
+  };
+
+  const cancelEdit = () => { setEditingId(null); setSaveError(null); };
+
+  const saveEdit = async (id: number) => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await authFetch('admin-entities.php', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, code: editCode, short_name: editName, org_type: editOrgType }),
+      });
+      qc.invalidateQueries({ queryKey: ['admin-entities'] });
+      setEditingId(null);
+      toast.success('Entity code updated');
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inp = "rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-sm text-[var(--navy)] focus:border-[#1E6F5C] focus:outline-none";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-[var(--navy)]">Client Entities</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Set the entity code used in facility & asset slugs. Each client should have a distinct code.
+          </p>
+        </div>
+        <div className="relative max-w-xs w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients or codes…"
+            className="w-full pl-8 pr-3 py-2 rounded-lg border border-[var(--border)] text-sm focus:outline-none focus:border-[#1E6F5C]" />
+        </div>
+      </div>
+
+      {entities.some(e => e.code_duplicate) && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex gap-2 items-start">
+          <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+          <span>Some entity codes are used by more than one client (highlighted in orange). Edit them to make each code unique.</span>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+      ) : (
+        <div className="rounded-xl border border-[var(--border)] bg-card shadow-sm overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="border-b border-[var(--border)] bg-[#F9FAFB]">
+              <tr>
+                <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Client</th>
+                <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Entity code</th>
+                <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Entity name</th>
+                <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Type</th>
+                <th className="px-2 py-2.5" />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((ent, idx) => (
+                <tr key={ent.id}
+                  className={`${idx > 0 ? 'border-t border-[var(--border)]' : ''} ${ent.code_duplicate ? 'bg-amber-50/60' : ''}`}>
+                  {editingId === ent.id ? (
+                    <>
+                      <td className="px-4 py-2.5 text-xs font-medium text-[var(--navy)]">{ent.client_name}</td>
+                      <td className="px-4 py-2.5">
+                        <input
+                          value={editCode}
+                          onChange={e => setEditCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                          maxLength={10}
+                          className={inp + ' w-28 font-mono'}
+                          autoFocus
+                        />
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <input
+                          value={editName}
+                          onChange={e => setEditName(e.target.value)}
+                          className={inp + ' w-48'}
+                          placeholder="Short display name"
+                        />
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <input
+                          value={editOrgType}
+                          onChange={e => setEditOrgType(e.target.value)}
+                          className={inp + ' w-40'}
+                          placeholder="e.g. Private Limited"
+                        />
+                      </td>
+                      <td className="px-2 py-2.5">
+                        <div className="flex items-center gap-1">
+                          {saveError && <span className="text-[10px] text-red-600 mr-1">{saveError}</span>}
+                          <button type="button" onClick={() => saveEdit(ent.id)} disabled={saving || !editCode.trim()}
+                            className="rounded-lg bg-[#1E6F5C] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-50 flex items-center gap-1">
+                            {saving && <Loader2 className="h-3 w-3 animate-spin" />} Save
+                          </button>
+                          <button type="button" onClick={cancelEdit}
+                            className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--navy)] hover:bg-[#F3F4F6]">
+                            Cancel
+                          </button>
+                        </div>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-4 py-2.5 text-xs text-[var(--navy)]">
+                        <span className="font-medium">{ent.client_name}</span>
+                        <span className="ml-1.5 text-muted-foreground">({ent.client_slug})</span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className={`font-mono text-xs font-bold px-2 py-0.5 rounded ${ent.code_duplicate ? 'bg-amber-100 text-amber-800' : 'bg-[#EFF6FF] text-[#3B82F6]'}`}>
+                          {ent.code}
+                        </span>
+                        {ent.code_duplicate && (
+                          <span className="ml-1.5 text-[9px] font-bold text-amber-700 uppercase tracking-wide">Duplicate</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-[var(--navy)]">
+                        {ent.short_name || ent.entity_name}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                        {ent.org_type || (ent.is_consolidated ? 'Consolidated' : '—')}
+                      </td>
+                      <td className="px-2 py-2.5">
+                        <button onClick={() => startEdit(ent)}
+                          className="rounded-lg p-1.5 text-muted-foreground hover:bg-[#F3F4F6] hover:text-[var(--navy)]">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">No entities found</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Query Inbox tab (Deepwoods staff) ────────────────────────────────────────
+
+function SourceThreadsView({
+  clientId,
+  fy,
+  onBack,
+}: {
+  clientId: number;
+  fy: string;
+  onBack: () => void;
+}) {
+  const { data: summary = {}, isLoading } = useNdcThreadsSummary(fy, clientId);
+  const [selectedSource, setSelectedSource] = useState<string | null>(null);
+
+  const entries = Object.entries(summary);
+  const waitingForDW = entries.filter(([, e]) => !e.has_open && e.count > 0);
+  const waiting = entries.filter(([, e]) => e.has_open);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (entries.length === 0) {
+    return (
+      <div className="py-8 text-center text-sm text-muted-foreground">
+        No query threads for this client yet.
+      </div>
+    );
+  }
+
+  const Section = ({
+    title,
+    rows,
+  }: {
+    title: string;
+    rows: [string, { count: number; has_open: boolean }][];
+  }) => (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+      {rows.map(([sourceId, entry]) => (
+        <div key={sourceId}>
+          <button
+            type="button"
+            onClick={() => setSelectedSource(s => s === sourceId ? null : sourceId)}
+            className="flex w-full items-center gap-3 rounded-lg border bg-white px-3 py-2.5 text-left text-sm shadow-sm hover:bg-neutral-soft/30 transition-colors"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <span className="rounded bg-neutral-soft px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground shrink-0">
+              {sourceId}
+            </span>
+            <span className="flex-1 font-medium text-navy text-xs">
+              {entry.count} thread{entry.count !== 1 ? "s" : ""}
+            </span>
+            {entry.has_open && (
+              <span className="rounded-full bg-amber-warn px-2 py-0.5 text-[10px] font-bold text-white">
+                Reply needed
+              </span>
+            )}
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+          {selectedSource === sourceId && (
+            <div className="mt-1 ml-3 border-l-2 border-primary/30 pl-3">
+              <ThreadPanel
+                sourceType={sourceId.startsWith("c") && /^c\d+$/.test(sourceId) ? "scope3" : "scope12"}
+                sourceId={sourceId}
+                fy={fy}
+                clientId={clientId}
+              />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+      >
+        <ChevronLeft className="h-3.5 w-3.5" /> Back to all clients
+      </button>
+
+      {waiting.length > 0 && (
+        <Section title="Awaiting client reply" rows={waiting} />
+      )}
+      {waitingForDW.length > 0 && (
+        <Section title="Awaiting Deepwoods reply" rows={waitingForDW} />
+      )}
+    </div>
+  );
+}
+
+const FY_OPTIONS = ["FY27", "FY26", "FY25", "FY24", "FY23"];
+
+// ── Data Health Tab ───────────────────────────────────────────────────────────
+
+function DataHealthTab() {
+  const { data, isLoading, refetch, dataUpdatedAt } = useDataHealth();
+
+  const severityColor = (s: string) =>
+    s === "high" ? "var(--red-500,#ef4444)" : s === "medium" ? "var(--amber-500,#f59e0b)" : "var(--sky-500,#0ea5e9)";
+
+  const statusBg = (status: string, severity: string) => {
+    if (status === "ok") return { bg: "#d1fae5", text: "#065f46" };
+    if (severity === "high")   return { bg: "#fee2e2", text: "#991b1b" };
+    if (severity === "medium") return { bg: "#fef3c7", text: "#92400e" };
+    return { bg: "#e0f2fe", text: "#0c4a6e" };
+  };
+
+  const openChecks  = data?.checks.filter(c => c.status === "open") ?? [];
+  const okChecks    = data?.checks.filter(c => c.status === "ok")   ?? [];
+  const updatedAt   = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString() : null;
+
+  return (
+    <div className="space-y-5">
+      {/* Summary strip */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 rounded-lg border px-4 py-2.5" style={{borderColor:"var(--border)",background:"var(--card)"}}>
+          <AlertCircle className="w-4 h-4 text-red-500"/>
+          <span className="text-sm font-medium">{data?.summary.open_high ?? "—"}</span>
+          <span className="text-xs" style={{color:"var(--navy-2)"}}>high severity open</span>
+        </div>
+        <div className="flex items-center gap-2 rounded-lg border px-4 py-2.5" style={{borderColor:"var(--border)",background:"var(--card)"}}>
+          <AlertCircle className="w-4 h-4 text-amber-500"/>
+          <span className="text-sm font-medium">{data?.summary.open_medium ?? "—"}</span>
+          <span className="text-xs" style={{color:"var(--navy-2)"}}>medium open</span>
+        </div>
+        <div className="flex items-center gap-2 rounded-lg border px-4 py-2.5" style={{borderColor:"var(--border)",background:"var(--card)"}}>
+          <CheckCircle2 className="w-4 h-4 text-emerald-500"/>
+          <span className="text-sm font-medium">{data?.summary.resolved ?? "—"}</span>
+          <span className="text-xs" style={{color:"var(--navy-2)"}}>resolved</span>
+        </div>
+        <button
+          onClick={() => refetch()}
+          className="ml-auto flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-[#F3F4F6]"
+          style={{borderColor:"var(--border)"}}
+        >
+          <RefreshCw className="w-3.5 h-3.5"/>
+          Re-run checks{updatedAt ? ` · ${updatedAt}` : ""}
+        </button>
+      </div>
+
+      {isLoading && (
+        <div className="flex items-center gap-2 text-sm py-8 justify-center" style={{color:"var(--navy-2)"}}>
+          <Loader2 className="w-4 h-4 animate-spin"/>Running diagnostic queries…
+        </div>
+      )}
+
+      {/* Open issues */}
+      {openChecks.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-widest" style={{color:"var(--navy-2)"}}>Open Issues ({openChecks.length})</p>
+          {openChecks.map(check => {
+            const col = statusBg(check.status, check.severity);
+            return (
+              <div key={check.id} className="rounded-lg border" style={{borderColor:"var(--border)",background:"var(--card)"}}>
+                <div className="flex items-start gap-3 px-4 py-3">
+                  <div className="mt-0.5 flex-shrink-0">
+                    <AlertCircle className="w-4 h-4" style={{color: severityColor(check.severity)}}/>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span className="text-sm font-medium">{check.check}</span>
+                      <span className="rounded-full px-2 py-0.5 text-[11px] font-medium" style={{background:col.bg,color:col.text}}>
+                        {check.severity} · {check.count} issue{check.count !== 1 ? "s" : ""}
+                      </span>
+                      <span className="rounded-full border px-2 py-0.5 text-[11px]" style={{borderColor:"var(--border)",color:"var(--navy-2)"}}>
+                        {check.client_name}
+                      </span>
+                    </div>
+                    <p className="text-sm" style={{color:"var(--navy-2)"}}>{check.detail}</p>
+                    <p className="mt-1 text-xs font-mono" style={{color:"var(--navy-3)"}}>Fix: {check.fix}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Resolved / OK */}
+      {okChecks.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-widest" style={{color:"var(--navy-2)"}}>Passing Checks ({okChecks.length})</p>
+          {okChecks.map(check => (
+            <div key={check.id} className="flex items-start gap-3 rounded-lg border px-4 py-3" style={{borderColor:"var(--border)",background:"var(--card)"}}>
+              <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0 text-emerald-500"/>
+              <div className="flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium">{check.check}</span>
+                  <span className="rounded-full border px-2 py-0.5 text-[11px]" style={{borderColor:"var(--border)",color:"var(--navy-2)"}}>
+                    {check.client_name}
+                  </span>
+                </div>
+                <p className="text-sm" style={{color:"var(--navy-2)"}}>{check.detail}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!isLoading && !data && (
+        <p className="text-sm py-4" style={{color:"var(--navy-2)"}}>Could not load diagnostic data — check backend connectivity.</p>
+      )}
+    </div>
+  );
+}
+
+function QueryInboxTab({ clients }: { clients: { id: number; company: string }[] }) {
+  const [fy, setFy] = useState("FY26");
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+
+  const { data: allSummary, isLoading: loadingAll } = useNdcAllClientsSummary(fy);
+
+  const clientById = useMemo(() => {
+    const m: Record<number, { company: string }> = {};
+    for (const c of clients) m[c.id] = { company: c.company };
+    return m;
+  }, [clients]);
+
+  const clientsWithThreads = useMemo(() => {
+    if (!allSummary) return [];
+    return Object.entries(allSummary.by_client)
+      .map(([id, entry]) => ({ id: Number(id), ...entry, company: clientById[Number(id)]?.company ?? `Client ${id}` }))
+      .sort((a, b) => b.open_count - a.open_count);
+  }, [allSummary, clientById]);
+
+  const selectedClient = selectedClientId != null
+    ? clients.find(c => c.id === selectedClientId) ?? null
+    : null;
+
+  return (
+    <div className="space-y-4">
+      {/* FY selector + total badge */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium text-muted-foreground">FY</label>
+          <select
+            value={fy}
+            onChange={e => { setFy(e.target.value); setSelectedClientId(null); }}
+            className="rounded-md border px-2.5 py-1.5 text-sm"
+            style={{ borderColor: "var(--border)" }}
+          >
+            {FY_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+        {allSummary && (
+          <span className="rounded-full bg-amber-warn/10 border border-amber-warn/30 px-3 py-1 text-xs font-semibold text-amber-warn">
+            {allSummary.total_open} thread{allSummary.total_open !== 1 ? "s" : ""} awaiting Deepwoods reply
+          </span>
+        )}
+      </div>
+
+      {/* Detail view (when client selected) */}
+      {selectedClientId != null && selectedClient && (
+        <div className="rounded-xl border bg-white p-4 shadow-sm" style={{ borderColor: "var(--border)" }}>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-bold text-navy">{selectedClient.company}</p>
+              <p className="text-xs text-muted-foreground">{fy}</p>
+            </div>
+          </div>
+          <SourceThreadsView clientId={selectedClientId} fy={fy} onBack={() => setSelectedClientId(null)} />
+        </div>
+      )}
+
+      {/* Client list (when no client selected) */}
+      {selectedClientId == null && (
+        <>
+          {loadingAll && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+            </div>
+          )}
+          {!loadingAll && clientsWithThreads.length === 0 && (
+            <div className="rounded-xl border bg-white py-10 text-center text-sm text-muted-foreground shadow-sm" style={{ borderColor: "var(--border)" }}>
+              No query threads found for {fy}.
+            </div>
+          )}
+          <div className="space-y-2">
+            {clientsWithThreads.map(c => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setSelectedClientId(c.id)}
+                className="flex w-full items-center gap-3 rounded-xl border bg-white px-4 py-3 text-left shadow-sm hover:bg-neutral-soft/30 transition-colors"
+                style={{ borderColor: "var(--border)" }}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-navy truncate">{c.company}</p>
+                  <p className="text-xs text-muted-foreground">{c.count} thread{c.count !== 1 ? "s" : ""} total</p>
+                </div>
+                {c.open_count > 0 && (
+                  <span className="rounded-full bg-amber-warn px-2.5 py-0.5 text-xs font-bold text-white shrink-0">
+                    {c.open_count} for DW
+                  </span>
+                )}
+                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Drive Settings Tab ────────────────────────────────────────────────────────
+
+interface DriveClientStatus {
+  id: number;
+  name: string;
+  slug: string;
+  connected: boolean;
+  has_folder: boolean;
+  folder_id: string | null;
+}
+
+function DriveSettingsTab() {
+  const { data: statuses, isLoading, isError, error, refetch } = useQuery<DriveClientStatus[]>({
+    queryKey: ["drive-status-all"],
+    queryFn: () => authFetch("ghg/drive-status.php?all=1"),
+  });
+
+  const [connecting, setConnecting] = useState<number | null>(null);
+
+  async function handleConnect(clientId: number) {
+    setConnecting(clientId);
+    try {
+      const data = await authFetch(`ghg/drive-connect.php?client_id=${clientId}`);
+      const { auth_url } = data;
+      const popup = window.open(auth_url, "driveConnect", "width=600,height=700,left=300,top=100");
+      if (!popup) {
+        toast.error("Popup blocked — please allow popups for this site");
+        return;
+      }
+      // Poll until popup closes, then refresh status
+      const timer = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(timer);
+          setConnecting(null);
+          refetch();
+          toast.success("Drive account connected — status refreshed");
+        }
+      }, 800);
+    } catch {
+      toast.error("Error initiating Google Drive connection");
+    } finally {
+      // connecting state cleared when popup closes (or on error)
+      if (connecting === clientId) setConnecting(null);
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-8 text-sm" style={{ color: "var(--navy-2)" }}>
+        <Loader2 className="w-4 h-4 animate-spin" /> Loading Drive status…
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 space-y-2">
+        <p className="text-sm font-semibold text-red-700">API error — Drive status could not be loaded</p>
+        <pre className="text-xs text-red-600 whitespace-pre-wrap break-all">{String(error)}</pre>
+        <button onClick={() => refetch()} className="text-xs underline text-red-600">Retry</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="font-semibold text-base mb-1" style={{ color: "var(--navy)" }}>Google Drive Connections</h3>
+        <p className="text-sm" style={{ color: "var(--navy-2)" }}>
+          Connect the appropriate Deepwoods Google account for each client. Each client's uploaded evidence will be stored in their designated Drive folder using the connected account's credentials.
+        </p>
+      </div>
+
+      <div className="rounded-xl border bg-amber-50 border-amber-200 px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
+        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+        <span>
+          When connecting, sign in with the <strong>Deepwoods Google account that owns that client's Drive folder</strong>. Different clients may use different Deepwoods accounts.
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {(statuses ?? []).map(client => (
+          <div key={client.id} className="bg-white rounded-xl border shadow-sm px-5 py-4 flex flex-wrap items-center gap-4" style={{ borderColor: "var(--border)" }}>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ background: "var(--deepwoods-green)" }}>
+              {client.name.slice(0, 2).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm truncate" style={{ color: "var(--navy)" }}>{client.name}</p>
+              <p className="text-xs" style={{ color: "var(--navy-2)" }}>
+                {client.has_folder ? `Folder: ${client.folder_id}` : "No root folder configured in DB"}
+              </p>
+            </div>
+
+            {/* Connection status badge */}
+            {client.connected ? (
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[#E6F4EF] text-[#1E6F5C]">
+                <Link2 className="w-3 h-3" /> Connected
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-500">
+                <Link2Off className="w-3 h-3" /> Not connected
+              </span>
+            )}
+
+            <button
+              onClick={() => handleConnect(client.id)}
+              disabled={connecting === client.id}
+              className="flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-60"
+              style={{ background: "var(--deepwoods-green)" }}
+            >
+              {connecting === client.id ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Connecting…</>
+              ) : (
+                <><HardDriveUpload className="w-3.5 h-3.5" /> {client.connected ? "Reconnect" : "Connect Google Account"}</>
+              )}
+            </button>
+          </div>
+        ))}
+
+        {(statuses ?? []).length === 0 && (
+          <div className="rounded-xl border bg-white py-10 text-center text-sm shadow-sm" style={{ borderColor: "var(--border)", color: "var(--navy-2)" }}>
+            No clients found.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Admin() {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [role, setRoleState]         = useState<ReturnType<typeof getRole>>(null);
+  const [tab, setTab]                = useState<AdminTab>("activation");
+  const [search, setSearch]          = useState("");
+  const [selectedClient, setSelectedClient] = useState<string|null>(null);
+  const [screening, setScreening]    = useState<Record<string,Cat3Relevance[]>>({});
+  const [screeningNotes, setScreeningNotes] = useState<Record<string, (string|null)[]>>({});
+  const [clientQuestionnaire, setClientQuestionnaire] = useState<Record<string, (string|null)[]>>({});
+  const [expandedClient, setExpandedClient] = useState<string|null>(null);
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, ClientStatus>>({});
+  const [screenedSet, setScreenedSet] = useState<Set<string>>(new Set());
+  const [screeningEntity, setScreeningEntity] = useState<string | null>(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+
+  const { data: apiClients = [], refetch: refetchClients } = useClients();
+  const { data: allAdminEntities = [] } = useQuery<AdminEntity[]>({
+    queryKey: ['admin-entities'],
+    queryFn: () => authFetch('admin-entities.php'),
+  });
+
+  const clients = useMemo(
+    () => apiClients.map(c => apiClientToEngagement(c, statusOverrides, screenedSet)),
+    [apiClients, statusOverrides, screenedSet],
+  );
+
+  useEffect(()=>{
+    const r = getRole();
+    if (!r) navigate({ to: "/" });
+    setRoleState(r);
+  },[navigate]);
+
+  // Reset entity when client selection changes
+  useEffect(() => { setScreeningEntity(null); }, [selectedClient]);
+
+  // Load screening per entity + questionnaire per client
+  useEffect(()=>{
+    if (!selectedClient) return;
+    // Load questionnaire per client (not per entity)
+    authFetch(`scope3-questionnaire.php?client_id=${selectedClient}`)
+      .then((data: { questionnaire: (string|null)[]|null }) => {
+        if (Array.isArray(data?.questionnaire) && data.questionnaire.length === 15) {
+          setClientQuestionnaire(q => ({ ...q, [selectedClient]: data.questionnaire as (string|null)[] }));
+        }
+      })
+      .catch(()=>{});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[selectedClient]);
+
+  // Load per-entity screening when entity selected
+  useEffect(()=>{
+    if (!selectedClient || !screeningEntity) return;
+    const key = `${selectedClient}:${screeningEntity}`;
+    authFetch(`scope3-screening.php?client_id=${selectedClient}&entity_code=${screeningEntity}`)
+      .then((data: { screening: Cat3Relevance[]|null; notes: (string|null)[]|null }) => {
+        if (Array.isArray(data?.screening) && data.screening.length === 15) {
+          setScreening(s => ({ ...s, [key]: data.screening as Cat3Relevance[] }));
+        }
+        if (Array.isArray(data?.notes) && data.notes.length === 15) {
+          setScreeningNotes(n => ({ ...n, [key]: data.notes as (string|null)[] }));
+        }
+      })
+      .catch(()=>{});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[selectedClient, screeningEntity]);
+
+  // useMemo must be before early returns (Rules of Hooks)
+  const screeningEntities = useMemo(
+    () => allAdminEntities.filter(e => String(e.client_id) === selectedClient),
+    [allAdminEntities, selectedClient],
+  );
+
+  if (!role) return null;
+  if (!ROLE_META[role].canAdmin) {
+    return (
+      <>
+        <PageHeader eyebrow="Admin" title="Admin Dashboard"/>
+        <PageBody><LockedState title="Admin only" message="This area is restricted to Deepwoods Admin."/></PageBody>
+      </>
+    );
+  }
+
+  const filteredClients = clients.filter(c=>
+    c.company.toLowerCase().includes(search.toLowerCase()) ||
+    c.entity.toLowerCase().includes(search.toLowerCase()) ||
+    c.id.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const screeningClient = clients.find(c=>c.id===selectedClient);
+  const screeningKey    = selectedClient && screeningEntity ? `${selectedClient}:${screeningEntity}` : null;
+  const clientScreening = screeningKey ? (screening[screeningKey] ?? Array(15).fill(null)) : null;
+  const clientNotes     = screeningKey ? (screeningNotes[screeningKey] ?? Array(15).fill(null)) : null;
+  const clientAnswers   = selectedClient ? (clientQuestionnaire[selectedClient] ?? null) : null;
+
+  const patchRelevance = (catIdx:number, val:Cat3Relevance) => {
+    if (!screeningKey) return;
+    setScreening(s=>({
+      ...s,
+      [screeningKey]: (s[screeningKey] ?? Array(15).fill(null)).map((v:Cat3Relevance,i:number)=>i===catIdx?val:v),
+    }));
+  };
+
+  const patchNote = (catIdx: number, val: string) => {
+    if (!screeningKey) return;
+    setScreeningNotes(n => ({
+      ...n,
+      [screeningKey]: (n[screeningKey] ?? Array(15).fill(null)).map((v: string|null, i: number) => i === catIdx ? val : v),
+    }));
+  };
+
+  const markScreeningDone = async () => {
+    if (!selectedClient || !screeningEntity || !screeningKey) return;
+    const screeningArr = screening[screeningKey] ?? Array(15).fill(null);
+    const notesArr     = screeningNotes[screeningKey] ?? Array(15).fill(null);
+    try {
+      await authFetch("scope3-screening.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_id: Number(selectedClient), entity_code: screeningEntity, screening: screeningArr, notes: notesArr }),
+      });
+      setScreenedSet(prev => new Set([...prev, selectedClient]));
+      toast.success("Relevance screening saved for " + screeningClient?.company + " / " + screeningEntity);
+    } catch {
+      toast.error("Failed to save screening — please try again");
+      return;
+    }
+    setTab("clients");
+    setSelectedClient(null);
+    setScreeningEntity(null);
+  };
+
+  const TABS: {id:AdminTab;label:string;icon:React.ReactNode}[] = [
+    {id:"requests",  label:"Access Requests",     icon:<ClipboardList className="w-4 h-4"/>},
+    {id:"payments",  label:"Payment Requests",    icon:<CreditCard className="w-4 h-4"/>},
+    {id:"activation",label:"Client Activation",  icon:<Zap className="w-4 h-4"/>},
+    {id:"clients",   label:"Engagements",         icon:<Users className="w-4 h-4"/>},
+    {id:"queue",     label:"Submissions Queue",   icon:<ListChecks className="w-4 h-4"/>},
+    {id:"screening", label:"Relevance Screening", icon:<Lock className="w-4 h-4"/>},
+    {id:"log",          label:"Audit Log",           icon:<ScrollText className="w-4 h-4"/>},
+    {id:"entities",     label:"Entity Codes",        icon:<Building2 className="w-4 h-4"/>},
+    {id:"branding",     label:"Branding",            icon:<Paintbrush className="w-4 h-4"/>},
+    {id:"verification", label:"Verification",        icon:<ShieldCheck className="w-4 h-4"/>},
+    {id:"queries",      label:"Query Inbox",         icon:<MessageSquare className="w-4 h-4"/>},
+    {id:"data-health",  label:"Data Health",          icon:<AlertCircle   className="w-4 h-4"/>},
+    {id:"drive",        label:"Drive Settings",       icon:<HardDriveUpload className="w-4 h-4"/>},
+    {id:"ledger",       label:"Ledger Import",        icon:<FileUp className="w-4 h-4"/>},
+    {id:"documents",    label:"Documents",             icon:<FolderOpen className="w-4 h-4"/>},
+    {id:"data-gaps",    label:"Data Gaps",             icon:<AlertCircle className="w-4 h-4"/>},
+  ];
+
+  return (
+    <>
+      <CreateClientModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onCreated={() => { qc.invalidateQueries({ queryKey: ["clients"] }); refetchClients(); }}
+      />
+      <PageHeader eyebrow="Admin" title="Admin Dashboard"
+        description="Manage clients, review submissions, perform relevance screening and track the full GHG workflow."
+        right={
+          <button onClick={()=>refetchClients()} className="flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium hover:bg-[#F3F4F6]" style={{borderColor:"var(--border)"}}>
+            <RefreshCw className="w-4 h-4"/> Refresh
+          </button>
+        }
+      />
+
+      {/* Summary cards */}
+      <div className="px-6 pb-2 pt-1">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            {label:"Total clients",   value:clients.length,                                    color:"var(--navy)"},
+            {label:"Active engagements", value:clients.filter(c=>!["Complete"].includes(c.status)).length, color:"var(--deepwoods-green)"},
+            {label:"Pending screening",  value:clients.filter(c=>!c.scope3Screened).length,    color:"#D97706"},
+            {label:"Reports ready",  value:clients.filter(c=>c.status==="Report Ready"||c.status==="Complete").length, color:"#1E6F5C"},
+          ].map(s=>(
+            <div key={s.label} className="bg-white rounded-xl border px-4 py-3 shadow-sm" style={{borderColor:"var(--border)"}}>
+              <p className="text-xs font-medium" style={{color:"var(--navy-2)"}}>{s.label}</p>
+              <p className="text-2xl font-bold mt-0.5" style={{color:s.color}}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="border-b px-6 min-w-0 max-w-full" style={{borderColor:"var(--border)"}}>
+        <div className="flex gap-1 overflow-x-auto">
+          {TABS.map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)}
+              className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${tab===t.id?"border-[#1E6F5C] text-[#1E6F5C]":"border-transparent text-[var(--navy-2)] hover:text-[var(--navy)]"}`}>
+              {t.icon}{t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <PageBody>
+        {/* ── Access Requests tab ── */}
+        {tab==="requests" && <RequestsTab />}
+
+        {/* ── Payment Requests tab ── */}
+        {tab==="payments" && <PaymentsTab />}
+
+        {/* ── Activation tab ── */}
+        {tab==="activation" && <ActivationTab />}
+
+        {/* ── Clients / Engagements tab ── */}
+        {tab==="clients" && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{color:"var(--navy-2)"}}/>
+                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search clients…"
+                  className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm" style={{borderColor:"var(--border)"}}/>
+              </div>
+              <span className="text-xs" style={{color:"var(--navy-2)"}}>{filteredClients.length} client{filteredClients.length!==1?"s":""}</span>
+              <button onClick={()=>setCreateModalOpen(true)}
+                className="ml-auto flex items-center gap-1.5 rounded-lg bg-[#1E6F5C] px-3.5 py-2 text-xs font-bold text-white hover:brightness-110">
+                <Plus className="w-3.5 h-3.5"/> New client
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {filteredClients.map(c=>(
+                <div key={c.id} className="bg-white rounded-xl border shadow-sm overflow-hidden" style={{borderColor:"var(--border)"}}>
+                  <div className="px-5 py-4 flex flex-wrap items-center gap-4 cursor-pointer hover:bg-[#FAFAFA] transition-colors"
+                    onClick={()=>setExpandedClient(v=>v===c.id?null:c.id)}>
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style={{background:"var(--deepwoods-green)"}}>
+                      {c.entity.slice(0,2)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm truncate" style={{color:"var(--navy)"}}>{c.company}</p>
+                      <p className="text-xs truncate" style={{color:"var(--navy-2)"}}>{c.entity} · {c.industry} · {c.country} · {c.fy}</p>
+                    </div>
+                    <StatusPill status={c.status}/>
+                    <div className="hidden sm:flex items-center gap-2">
+                      <div className="w-24 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                        <div className="h-full rounded-full transition-all" style={{width:`${c.dataProgress}%`,background:c.dataProgress===100?"#1E6F5C":c.dataProgress>50?"#D97706":"#6B7280"}}/>
+                      </div>
+                      <span className="text-xs w-8 text-right" style={{color:"var(--navy-2)"}}>{c.dataProgress}%</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {!c.scope3Screened && (
+                        <span className="flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                          <AlertCircle className="w-3 h-3"/> Screening needed
+                        </span>
+                      )}
+                      {expandedClient===c.id ? <ChevronDown className="w-4 h-4" style={{color:"var(--navy-2)"}}/> : <ChevronRight className="w-4 h-4" style={{color:"var(--navy-2)"}}/>}
+                    </div>
+                  </div>
+
+                  {expandedClient===c.id && (
+                    <div className="border-t px-5 py-4 bg-[#FAFAFA]" style={{borderColor:"var(--border)"}}>
+                      <div className="grid sm:grid-cols-3 gap-4 text-sm mb-4">
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{color:"var(--navy-2)"}}>Contact</p>
+                          <p className="font-medium" style={{color:"var(--navy)"}}>{c.contactName}</p>
+                          <p style={{color:"var(--navy-2)"}}>{c.contactEmail}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{color:"var(--navy-2)"}}>Engagement</p>
+                          <p style={{color:"var(--navy)"}}>Onboarded: <strong>{c.onboardedDate}</strong></p>
+                          <p style={{color:"var(--navy)"}}>Facilities: <strong>{c.facilitiesCount}</strong></p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{color:"var(--navy-2)"}}>Notes</p>
+                          <p style={{color:"var(--navy)"}}>{c.notes||"—"}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button onClick={()=>{setSelectedClient(c.id);setTab("screening");}}
+                          className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all ${c.scope3Screened?"bg-[#E6F4EF] text-[#1E6F5C]":"bg-amber-50 text-amber-700 border border-amber-200"}`}>
+                          {c.scope3Screened?<Unlock className="w-3.5 h-3.5"/>:<Lock className="w-3.5 h-3.5"/>}
+                          {c.scope3Screened?"Edit Relevance Screening":"Do Relevance Screening"}
+                        </button>
+                        <button onClick={()=>setStatusOverrides(prev=>({...prev,[c.id]:"Review"}))}
+                          className="flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-xs font-semibold hover:bg-white transition-all" style={{borderColor:"var(--border)",color:"var(--navy)"}}>
+                          <ListChecks className="w-3.5 h-3.5"/> Move to Review
+                        </button>
+                        {c.status==="Review" && (
+                          <button onClick={()=>{setStatusOverrides(prev=>({...prev,[c.id]:"Report Ready"}));toast.success("Status updated to Report Ready");}}
+                            className="flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold text-white transition-all hover:brightness-110" style={{background:"var(--deepwoods-green)"}}>
+                            <CheckCircle2 className="w-3.5 h-3.5"/> Mark Report Ready
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Submissions queue tab ── */}
+        {tab==="queue" && (
+          <div className="space-y-4">
+            <p className="text-sm" style={{color:"var(--navy-2)"}}>Submissions awaiting consultant review across all clients.</p>
+            {[
+              {id:1041,client:"Client A",entity:"MFG",scope:"Scope 1",dataset:"Combustion & Fugitives",date:"2026-07-18",status:"Pending"},
+              {id:1039,client:"Client C",entity:"RET",scope:"Scope 2",dataset:"Electricity",date:"2026-07-15",status:"Pending"},
+              {id:1037,client:"Client A",entity:"MFG",scope:"Scope 3 · Cat 6",dataset:"Business Travel",date:"2026-07-10",status:"Pending"},
+              {id:1035,client:"Client B",entity:"SVC",scope:"Scope 3 · Cat 1",dataset:"Purchased Goods",date:"2026-07-08",status:"Approved"},
+              {id:1030,client:"Client E",entity:"TEC",scope:"Scope 1",dataset:"Combustion",date:"2026-06-22",status:"Approved"},
+            ].map(s=>(
+              <div key={s.id} className="bg-white rounded-xl border px-5 py-4 shadow-sm flex flex-wrap items-center gap-4" style={{borderColor:"var(--border)"}}>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm" style={{color:"var(--navy)"}}>{s.client} · {s.scope}</p>
+                  <p className="text-xs" style={{color:"var(--navy-2)"}}>{s.dataset} · Submitted {s.date}</p>
+                </div>
+                <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${s.status==="Approved"?"bg-[#E6F4EF] text-[#1E6F5C]":"bg-amber-50 text-amber-700"}`}>{s.status}</span>
+                {s.status==="Pending" && (
+                  <div className="flex gap-2">
+                    <button onClick={()=>toast.success(`#${s.id} approved`)} className="flex items-center gap-1 rounded-lg bg-[#E6F4EF] px-3 py-1.5 text-xs font-semibold text-[#1E6F5C] hover:bg-[#d0ede4]"><CheckCircle2 className="w-3.5 h-3.5"/> Approve</button>
+                    <button onClick={()=>toast.info(`#${s.id} rejected`)} className="flex items-center gap-1 rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"><XCircle className="w-3.5 h-3.5"/> Reject</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Relevance Screening tab ── */}
+        {tab==="screening" && (
+          <div className="space-y-5">
+            <div>
+              <h3 className="font-semibold text-base mb-1" style={{color:"var(--navy)"}}>Scope 3 Relevance Screening</h3>
+              <p className="text-sm" style={{color:"var(--navy-2)"}}>
+                This is a <strong>consultant-only</strong> task. Mark each category's relevance for the selected client before their data collection form is unlocked.
+              </p>
+            </div>
+
+            {/* Client selector */}
+            <div className="flex flex-wrap gap-4 items-end">
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wider block mb-1.5" style={{color:"var(--navy-2)"}}>Select client</label>
+                <select value={selectedClient??""} onChange={e=>setSelectedClient(e.target.value||null)}
+                  className="rounded-lg border px-3.5 py-2.5 text-sm bg-white" style={{borderColor:"var(--border)",color:"var(--navy)",minWidth:280}}>
+                  <option value="">— Choose a client —</option>
+                  {clients.map(c=>(
+                    <option key={c.id} value={c.id}>{c.company} ({c.entity})</option>
+                  ))}
+                </select>
+              </div>
+              {selectedClient && (
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-wider block mb-1.5" style={{color:"var(--navy-2)"}}>Select entity</label>
+                  {screeningEntities.length === 0 ? (
+                    <p className="text-sm italic px-1" style={{color:"var(--navy-2)"}}>No entities found for this client.</p>
+                  ) : (
+                    <select value={screeningEntity??""} onChange={e=>setScreeningEntity(e.target.value||null)}
+                      className="rounded-lg border px-3.5 py-2.5 text-sm bg-white" style={{borderColor:"var(--border)",color:"var(--navy)",minWidth:200}}>
+                      <option value="">— Choose an entity —</option>
+                      {screeningEntities.map(e=>(
+                        <option key={e.id} value={e.code}>{e.short_name || e.code} ({e.code})</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {selectedClient && screeningEntity && clientScreening && (
+              <>
+                <div className="rounded-xl border bg-amber-50 border-amber-200 px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
+                  <Lock className="w-4 h-4 flex-shrink-0 mt-0.5"/>
+                  <span>Only mark a category as <strong>Relevant</strong> if it genuinely applies to {screeningClient?.company} — entity <strong>{screeningEntity}</strong>. The client will only see and fill data for relevant categories. Add a note to explain the decision — the client can see these notes in their Operational Control panel.</span>
+                </div>
+
+                {/* Legend for client answers */}
+                {clientAnswers && (
+                  <div className="flex items-center gap-3 text-xs" style={{color:"var(--navy-2)"}}>
+                    <span className="font-semibold uppercase tracking-wider">Client answers:</span>
+                    {[{v:"yes",l:"Yes",bg:"#E6F4EF",c:"#1E6F5C"},{v:"unsure",l:"Not sure",bg:"#FEF3C7",c:"#D97706"},{v:"no",l:"No",bg:"#F3F4F6",c:"#6B7280"}].map(o=>(
+                      <span key={o.v} className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{background:o.bg,color:o.c}}>{o.l}</span>
+                    ))}
+                    <span style={{color:"var(--navy-2)"}}>shown as chips on each row</span>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  {SCOPE3_CATEGORIES.map((cat,i)=>{
+                    const val      = clientScreening[i];
+                    const note     = clientNotes?.[i] ?? '';
+                    const clientAns= clientAnswers?.[i] ?? null;
+                    const locked   = cat.no===3;
+                    const ANS_CHIP: Record<string,{label:string;bg:string;color:string}> = {
+                      yes:    {label:"Yes",    bg:"#E6F4EF",color:"#1E6F5C"},
+                      unsure: {label:"Not sure",bg:"#FEF3C7",color:"#D97706"},
+                      no:     {label:"No",     bg:"#F3F4F6",color:"#6B7280"},
+                    };
+                    const ansCfg = clientAns && ANS_CHIP[clientAns] ? ANS_CHIP[clientAns] : null;
+                    return (
+                      <div key={cat.no} className={`bg-white rounded-xl border shadow-sm ${locked?"opacity-80":""}`} style={{borderColor:"var(--border)"}}>
+                        <div className="flex items-start justify-between gap-3 px-4 py-3.5">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-semibold" style={{color:"var(--navy)"}}>
+                                Cat {cat.no} — {cat.name}
+                              </p>
+                              {locked && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[#E6F4EF] text-[#1E6F5C]">Always relevant</span>}
+                              {ansCfg && (
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full border"
+                                  style={{background:ansCfg.bg,color:ansCfg.color,borderColor:ansCfg.color+"55"}}>
+                                  Client: {ansCfg.label}
+                                </span>
+                              )}
+                              {!ansCfg && clientAnswers && (
+                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">Client: —</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex gap-1.5 flex-shrink-0">
+                            {([["relevant","Relevant","#E6F4EF","#1E6F5C"],["unsure","Not sure","#FEF3C7","#D97706"],["not_relevant","Not relevant","#F3F4F6","#6B7280"]] as const).map(([v,l,bg,col])=>(
+                              <button key={v} disabled={locked} onClick={()=>patchRelevance(i,v as Cat3Relevance)}
+                                className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all"
+                                style={val===v||(locked&&v==="relevant")?{background:bg,color:col,borderColor:col}:{borderColor:"var(--border)",color:"var(--navy-2)"}}>
+                                {l}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {/* Notes row */}
+                        <div className="px-4 pb-3.5 pt-0">
+                          <input
+                            type="text"
+                            value={note ?? ''}
+                            onChange={e => patchNote(i, e.target.value)}
+                            placeholder="Add consultant note (optional) — shown to client"
+                            className="w-full rounded-lg border px-3 py-1.5 text-xs outline-none focus:border-[#1E6F5C]"
+                            style={{borderColor:"var(--border)",color:"var(--navy)",background:"var(--paper)"}}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button onClick={markScreeningDone}
+                    className="flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white hover:brightness-110" style={{background:"var(--deepwoods-green)"}}>
+                    <CheckCircle2 className="w-4 h-4"/> Save & mark screening complete
+                  </button>
+                  <button onClick={()=>{setScreeningEntity(null);}} className="rounded-lg border px-4 py-2.5 text-sm font-medium hover:bg-[#F3F4F6]" style={{borderColor:"var(--border)",color:"var(--navy)"}}>
+                    Back
+                  </button>
+                  <button onClick={()=>{setSelectedClient(null); setScreeningEntity(null);}} className="rounded-lg border px-4 py-2.5 text-sm font-medium hover:bg-[#F3F4F6]" style={{borderColor:"var(--border)",color:"var(--navy)"}}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Verification tab ── */}
+        {tab==="verification" && <VerificationTab />}
+
+        {/* ── Entity Codes tab ── */}
+        {tab==="entities" && <EntitiesAdminTab />}
+
+        {/* ── Branding tab ── */}
+        {tab==="branding" && <BrandingTab />}
+
+        {/* ── Query Inbox tab ── */}
+        {tab==="queries" && (
+          <QueryInboxTab
+            clients={apiClients.map(c => ({ id: c.id, company: c.name }))}
+          />
+        )}
+
+        {/* ── Data Health tab ── */}
+        {tab==="data-health" && <DataHealthTab />}
+
+        {/* ── Drive Settings tab ── */}
+        {tab==="drive" && <DriveSettingsTab />}
+
+        {/* ── Ledger Import tab ── */}
+        {tab==="ledger" && <LedgerImportTab clients={apiClients} />}
+
+        {/* ── Documents tab ── */}
+        {tab==="documents" && <DocumentsTab clients={apiClients} />}
+
+        {/* ── Data Gaps tab ── */}
+        {tab==="data-gaps" && <DataGapsTab clients={apiClients} />}
+
+        {/* ── Audit log tab ── */}
+        {tab==="log" && (
+          <div className="space-y-3">
+            <p className="text-sm" style={{color:"var(--navy-2)"}}>Immutable log of all consultant and system actions.</p>
+            {[
+              {ts:"2026-07-25 14:32",actor:"admin@deepwoodsgreen.com",action:"Approved submission #1035 — Client B / Cat 1 Purchased Goods"},
+              {ts:"2026-07-24 11:08",actor:"System",action:"Report generated for Client B — INTERIM — 13/14 data points"},
+              {ts:"2026-07-22 09:45",actor:"admin@deepwoodsgreen.com",action:"Relevance screening completed for Client A"},
+              {ts:"2026-07-20 16:12",actor:"System",action:"Submission received — Client A / Scope 3 Cat 1 (procurement Q1–Q3)"},
+              {ts:"2026-07-18 10:00",actor:"admin@deepwoodsgreen.com",action:"Client C onboarded — CLIENT-003 created"},
+              {ts:"2026-07-15 15:30",actor:"System",action:"Daily cycle trigger ran — 2 reminder emails sent"},
+              {ts:"2026-07-10 08:14",actor:"System",action:"Submission received — Client A / Scope 3 Cat 6 Business Travel data"},
+              {ts:"2026-06-22 13:00",actor:"admin@deepwoodsgreen.com",action:"Approved submission #1030 — Client E / Scope 1"},
+              {ts:"2026-06-15 10:45",actor:"System",action:"Report generated for Client E — FINAL — approved & sent to client"},
+            ].map((e,i)=>(
+              <div key={i} className="bg-white rounded-xl border px-4 py-3 shadow-sm flex items-start gap-4" style={{borderColor:"var(--border)"}}>
+                <ScrollText className="w-4 h-4 flex-shrink-0 mt-0.5" style={{color:"var(--navy-2)"}}/>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm" style={{color:"var(--navy)"}}>{e.action}</p>
+                  <p className="text-xs mt-0.5" style={{color:"var(--navy-2)"}}>{e.ts} · {e.actor}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </PageBody>
+    </>
+  );
+}

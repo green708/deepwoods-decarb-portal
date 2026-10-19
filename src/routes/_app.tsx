@@ -1,22 +1,31 @@
 import { Link, Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, Component, type ReactNode } from "react";
 import {
-  authFetch, getEmail, getMustChangePassword, getRole, getToken,
+  authFetch, getEmail, getEntityScope, getMustChangePassword, getRole, getToken,
   logout as doLogout, changePassword, DEEPWOODS_ROLES, ROLE_META, type Role,
 } from "@/lib/auth";
 import {
   Home, FolderLock, Upload, ShieldCheck, BookOpen, LogOut, Menu, X,
   KeyRound, Loader2, Bell, LayoutDashboard, BarChart2, Leaf,
-  ChevronDown, ChevronRight, PieChart, Target, Zap, FileText, TrendingDown,
+  ChevronDown, ChevronRight, ChevronLeft, PieChart, Target, Zap, FileText, TrendingDown,
   Landmark, ClipboardList, Bot, Users, Clock, Building2, CreditCard, Check,
-  Search, RefreshCw, Lock, Table2,
+  Search, RefreshCw, Lock, Table2, Eye, EyeOff, UserPlus,
 } from "lucide-react";
 import {
   ClientContextProvider, useClientContextSafe, useClientContext, type ClientContext,
+  getDwaViewAs, switchDwaClient, clearDwaView,
 } from "@/lib/client-context";
+import { useClients } from "@/lib/api";
 import { EntityProvider, EntitySwitcher, FiscalYearProvider, FiscalYearSwitcher, useEntity } from "@/lib/entity";
 import { DeecarbAI } from "@/components/DeecarbAI";
 import { toast } from "sonner";
+
+// Isolates DeecarbAI so a crash there can't take down the whole portal
+class AIBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() { return this.state.failed ? null : this.props.children; }
+}
 
 export const Route = createFileRoute("/_app")({ component: AppRoot });
 
@@ -429,6 +438,7 @@ function ForcePasswordChangeScreen({ onDone }: { onDone: () => void }) {
   const [error, setError]       = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone]         = useState(false);
+  const [showPw, setShowPw]     = useState(false);
 
   const rules = [
     { ok: next.length >= 8,               label: "At least 8 characters" },
@@ -487,28 +497,42 @@ function ForcePasswordChangeScreen({ onDone }: { onDone: () => void }) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-white/60">One-time access code</label>
-            <input
-              type="password"
-              value={current}
-              onChange={e => setCurrent(e.target.value)}
-              autoComplete="current-password"
-              placeholder="From your invitation email"
-              className={fieldCls}
-              required
-            />
+            <div className="relative">
+              <input
+                type={showPw ? "text" : "password"}
+                value={current}
+                onChange={e => setCurrent(e.target.value)}
+                autoComplete="current-password"
+                placeholder="From your invitation email"
+                className={fieldCls + " pr-10"}
+                required
+              />
+              <button type="button" onClick={() => setShowPw(v => !v)} tabIndex={-1}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white/80"
+                aria-label={showPw ? "Hide passwords" : "Show passwords"}>
+                {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-white/60">New password</label>
-            <input
-              type="password"
-              value={next}
-              onChange={e => setNext(e.target.value)}
-              autoComplete="new-password"
-              placeholder="Choose a strong password"
-              className={fieldCls}
-              required
-            />
+            <div className="relative">
+              <input
+                type={showPw ? "text" : "password"}
+                value={next}
+                onChange={e => setNext(e.target.value)}
+                autoComplete="new-password"
+                placeholder="Choose a strong password"
+                className={fieldCls + " pr-10"}
+                required
+              />
+              <button type="button" onClick={() => setShowPw(v => !v)} tabIndex={-1}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white/80"
+                aria-label={showPw ? "Hide passwords" : "Show passwords"}>
+                {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
             {next && (
               <ul className="mt-2 space-y-1">
                 {rules.map(r => (
@@ -523,15 +547,22 @@ function ForcePasswordChangeScreen({ onDone }: { onDone: () => void }) {
 
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-white/60">Confirm new password</label>
-            <input
-              type="password"
-              value={confirm}
-              onChange={e => setConfirm(e.target.value)}
-              autoComplete="new-password"
-              placeholder="Repeat your new password"
-              className={fieldCls}
-              required
-            />
+            <div className="relative">
+              <input
+                type={showPw ? "text" : "password"}
+                value={confirm}
+                onChange={e => setConfirm(e.target.value)}
+                autoComplete="new-password"
+                placeholder="Repeat your new password"
+                className={fieldCls + " pr-10"}
+                required
+              />
+              <button type="button" onClick={() => setShowPw(v => !v)} tabIndex={-1}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white/80"
+                aria-label={showPw ? "Hide passwords" : "Show passwords"}>
+                {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -554,19 +585,119 @@ function ForcePasswordChangeScreen({ onDone }: { onDone: () => void }) {
   );
 }
 
+// ── AddTeamPromptScreen — shown once, right after an entity admin's first  ────
+// password set. Entirely optional — "Skip for now" moves straight into the app.
+
+function AddTeamPromptScreen({ onAddTeam, onSkip }: { onAddTeam: () => void; onSkip: () => void }) {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-[#1E4D2B] via-[#145C3D] to-[#1E4D2B] px-4">
+      <div className="w-full max-w-sm text-center">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10">
+          <UserPlus className="h-7 w-7 text-white/80" />
+        </div>
+        <h1 className="text-xl font-bold text-white">Add people to your entity?</h1>
+        <p className="mt-1.5 text-sm text-white/65">
+          You can invite team members to help submit and review data for your entity now,
+          or do this later from Team settings.
+        </p>
+        <div className="mt-6 flex flex-col gap-2">
+          <button
+            onClick={onAddTeam}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-sm font-semibold text-[#145C3D] hover:bg-white/90"
+          >
+            <UserPlus className="h-4 w-4" /> Add team members
+          </button>
+          <button
+            onClick={onSkip}
+            className="w-full rounded-xl border border-white/20 py-2.5 text-sm font-medium text-white/70 hover:bg-white/5"
+          >
+            Skip for now
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── DwaClientPicker — shown when DWA has no client selected ───────────────────
+
+function DwaClientPicker() {
+  const { data: clients = [], isPending } = useClients();
+  const logout = async () => { await doLogout(); window.location.href = "/"; };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "oklch(0.22 0.014 240)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 24px" }}>
+      {/* Deepwoods logo */}
+      <div style={{ marginBottom: 32, textAlign: "center" }}>
+        <img src="/DW-reversed.webp" alt="Deepwoods Green" style={{ height: 40, marginBottom: 12 }} />
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.15em", color: "rgba(255,255,255,0.45)", textTransform: "uppercase" }}>DWA — Select a client workspace</div>
+      </div>
+
+      {isPending ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "rgba(255,255,255,0.5)", fontSize: 13 }}>
+          <Loader2 style={{ width: 16, height: 16, animation: "spin 1s linear infinite" }} /> Loading clients…
+        </div>
+      ) : clients.length === 0 ? (
+        <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 13 }}>No client workspaces found.</div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 12, width: "100%", maxWidth: 900 }}>
+          {clients.map(c => (
+            <button key={c.slug} type="button" onClick={() => switchDwaClient(c.slug)}
+              style={{ display: "flex", flexDirection: "column", gap: 8, padding: "18px 20px", borderRadius: 14, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)", cursor: "pointer", textAlign: "left", transition: "background 0.15s" }}
+              onMouseOver={e => (e.currentTarget.style.background = "rgba(255,255,255,0.13)")}
+              onMouseOut={e => (e.currentTarget.style.background = "rgba(255,255,255,0.07)")}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {c.logo_url
+                  ? <img src={c.logo_url} alt={c.name} style={{ height: 28, width: "auto", maxWidth: 80, objectFit: "contain" }} />
+                  : <div style={{ width: 28, height: 28, borderRadius: 6, background: c.primary_color || "#1E6F5C", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff" }}>
+                      {c.name.split(/\s+/).map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()}
+                    </div>
+                }
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 1 }}>{c.slug}</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 99, background: c.is_active ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.06)", color: c.is_active ? "#34D399" : "rgba(255,255,255,0.3)", fontWeight: 600 }}>
+                  {c.is_active ? "Active" : "Inactive"}
+                </span>
+                <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 99, background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)", fontWeight: 600 }}>
+                  {c.entity_count} {c.entity_count === 1 ? "entity" : "entities"}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <button type="button" onClick={() => { window.location.href = "/admin"; }}
+        style={{ marginTop: 28, padding: "9px 18px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+        Open Admin Console
+      </button>
+
+      <button onClick={logout} style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: "none", color: "rgba(255,255,255,0.4)", fontSize: 12, cursor: "pointer" }}>
+        <LogOut style={{ width: 13, height: 13 }} /> Sign out
+      </button>
+    </div>
+  );
+}
+
 // ── AppRoot — wraps everything in ClientContextProvider ───────────────────────
 
 function AppRoot() {
   const navigate = useNavigate();
+  const pathname = useRouterState({ select: s => s.location.pathname });
   const [role, setRoleState] = useState<Role | null>(null);
   const [checking, setChecking] = useState(true);
   const [mustChangePw, setMustChangePw] = useState(false);
+  const [showTeamPrompt, setShowTeamPrompt] = useState(false);
 
   useEffect(() => {
     const r = getRole();
     if (!r || !getToken()) { setChecking(false); navigate({ to: "/" }); return; }
     authFetch("me.php")
-      .then(() => { setRoleState(r); setMustChangePw(getMustChangePassword()); })
+      .then((me: any) => { if (me?.orientationDone) localStorage.setItem("decarb_orientation_done", "1"); setRoleState(r); setMustChangePw(getMustChangePassword()); })
       .catch(() => { toast.error("Session expired — please sign in again."); navigate({ to: "/" }); })
       .finally(() => setChecking(false));
   }, [navigate]);
@@ -585,7 +716,30 @@ function AppRoot() {
   // Uses state (not inline localStorage read) so clearing the flag causes a
   // proper re-render that removes the gate without a manual page refresh.
   if (mustChangePw) {
-    return <ForcePasswordChangeScreen onDone={() => setMustChangePw(false)} />;
+    return (
+      <ForcePasswordChangeScreen
+        onDone={() => {
+          setMustChangePw(false);
+          // Entity admins just set their password for the first time — offer to add
+          // their own team right away. Optional, so a plain "skip" moves straight on.
+          if (role === "sustainability_team" && !!getEntityScope()) setShowTeamPrompt(true);
+        }}
+      />
+    );
+  }
+
+  if (showTeamPrompt) {
+    return (
+      <AddTeamPromptScreen
+        onAddTeam={() => { setShowTeamPrompt(false); navigate({ to: "/team" }); }}
+        onSkip={() => setShowTeamPrompt(false)}
+      />
+    );
+  }
+
+  // DWA without a selected client → show the client picker (no context.php call yet)
+  if (DEEPWOODS_ROLES.includes(role) && !getDwaViewAs() && !pathname.startsWith("/admin")) {
+    return <DwaClientPicker />;
   }
 
   return (
@@ -593,6 +747,24 @@ function AppRoot() {
       <ClientContextGate role={role} />
     </ClientContextProvider>
   );
+}
+
+// Syncs ?entity= URL param into EntityProvider's localStorage state.
+// Reads from router state directly so no validateSearch is needed on the parent route.
+function EntityURLSync() {
+  const { entity: selectedEntity, setEntity } = useEntity();
+  const ctx = useClientContext();
+  const entityScope = ctx.user?.entity_scope ?? null;
+  const search = useRouterState({ select: (s) => s.location.search });
+
+  useEffect(() => {
+    const entityParam = new URLSearchParams(search).get("entity") ?? "";
+    if (!entityScope && entityParam && entityParam !== selectedEntity) {
+      setEntity(entityParam);
+    }
+  }, [search]);
+
+  return null;
 }
 
 // Gate: wait for ClientContext before rendering providers that depend on it
@@ -651,19 +823,25 @@ function ClientContextGate({ role }: { role: Role }) {
     const currentEmail        = (getEmail() || "").toLowerCase();
     const isPrimaryContact    = !primaryContactEmail || currentEmail === primaryContactEmail;
 
+    // Entity admin = a sustainability_team user locked to one entity (not the org-wide
+    // primary contact). They land on their Facilities view instead of /register or /home.
+    const entityScope  = ctxState.data.user?.entity_scope ?? null;
+    const isEntityAdmin = role === "sustainability_team" && !!entityScope && !isPrimaryContact;
+
     // Setup paths render fullscreen (no sidebar) while setup is in progress.
     const onSetupPath = (
       pathname.startsWith("/register") ||
-      pathname.startsWith("/entity-setup") ||
-      pathname.startsWith("/inventory-setup")
+      pathname.startsWith("/entity-setup")
     );
 
     // Phase A gate: primary contact goes to /register to complete setup.
     // Secondary team members skip straight to /workstreams (locked preview).
     if (!setupComplete) {
-      if (!onSetupPath) return <NavigateTo to={isPrimaryContact ? "/register" : "/home"} />;
+      if (!onSetupPath) {
+        return <NavigateTo to={isPrimaryContact ? "/register" : (isEntityAdmin ? "/company-profile" : "/home")} />;
+      }
       // On a setup path: primary contact renders fullscreen; others redirect away
-      if (!isPrimaryContact) return <NavigateTo to="/home" />;
+      if (!isPrimaryContact) return <NavigateTo to={isEntityAdmin ? "/company-profile" : "/home"} />;
       return <Outlet />;
     }
 
@@ -677,9 +855,20 @@ function ClientContextGate({ role }: { role: Role }) {
     }
 
     // Phase B: payment confirmed, inventory not yet complete.
-    // No redirect lock — users navigate freely. Home page shows the "Start inventory
-    // setup" CTA as the recommended next step. Forced redirects here cause infinite
-    // spinner loops because the gate re-fires on every path including /inventory-setup.
+    // No redirect lock — users navigate freely. Home page shows the "Open Inventory Boundary"
+    // CTA as the recommended next step.
+
+    // First-visit onboarding: show the 3-slide tour once per browser before entering the app.
+    if (paymentUnlocked && !localStorage.getItem("decarb_orientation_done")) {
+      return <NavigateTo to="/onboard" />;
+    }
+
+    // Entity admins never see the org-wide register/entity-setup pages (client setup is
+    // already done by the primary contact) — they land on their scoped Facilities view
+    // instead, whether arriving fresh from login or navigating here directly.
+    if (isEntityAdmin && onSetupPath) {
+      return <NavigateTo to="/company-profile" />;
+    }
   }
 
   // Register page always renders standalone (has its own 2-tab sidebar) for client users.
@@ -691,6 +880,7 @@ function ClientContextGate({ role }: { role: Role }) {
   return (
     <FiscalYearProvider>
       <EntityProvider>
+        <EntityURLSync />
         <AppLayout role={role} />
       </EntityProvider>
     </FiscalYearProvider>
@@ -748,7 +938,7 @@ const ALL_TOP_SINGLES: NavItem[] = [
 const ALL_NAV_GROUPS: NavGroup[] = [
   {
     id: "footprint", label: "Carbon Footprint", icon: Leaf, pageKey: "footprint",
-    paths: ["/dashboard", "/inventory", "/inventory-boundary"],
+    paths: ["/dashboard", "/inventory-boundary"],
     items: [
       { to: "/dashboard",          label: "Dashboard",          icon: LayoutDashboard, pageKey: "dashboard" },
       { to: "/inventory-boundary", label: "Inventory Boundary", icon: Building2,       pageKey: "inventory" },
@@ -782,18 +972,23 @@ const ALL_NAV_GROUPS: NavGroup[] = [
     paths: ["/reporting"],
     items: [{ to: "/reporting", label: "Collection Status", icon: ClipboardList, pageKey: "reporting" }],
   },
+  {
+    id: "data-submission", label: "Data Submission", icon: Upload, pageKey: "submissions",
+    paths: ["/submissions", "/data-tracker"],
+    items: [
+      { to: "/submissions",  label: "Submit",  icon: Upload, pageKey: "submissions"  },
+      { to: "/data-tracker", label: "Tracker", icon: Table2, pageKey: "data-tracker" },
+    ],
+  },
 ];
 
 const ALL_BOTTOM_SINGLES: NavItem[] = [
-  { to: "/data-tracker",     label: "Data Tracker",     icon: Table2,     pageKey: "data-tracker" },
-  { to: "/submissions",      label: "Data Submission",  icon: Upload,     pageKey: "submissions" },
   { to: "/vault",            label: "Document Vault",   icon: FolderLock, pageKey: "vault" },
   { to: "/methodology",      label: "Methodology",      icon: BookOpen,   pageKey: "methodology" },
   { to: "/priority-actions", label: "Priority Actions", icon: Bell,       pageKey: "priority-actions" },
   { to: "/notifications",    label: "Notifications",    icon: Bot,        pageKey: "notifications" },
   { to: "/team",             label: "My Team",          icon: Users,       pageKey: "team" },
-  { to: "/admin",            label: "Admin Dashboard",  icon: ShieldCheck, pageKey: "admin" },
-  { to: "/register",         label: "Access Requests",  icon: ClipboardList, pageKey: "register" },
+  { to: "/admin",            label: "Admin Console",    icon: ShieldCheck, pageKey: "admin" },
 ];
 
 // ── SetupNextStepBanner — shown on every page except /home ────────────────────
@@ -829,7 +1024,7 @@ function SetupNextStepBanner() {
   } else if (!paymentUnlocked) {
     cfg = { msg: "Registration submitted — awaiting payment confirmation from Deepwoods", accent: "amber" };
   } else if (!inventoryComplete) {
-    cfg = { msg: "Next: define your inventory boundary to unlock data collection", btnLabel: "Start setup", to: "/inventory-setup", accent: "green" };
+    cfg = { msg: "Next: define your inventory boundary to unlock data collection", btnLabel: "Open Inventory Boundary", to: "/inventory-boundary", accent: "green" };
   }
 
   if (!cfg) return null;
@@ -878,6 +1073,7 @@ function AppLayout({ role }: { role: Role }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showChangePw, setShowChangePw] = useState(false);
   const [showUserProfile, setShowUserProfile] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   // Build nav filtered by enabled_pages from ClientContext
@@ -887,14 +1083,12 @@ function AppLayout({ role }: { role: Role }) {
   const topSingles = ALL_TOP_SINGLES.filter((i) => i.pageKey === "home" || isEnabled(i.pageKey));
   const navGroups = paymentUnlocked
     ? ALL_NAV_GROUPS
-        .filter((g) => g.items.some((i) => isEnabled(i.pageKey)))
-        .map((g) => ({ ...g, items: g.items.filter((i) => isEnabled(i.pageKey)) }))
+        .filter((g) => g.id === "data-submission" || g.id === "ndc-nds" || g.items.some((i) => isEnabled(i.pageKey)))
+        .map((g) => ({ ...g, items: g.items.filter((i) => i.pageKey === "data-tracker" || i.pageKey === "ndc-nds" || isEnabled(i.pageKey)) }))
     : ALL_NAV_GROUPS;
   const bottomSingles = ALL_BOTTOM_SINGLES.filter((i) => {
-    if (i.pageKey === "admin")        return DEEPWOODS_ROLES.includes(role);
-    if (i.pageKey === "team")         return role === "sustainability_team";
-    if (i.pageKey === "register")     return DEEPWOODS_ROLES.includes(role);
-    if (i.pageKey === "data-tracker") return true; // always visible; DB enabled_pages migration pending
+    if (i.pageKey === "admin")    return DEEPWOODS_ROLES.includes(role);
+    if (i.pageKey === "team")     return role === "sustainability_team";
     return isEnabled(i.pageKey);
   });
 
@@ -947,27 +1141,29 @@ function AppLayout({ role }: { role: Role }) {
   const isLocked = (pageKey: string) => !paymentUnlocked && pageKey !== "home";
 
   const renderNav = () => (
-    <nav className="flex-1 overflow-y-auto p-3">
+    <nav className="flex-1 overflow-y-auto p-2">
       <div className="space-y-0.5">
         {topSingles.map((item) => (
-          <NavLink key={item.to} item={item} pathname={pathname} onClick={closeMenu} locked={isLocked(item.pageKey)} />
+          <NavLink key={item.to} item={item} pathname={pathname} onClick={closeMenu} locked={isLocked(item.pageKey)} collapsed={sidebarCollapsed} />
         ))}
       </div>
-      <div className="mt-3 space-y-0.5">
+      <div className="mt-2 space-y-0.5">
         {navGroups.map((g) => (
           <GroupNav
             key={g.id} group={g} pathname={pathname}
-            open={openGroups.has(g.id) && paymentUnlocked}
-            onToggle={() => paymentUnlocked && toggleGroup(g.id)}
+            open={openGroups.has(g.id) && paymentUnlocked && !sidebarCollapsed}
+            onToggle={() => { if (sidebarCollapsed) setSidebarCollapsed(false); else paymentUnlocked && toggleGroup(g.id); }}
             onLinkClick={closeMenu}
             locked={isLocked(g.pageKey)}
+            collapsed={sidebarCollapsed}
           />
         ))}
       </div>
-      <div className="mx-3 my-3 border-t border-[var(--border)]" />
+      {!sidebarCollapsed && <div className="mx-3 my-3 border-t border-[var(--border)]" />}
+      {sidebarCollapsed && <div className="my-2 border-t border-[var(--border)]" />}
       <div className="space-y-0.5">
         {bottomSingles.map((item) => (
-          <NavLink key={item.to} item={item} pathname={pathname} onClick={closeMenu} locked={isLocked(item.pageKey)} />
+          <NavLink key={item.to} item={item} pathname={pathname} onClick={closeMenu} locked={isLocked(item.pageKey)} collapsed={sidebarCollapsed} />
         ))}
       </div>
     </nav>
@@ -988,45 +1184,76 @@ function AppLayout({ role }: { role: Role }) {
       )}
 
       <div className="flex">
-        <aside className={`fixed inset-y-0 left-0 z-[50] w-64 border-r border-[var(--border)] bg-white text-[var(--navy)] transition-transform duration-300 ease-in-out md:sticky md:top-0 md:z-auto md:h-screen md:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <aside className={`fixed inset-y-0 left-0 z-[50] border-r border-[var(--border)] bg-white text-[var(--navy)] transition-all duration-300 ease-in-out md:sticky md:top-0 md:z-auto md:h-screen md:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} ${sidebarCollapsed ? "w-14" : "w-72"}`}>
           <div className="flex h-full flex-col">
-            <div className="px-5 py-5" style={{ background: headerLogo.logoBg }}>
-              <ClientLogo src={headerLogo.src} alt={headerLogo.alt} size="lg" />
+            {/* Logo + collapse toggle */}
+            <div className={`relative flex items-center ${sidebarCollapsed ? "justify-center px-0 py-4" : "px-5 py-5"}`} style={{ background: headerLogo.logoBg }}>
+              {!sidebarCollapsed && <ClientLogo src={headerLogo.src} alt={headerLogo.alt} size="lg" />}
+              {sidebarCollapsed && <ClientLogo src={headerLogo.src} alt={headerLogo.alt} size="sm" />}
+              <button
+                onClick={() => setSidebarCollapsed(c => !c)}
+                title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                className={`absolute ${sidebarCollapsed ? "bottom-1 right-1" : "bottom-2 right-2"} flex h-6 w-6 items-center justify-center rounded-full bg-black/10 hover:bg-black/20 transition-colors text-white`}
+              >
+                {sidebarCollapsed
+                  ? <ChevronRight className="h-3.5 w-3.5" />
+                  : <ChevronLeft className="h-3.5 w-3.5" />}
+              </button>
             </div>
             <div className="h-1" style={{ background: headerLogo.accent }} />
-            <div className="border-b border-[var(--border)] px-5 py-3">
-              <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
-                Decarbonisation Journey
+            {!sidebarCollapsed && (
+              <div className="border-b border-[var(--border)] px-5 py-3">
+                <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+                  Decarbonisation Journey
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* DWA: "Viewing as" client badge */}
+            {DEEPWOODS_ROLES.includes(role) && !sidebarCollapsed && (
+              <div style={{ padding: "8px 16px", borderBottom: "1px solid var(--border)", background: "rgba(30,79,60,0.05)" }}>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#94A3B8", marginBottom: 4 }}>DWA — Viewing as</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#059669", flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#1A3547", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{client.name}</span>
+                  </div>
+                  <button type="button" onClick={() => clearDwaView()}
+                    style={{ fontSize: 10, fontWeight: 600, color: "#3B82F6", background: "none", border: "none", cursor: "pointer", flexShrink: 0, padding: "2px 6px", borderRadius: 4 }}
+                    title="Switch to a different client">
+                    Switch ↺
+                  </button>
+                </div>
+              </div>
+            )}
 
             {renderNav()}
 
             <div className="border-t border-[var(--border)] px-3 py-2">
-              {email && <div className="mb-1 truncate px-3 py-1 text-[11px] text-muted-foreground">{email}</div>}
+              {!sidebarCollapsed && email && <div className="mb-1 truncate px-3 py-1 text-[11px] text-muted-foreground">{email}</div>}
               {!DEEPWOODS_ROLES.includes(role) && (
                 <Link to="/register" onClick={closeMenu}
                   className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all ${pathname.startsWith("/register") ? "font-semibold text-[var(--primary)]" : "text-[var(--navy)] hover:bg-[#F3F4F6]"}`}>
                   <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full border border-current" />
-                  Register
+                  {!sidebarCollapsed && "Register"}
                 </Link>
               )}
               {!DEEPWOODS_ROLES.includes(role) && (
                 <Link to="/company-profile" onClick={closeMenu}
                   className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all ${pathname.startsWith("/company-profile") ? "font-semibold text-[var(--primary)]" : "text-[var(--navy)] hover:bg-[#F3F4F6]"}`}>
                   <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full border border-current" />
-                  Company profile
+                  {!sidebarCollapsed && "Company profile"}
                 </Link>
               )}
               <button onClick={() => setShowUserProfile(true)}
                 className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-[var(--navy)] hover:bg-[#F3F4F6]">
                 <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full border border-current" />
-                User profile
+                {!sidebarCollapsed && "User profile"}
               </button>
               <button onClick={logout}
                 className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-[var(--navy)] hover:bg-[#F3F4F6]">
                 <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full border border-current" />
-                Logout
+                {!sidebarCollapsed && "Logout"}
               </button>
             </div>
           </div>
@@ -1041,43 +1268,45 @@ function AppLayout({ role }: { role: Role }) {
 
       {showUserProfile && <UserProfileModal onClose={() => setShowUserProfile(false)} onChangePw={() => setShowChangePw(true)} />}
       {showChangePw && <ChangePasswordModal forced={getMustChangePassword()} onClose={() => setShowChangePw(false)} />}
-      <DeecarbAI />
+      <AIBoundary><DeecarbAI /></AIBoundary>
     </div>
   );
 }
 
 // ── NavLink ───────────────────────────────────────────────────────────────────
 
-function NavLink({ item, pathname, onClick, indent = false, locked = false }: {
-  item: NavItem; pathname: string; onClick?: () => void; indent?: boolean; locked?: boolean;
+function NavLink({ item, pathname, onClick, indent = false, locked = false, collapsed = false }: {
+  item: NavItem; pathname: string; onClick?: () => void; indent?: boolean; locked?: boolean; collapsed?: boolean;
 }) {
   const Icon = item.icon;
   if (locked) {
     return (
-      <div className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm cursor-not-allowed opacity-35 ${indent ? "pl-7" : ""} text-[var(--navy)]`}>
+      <div title={collapsed ? item.label : undefined}
+        className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm cursor-not-allowed opacity-35 ${indent && !collapsed ? "pl-7" : ""} text-[var(--navy)] ${collapsed ? "justify-center px-2" : ""}`}>
         <Icon className="h-4 w-4 shrink-0 text-[var(--navy-2)]" />
-        <span className="flex-1">{item.label}</span>
-        <Lock className="h-3 w-3 shrink-0" />
+        {!collapsed && <><span className="flex-1">{item.label}</span><Lock className="h-3 w-3 shrink-0" /></>}
       </div>
     );
   }
   const active = pathname === item.to || pathname.startsWith(item.to + "/");
   return (
-    <Link to={item.to} onClick={onClick}
-      className={`relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150 ${indent ? "pl-7" : ""} ${
-        active
-          ? "font-semibold text-[var(--primary)]"
-          : "text-[var(--navy)] hover:bg-[#F3F4F6]"
-      }`}
+    <Link to={item.to} onClick={onClick} title={collapsed ? item.label : undefined}
+      className={`relative flex items-center gap-3 rounded-lg py-2 text-sm transition-all duration-150 ${
+        collapsed ? "justify-center px-2" : indent ? "pl-7 pr-3" : "px-3"
+      } ${active ? "font-semibold text-[var(--primary)]" : "text-[var(--navy)] hover:bg-[#F3F4F6]"}`}
       style={active ? { backgroundColor: "var(--nav-active-bg)" } : {}}
     >
-      {active && !indent && <span className="absolute left-0 inset-y-1 w-0.5 rounded-r-full bg-[var(--primary)]" />}
+      {active && !indent && !collapsed && <span className="absolute left-0 inset-y-1 w-0.5 rounded-r-full bg-[var(--primary)]" />}
       <Icon className={`h-4 w-4 shrink-0 ${active ? "text-[var(--primary)]" : "text-[var(--navy-2)]"}`} />
-      <span className="flex-1">{item.label}</span>
-      {item.badge != null && item.badge > 0 && (
-        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--alert)] px-1.5 text-[10px] font-bold text-white">
-          {item.badge}
-        </span>
+      {!collapsed && (
+        <>
+          <span className="flex-1">{item.label}</span>
+          {item.badge != null && item.badge > 0 && (
+            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--alert)] px-1.5 text-[10px] font-bold text-white">
+              {item.badge}
+            </span>
+          )}
+        </>
       )}
     </Link>
   );
@@ -1085,16 +1314,16 @@ function NavLink({ item, pathname, onClick, indent = false, locked = false }: {
 
 // ── GroupNav ──────────────────────────────────────────────────────────────────
 
-function GroupNav({ group, pathname, open, onToggle, onLinkClick, locked = false }: {
-  group: NavGroup; pathname: string; open: boolean; onToggle: () => void; onLinkClick: () => void; locked?: boolean;
+function GroupNav({ group, pathname, open, onToggle, onLinkClick, locked = false, collapsed = false }: {
+  group: NavGroup; pathname: string; open: boolean; onToggle: () => void; onLinkClick: () => void; locked?: boolean; collapsed?: boolean;
 }) {
   const Icon = group.icon;
   if (locked) {
     return (
-      <div className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm cursor-not-allowed opacity-35 text-[var(--navy)]">
+      <div title={collapsed ? group.label : undefined}
+        className={`flex w-full items-center gap-3 rounded-lg py-2 text-sm cursor-not-allowed opacity-35 text-[var(--navy)] ${collapsed ? "justify-center px-2" : "px-3"}`}>
         <Icon className="h-4 w-4 shrink-0 text-[var(--navy-2)]" />
-        <span className="flex-1 text-left">{group.label}</span>
-        <Lock className="h-3 w-3 shrink-0" />
+        {!collapsed && <><span className="flex-1 text-left">{group.label}</span><Lock className="h-3 w-3 shrink-0" /></>}
       </div>
     );
   }
@@ -1102,16 +1331,20 @@ function GroupNav({ group, pathname, open, onToggle, onLinkClick, locked = false
   const Chevron = open ? ChevronDown : ChevronRight;
   return (
     <div>
-      <button onClick={onToggle}
-        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150 ${
+      <button onClick={onToggle} title={collapsed ? group.label : undefined}
+        className={`flex w-full items-center gap-3 rounded-lg py-2 text-sm transition-all duration-150 ${collapsed ? "justify-center px-2" : "px-3"} ${
           isChildActive && !open ? "font-semibold text-[var(--primary)]" : "text-[var(--navy)] hover:bg-[#F3F4F6]"
         }`}
       >
-        <Icon className={`h-4 w-4 shrink-0 ${isChildActive && !open ? "text-[var(--primary)]" : "text-[var(--navy-2)]"}`} />
-        <span className="flex-1 text-left">{group.label}</span>
-        <Chevron className="h-3.5 w-3.5 shrink-0 opacity-50" />
+        <Icon className={`h-4 w-4 shrink-0 ${isChildActive ? "text-[var(--primary)]" : "text-[var(--navy-2)]"}`} />
+        {!collapsed && (
+          <>
+            <span className="flex-1 text-left">{group.label}</span>
+            <Chevron className="h-3.5 w-3.5 shrink-0 opacity-50" />
+          </>
+        )}
       </button>
-      {open && (
+      {open && !collapsed && (
         <div className="mt-0.5 space-y-0.5">
           {group.items.map((item) => (
             <NavLink key={item.to} item={item} pathname={pathname} onClick={onLinkClick} indent />

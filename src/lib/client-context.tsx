@@ -19,12 +19,14 @@ export interface ClientEntity {
   is_consolidated: boolean;      // true = this is the roll-up / all-entity view
   consolidates: string[] | null; // ["FP","FOS"] for consolidated entity, null otherwise
   sort_order: number;
-  // Legal entity detail — nullable; existing rows have these as null
+  // Legal entity detail — populated from client_entities
   country?: string | null;
   registration_no?: string | null;
   tax_id?: string | null;
   org_type?: string | null;
   legal_address?: string | null;
+  // Team members scoped to this entity
+  team_count?: number;
 }
 
 export interface ReportingEngagement {
@@ -56,6 +58,17 @@ export interface ClientInfo {
   payment_status: "pending" | "paid" | "waived"; // set by Deepwoods via activate-client.php
 }
 
+export interface GhgFacility {
+  id: number;
+  entity: string;
+  name: string;
+  location?: string | null;
+  state?: string | null;
+  short_name?: string | null;
+  status: string;
+  is_hq: boolean;
+}
+
 export interface ClientContext {
   client: ClientInfo;
   entities: ClientEntity[];
@@ -65,9 +78,14 @@ export interface ClientContext {
   s3_not_relevant: Record<string, string[]>; // { "FP": ["Cat 7"], "FOS": [] }
   targets: ClientTargets;
   config: Record<string, unknown>; // catch-all for client-specific config values
+  // GHG facilities for this client (from ghg_facilities table)
+  facilities?: GhgFacility[];
   // Reporting architecture — optional for backwards compatibility with legacy clients
   reporting_model?: "consolidated" | "separate" | "mixed" | null;
   reporting_engagements?: ReportingEngagement[];
+  // The logged-in user, as seen by the backend — entity_scope is set for a user
+  // locked to one entity (e.g. an entity admin), null for org-wide access.
+  user?: { email: string | null; role: string | null; entity_scope: string | null };
 }
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -79,7 +97,30 @@ type ClientCtxState =
 
 const Ctx = createContext<ClientCtxState>({ status: "loading" });
 
-const STORAGE_KEY = "decarb_client_ctx";
+const STORAGE_KEY = "decarb_client_ctx_v2"; // v2: adds per-entity team_count + extra entity fields
+const DWA_VIEW_KEY = "decarb_dwa_view";
+
+// ── DWA view-as helpers ───────────────────────────────────────────────────────
+
+/** Returns the slug of the client a DWA user is currently viewing as, or null. */
+export function getDwaViewAs(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(DWA_VIEW_KEY);
+}
+
+/** Switch DWA to view a different client — clears cached context and reloads to home. */
+export function switchDwaClient(slug: string) {
+  localStorage.setItem(DWA_VIEW_KEY, slug);
+  try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+  window.location.href = "/home";
+}
+
+/** Return DWA to the client picker — clears view selection and reloads. */
+export function clearDwaView() {
+  localStorage.removeItem(DWA_VIEW_KEY);
+  try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+  window.location.href = "/home";
+}
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
@@ -89,17 +130,30 @@ export function ClientContextProvider({ children }: { children: ReactNode }) {
     if (typeof window !== "undefined") {
       try {
         const cached = sessionStorage.getItem(STORAGE_KEY);
-        if (cached) return { status: "ready", data: JSON.parse(cached) };
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed?.client && parsed?.config) return { status: "ready", data: parsed };
+          sessionStorage.removeItem(STORAGE_KEY); // malformed cache — refetch
+        }
       } catch { /* ignore */ }
     }
     return { status: "loading" };
   });
 
   useEffect(() => {
-    if (state.status === "ready") return; // already hydrated from cache
+    // Cached state paints instantly; always revalidate so config changes
+    // (payment unlock, setup progress) show up without a re-login.
+    const viewAs = getDwaViewAs();
+    const url = viewAs
+      ? `context.php?view_as=${encodeURIComponent(viewAs)}`
+      : "context.php";
 
-    authFetch("context.php")
+    authFetch(url)
       .then((data: ClientContext) => {
+        // authFetch turns non-JSON bodies (e.g. PHP warnings) into {} — never cache/render that
+        if (!data?.client || !data?.config) {
+          throw new Error("Workspace data was invalid. Please refresh; if it persists, contact your Deepwoods account manager.");
+        }
         try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { /* ignore */ }
         // Inject primary colour as a CSS variable for instant re-theming
         document.documentElement.style.setProperty("--primary", data.client.primary_color);
@@ -107,7 +161,7 @@ export function ClientContextProvider({ children }: { children: ReactNode }) {
         setState({ status: "ready", data });
       })
       .catch((err: Error) => {
-        setState({ status: "error", error: err.message });
+        setState((prev) => prev.status === "ready" ? prev : { status: "error", error: err.message });
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

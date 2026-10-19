@@ -3,10 +3,13 @@ import { useState, useEffect, useCallback } from "react";
 import { PageBody, PageHeader } from "@/components/portal";
 import { useEntity } from "@/lib/entity";
 import { ghgGet, GHG_LIVE } from "@/lib/ghg-config";
+import { getRole } from "@/lib/auth";
 import {
   Bell, RefreshCw, ExternalLink, CheckCircle2, AlertTriangle,
   Info, FileText, Upload, ShieldCheck, Loader2, Clock,
 } from "lucide-react";
+
+const isStaff = (): boolean => { const r = getRole(); return r === "deepwoods_admin" || r === "deepwoods_coordinator"; };
 
 export const Route = createFileRoute("/_app/notifications")({ component: NotificationsPage });
 
@@ -150,9 +153,9 @@ function NotificationsPage() {
         }));
         setNotifications(normed);
       } else {
-        // Demo mode — use mock data
+        // Sample notifications are for Deepwoods staff previewing the page; clients never see fake data.
         const readIds = getReadIds();
-        setNotifications(MOCK_NOTIFICATIONS.map(n => ({ ...n, read: readIds.has(n.id) || n.read })));
+        setNotifications(isStaff() ? MOCK_NOTIFICATIONS.map(n => ({ ...n, read: readIds.has(n.id) || n.read })) : []);
       }
       setLastFetch(new Date());
     } catch (e) {
@@ -186,8 +189,8 @@ function NotificationsPage() {
         eyebrow="Decarbonisation Portal"
         title="Notifications"
         description={
-          GHG_LIVE
-            ? "Live updates from the GHG reporting cycle — submissions, generated reports, approvals."
+          GHG_LIVE || !isStaff()
+            ? "Updates from your reporting cycle — submissions, generated reports, approvals."
             : "Demo mode — configure VITE_GHG_WEBAPP_URL to see live notifications."
         }
         right={
@@ -209,7 +212,7 @@ function NotificationsPage() {
 
       <PageBody>
         {/* Status bar */}
-        {!GHG_LIVE && (
+        {!GHG_LIVE && isStaff() && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <span>

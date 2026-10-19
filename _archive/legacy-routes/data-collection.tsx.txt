@@ -1,0 +1,790 @@
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from "react";
+import { useClientContext } from "@/lib/client-context";
+import { useEntity, useFiscalYear, EntitySwitcher } from "@/lib/entity";
+import { useDecarbAssets } from "@/lib/api";
+import type { DecarbAsset } from "@/lib/api";
+import { addSubmission, loadSubmissions } from "@/lib/submissionsStore";
+import type { Submission } from "@/lib/submissionsStore";
+import { authFetch } from "@/lib/auth";
+import { toast } from "sonner";
+import {
+  ChevronDown, ChevronLeft, ChevronRight, Upload, Download,
+  Check, Lock, AlertTriangle, Info, Users, Zap, FileText,
+  Clock, X, LayoutDashboard, Flame, FileUp, FolderOpen, RefreshCw,
+  Droplets, Recycle, BarChart3,
+} from "lucide-react";
+
+export const Route = createFileRoute("/data-collection")({ component: DataCollectionPage });
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type Status = "not_started" | "in_progress" | "query_for_you" | "under_review" | "submitted" | "accepted" | "accepted_locked";
+type Section = "overview" | "scope12" | "scope3" | "environmental" | "documents";
+type Screen = { section: Section; sub?: "source" | "category"; id?: string };
+
+interface QMsg { from: "client" | "deepwoods"; author: string; time: string; text: string; }
+interface QThread { id: number; status: "answered" | "waiting_for_deepwoods"; msgs: QMsg[]; }
+// HistEntry kept as type only (used only if history data is added later)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _HistEntry = { by: string; date: string; month: string; oldVal: number; newVal: number; note: string; };
+
+interface Source {
+  id: string;            // decarb_assets.asset_id / id
+  name: string;
+  facility: string;
+  unit: string;
+  scope: 1 | 2;
+  sub: string;
+  status: Status;
+  data: (number | null)[];  // 12 months in FY order
+  hasOpenThread: boolean;
+  threadCount: number;
+  whatThisIs: string;
+  whatToEnter: string;
+  whereToFind: string;
+  effort: string;
+  tip?: string;
+  history: never[];
+}
+
+// DraftMap: { [assetId]: { [period]: string } }
+type DraftMap = Record<string, Record<string, string>>;
+// ThreadSummaryMap: { [source_id]: { count, has_open } }
+type ThreadSummaryMap = Record<string, { count: number; has_open: boolean }>;
+
+// API thread shape from ndc-threads.php GET (detail)
+interface ApiThread {
+  id: number;
+  last_from_role: "client" | "deepwoods";
+  created_by: string;
+  created_at: string;
+  messages: { id: number; thread_id: number; from_role: string; author: string; message: string; created_at: string }[];
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const MO = ["Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar"];
+
+function fyPeriods(fy: string): string[] {
+  const yy = parseInt(fy.replace(/[^0-9]/g, ""));
+  const endYear = yy < 100 ? 2000 + yy : yy;
+  const sy = endYear - 1;
+  const months = ["APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC","JAN","FEB","MAR"];
+  return months.map((m, i) => `${m}-${String(i < 9 ? sy : endYear).slice(-2)}`);
+}
+
+function fyDisplayLabel(fy: string): string {
+  const yy = parseInt(fy.replace(/[^0-9]/g, ""));
+  const endYear = yy < 100 ? 2000 + yy : yy;
+  return `${fy} (Apr ${endYear - 1} – Mar ${endYear})`;
+}
+
+function getDisplayUnit(asset: DecarbAsset): string {
+  const subType = (asset.sub_type ?? "").toLowerCase();
+  const fuel = asset.fuel ?? "";
+  if (subType.includes("electricity") || subType.includes("grid")) return "kWh";
+  if (subType.includes("steam") || subType.includes("heating") || subType.includes("cooling")) return "GJ";
+  if (fuel) {
+    const u = asset.unit ?? "unit";
+    if (u === "L") return `Litres of ${fuel}`;
+    if (u === "kg") return `kg of ${fuel}`;
+    return `${u} of ${fuel}`;
+  }
+  return asset.unit ?? "unit";
+}
+
+function getSourceInfo(asset: DecarbAsset): Pick<Source, "whatThisIs"|"whatToEnter"|"whereToFind"|"effort"|"tip"> {
+  const subType = (asset.sub_type ?? "").toLowerCase();
+  const unit = getDisplayUnit(asset);
+  if (asset.scope === "Scope 2") {
+    return {
+      whatThisIs: `Purchased electricity from the grid. Every kWh drawn from ${asset.fuel || "your utility"} creates an indirect Scope 2 emission.`,
+      whatToEnter: `Monthly kWh consumed from your electricity bill.`,
+      whereToFind: `Your monthly electricity bill from the utility provider. Usually emailed to the facilities manager or available on the utility portal.`,
+      effort: `~5 minutes per month. Enter it the day the bill arrives.`,
+      tip: `Electricity is typically 30–60% of a manufacturer's carbon footprint — and the most controllable through renewable energy agreements.`,
+    };
+  }
+  if (subType.includes("stationary")) {
+    return {
+      whatThisIs: `Direct fuel combustion at your facility. Every ${unit} burned in ${asset.name} is a Scope 1 emission.`,
+      whatToEnter: `Monthly ${unit} purchased or consumed. Use purchase invoices or meter readings, not engine hours.`,
+      whereToFind: `Fuel purchase register, supplier invoices, or the site logbook at the equipment room.`,
+      effort: `~5 minutes per month. Facilities or maintenance staff can supply this.`,
+    };
+  }
+  if (subType.includes("mobile")) {
+    return {
+      whatThisIs: `Fuel used by company-owned or leased vehicles. All fuel combustion in vehicles you control is Scope 1.`,
+      whatToEnter: `Total ${unit} filled across all vehicles each month.`,
+      whereToFind: `Fuel card statements, petrol reimbursement claims, or fleet logbook totals.`,
+      effort: `~10 minutes per month. Fleet or admin team typically has this.`,
+    };
+  }
+  if (subType.includes("fugitive")) {
+    return {
+      whatThisIs: `Refrigerant or gas leaks from equipment. Even small quantities can carry extremely high global warming potential.`,
+      whatToEnter: `${unit} purchased for top-up during the year. An annual figure is fine.`,
+      whereToFind: `AMC (Annual Maintenance Contract) records or equipment service invoices from your HVAC or refrigeration contractor.`,
+      effort: `~2 minutes per year. Facilities or EHS team usually holds this.`,
+    };
+  }
+  return {
+    whatThisIs: `${asset.scope} emission source at your facility.`,
+    whatToEnter: `Monthly ${unit}.`,
+    whereToFind: `Operations or facilities team records.`,
+    effort: `~5 minutes per month.`,
+  };
+}
+
+function statusCfg(s: Status) {
+  switch (s) {
+    case "query_for_you":   return { label: "Query for you",     cls: "bg-amber-50 text-amber-700 border-amber-200",      dot: "bg-amber-500" };
+    case "under_review":    return { label: "Under review",      cls: "bg-blue-50 text-blue-700 border-blue-200",         dot: "bg-blue-500"  };
+    case "in_progress":     return { label: "In progress",       cls: "bg-orange-50 text-orange-700 border-orange-200",   dot: "bg-orange-400" };
+    case "submitted":       return { label: "Submitted",         cls: "bg-violet-50 text-violet-700 border-violet-200",   dot: "bg-violet-500" };
+    case "accepted":        return { label: "Accepted",          cls: "bg-emerald-50 text-emerald-700 border-emerald-200", dot: "bg-emerald-500" };
+    case "accepted_locked": return { label: "Accepted & locked", cls: "bg-emerald-50 text-emerald-700 border-emerald-200", dot: "bg-emerald-500" };
+    default:                return { label: "Not started",       cls: "bg-muted text-muted-foreground border-border",      dot: "bg-muted-foreground/40" };
+  }
+}
+
+function StatusPill({ status }: { status: Status }) {
+  const { label, cls, dot } = statusCfg(status);
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full text-xs font-medium px-2.5 py-1 border ${cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
+      {label}
+    </span>
+  );
+}
+
+function formatApiDate(raw: string): string {
+  try {
+    return new Date(raw).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch { return raw; }
+}
+
+function mapApiThreads(apiThreads: unknown): QThread[] {
+  if (!Array.isArray(apiThreads)) return [];
+  return (apiThreads as ApiThread[]).map(t => ({
+    id: t.id,
+    status: t.last_from_role === "deepwoods" ? "answered" : "waiting_for_deepwoods",
+    msgs: t.messages.map(m => ({
+      from: m.from_role as "client" | "deepwoods",
+      author: m.author,
+      time: formatApiDate(m.created_at),
+      text: m.message,
+    })),
+  }));
+}
+
+function deriveSourceStatus(
+  assetId: string,
+  drafts: DraftMap,
+  subs: Submission[],
+  threadSummary: ThreadSummaryMap,
+  periods: string[]
+): Status {
+  const sub = subs.find(s => s.datasetId === assetId);
+  const th = threadSummary[assetId];
+  if (sub?.status === "Approved") return "accepted";
+  if (sub?.status === "Pending") {
+    if (th?.has_open) return "query_for_you";
+    return "under_review";
+  }
+  if (th?.has_open) return "query_for_you";
+  const assetDraft = drafts[assetId];
+  if (assetDraft) {
+    const hasVals = periods.some(p => assetDraft[p] !== undefined && assetDraft[p] !== "" && assetDraft[p] !== null);
+    if (hasVals) return "in_progress";
+  }
+  return "not_started";
+}
+
+function deriveSources(
+  assets: DecarbAsset[] | unknown,
+  drafts: DraftMap,
+  subs: Submission[],
+  threadSummary: ThreadSummaryMap,
+  periods: string[]
+): Source[] {
+  if (!Array.isArray(assets)) return [];
+  return (assets as DecarbAsset[])
+    .filter(a => a.scope === "Scope 1" || a.scope === "Scope 2")
+    .map(asset => {
+      const assetDraft = drafts[asset.id] ?? {};
+      const monthData: (number | null)[] = periods.map(p => {
+        const v = assetDraft[p];
+        if (v === undefined || v === "" || v === null) return null;
+        const n = parseFloat(v);
+        return isNaN(n) ? null : n;
+      });
+      const th = threadSummary[asset.id];
+      return {
+        id: asset.id,
+        name: asset.name,
+        facility: asset.facility,
+        scope: asset.scope === "Scope 1" ? 1 : 2,
+        sub: asset.sub_type,
+        unit: getDisplayUnit(asset),
+        status: deriveSourceStatus(asset.id, drafts, subs, threadSummary, periods),
+        data: monthData,
+        hasOpenThread: th?.has_open ?? false,
+        threadCount: th?.count ?? 0,
+        history: [],
+        ...getSourceInfo(asset),
+      } satisfies Source;
+    });
+}
+
+// ── Scope 1&2 list ────────────────────────────────────────────────────────────
+
+// Map raw sub_type strings → friendly label + colour tokens
+function subTypeMeta(sub: string, scope: 1 | 2): { label: string; iconEl: ReactNode; badgeCls: string; borderCls: string; dotCls: string } {
+  const s = sub.toLowerCase();
+  if (scope === 2) {
+    if (s.includes("steam") || s.includes("heat") || s.includes("cool"))
+      return { label: "Steam / Heat / Cooling", iconEl: <Droplets className="w-3.5 h-3.5" />, badgeCls: "bg-cyan-50 text-cyan-700 border-cyan-200", borderCls: "border-l-cyan-400", dotCls: "bg-cyan-400" };
+    return { label: "Electricity", iconEl: <Zap className="w-3.5 h-3.5" />, badgeCls: "bg-blue-50 text-blue-700 border-blue-200", borderCls: "border-l-blue-400", dotCls: "bg-blue-400" };
+  }
+  if (s.includes("fugitive") || s.includes("refrigerant") || s.includes("gas"))
+    return { label: "Fugitive Emissions", iconEl: <Recycle className="w-3.5 h-3.5" />, badgeCls: "bg-purple-50 text-purple-700 border-purple-200", borderCls: "border-l-purple-400", dotCls: "bg-purple-400" };
+  if (s.includes("mobile") || s.includes("vehicle") || s.includes("fleet") || s.includes("transport"))
+    return { label: "Mobile Combustion", iconEl: <BarChart3 className="w-3.5 h-3.5" />, badgeCls: "bg-orange-50 text-orange-700 border-orange-200", borderCls: "border-l-orange-400", dotCls: "bg-orange-400" };
+  return { label: "Stationary Combustion", iconEl: <Flame className="w-3.5 h-3.5" />, badgeCls: "bg-rose-50 text-rose-700 border-rose-200", borderCls: "border-l-rose-400", dotCls: "bg-rose-400" };
+}
+
+function Scope12ListView({ setScreen, sources }: { setScreen: (s: Screen) => void; sources: Source[] }) {
+  if (sources.length === 0) {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold">Scope 1 & 2 Data</h2>
+        <div className="bg-card border rounded-xl p-8 text-center">
+          <p className="text-sm font-medium text-foreground mb-1">No emission sources configured yet</p>
+          <p className="text-xs text-muted-foreground">Set up your inventory boundary first, then come back here to enter monthly data.</p>
+          <Link to="/inventory-boundary" className="mt-3 inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium">
+            Go to Inventory Boundary →
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const scopeDefs: { scope: 1 | 2; title: string; subtitle: string; headerCls: string; accentCls: string }[] = [
+    { scope: 1, title: "Scope 1", subtitle: "Direct Emissions", headerCls: "bg-rose-50 border-rose-200 text-rose-800", accentCls: "bg-rose-500" },
+    { scope: 2, title: "Scope 2", subtitle: "Purchased Energy", headerCls: "bg-blue-50 border-blue-200 text-blue-800", accentCls: "bg-blue-500" },
+  ];
+
+  return (
+    <div className="space-y-8">
+      <h2 className="text-lg font-semibold">Scope 1 & 2 Data</h2>
+
+      {scopeDefs.map(({ scope, title, subtitle, headerCls, accentCls }) => {
+        const scopeSrcs = sources.filter(s => s.scope === scope);
+        if (!scopeSrcs.length) return null;
+
+        // All distinct sub-types for this scope
+        const subTypes = [...new Set(scopeSrcs.map(s => s.sub))];
+
+        return (
+          <div key={scope} className="rounded-2xl border overflow-hidden">
+            {/* Scope header */}
+            <div className={`flex items-center gap-3 px-5 py-4 border-b ${headerCls}`}>
+              <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${accentCls}`} />
+              <div>
+                <p className="font-bold text-base leading-tight">{title}</p>
+                <p className="text-xs font-medium opacity-70">{subtitle}</p>
+              </div>
+              <span className="ml-auto text-xs font-semibold opacity-60">{scopeSrcs.length} source{scopeSrcs.length !== 1 ? "s" : ""}</span>
+            </div>
+
+            {/* Subcategory groups */}
+            <div className="bg-card divide-y divide-border">
+              {subTypes.map(sub => {
+                const meta = subTypeMeta(sub, scope);
+                const subSrcs = scopeSrcs.filter(s => s.sub === sub);
+
+                return (
+                  <div key={sub}>
+                    {/* Subcategory label */}
+                    <div className={`flex items-center gap-2 px-5 py-2.5 bg-muted/30 border-l-4 ${meta.borderCls}`}>
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${meta.badgeCls}`}>
+                        {meta.iconEl}
+                        {meta.label}
+                      </span>
+                      <span className="ml-auto text-[10px] text-muted-foreground">{subSrcs.length} item{subSrcs.length !== 1 ? "s" : ""}</span>
+                    </div>
+
+                    {/* Source rows */}
+                    <div className="px-4 py-2 space-y-2">
+                      {subSrcs.map(src => {
+                        const filled = src.data.filter(v => v !== null).length;
+                        return (
+                          <button key={src.id}
+                            onClick={() => setScreen({ section: "scope12", sub: "source", id: src.id })}
+                            className="w-full text-left flex items-center gap-3 bg-background border rounded-xl px-4 py-3.5 hover:border-primary/50 hover:shadow-sm transition-all group">
+                            <div className={`w-1 self-stretch rounded-full shrink-0 ${meta.dotCls}`} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className="font-medium text-sm truncate">{src.name}</span>
+                                {src.hasOpenThread && (
+                                  <span className="shrink-0 text-[10px] font-semibold bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5 flex items-center gap-1">
+                                    <AlertTriangle className="w-2.5 h-2.5" />Query
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground">{src.facility} · {src.unit} · {filled}/12 months</p>
+                            </div>
+                            <StatusPill status={src.status} />
+                            <ChevronRight className="w-4 h-4 text-muted-foreground/40 shrink-0 group-hover:text-primary transition-colors" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Q&A thread ────────────────────────────────────────────────────────────────
+
+function ThreadCard({ thread, onReply }: { thread: QThread; onReply: (threadId: number, msg: string) => Promise<void> }) {
+  const answered = thread.status === "answered";
+  const [replyText, setReplyText] = useState("");
+  const [posting, setPosting] = useState(false);
+
+  async function handleReply() {
+    if (!replyText.trim()) return;
+    setPosting(true);
+    try {
+      await onReply(thread.id, replyText.trim());
+      setReplyText("");
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  return (
+    <div className={`rounded-xl border overflow-hidden ${answered ? "border-emerald-200" : "border-amber-200"}`}>
+      <div className={`flex items-center gap-2 px-4 py-2.5 border-b ${answered ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}>
+        <span className={`w-2 h-2 rounded-full ${answered ? "bg-emerald-500" : "bg-amber-400"}`} />
+        <span className={`text-xs font-semibold ${answered ? "text-emerald-700" : "text-amber-700"}`}>
+          {answered ? "Answered by Deepwoods" : "Waiting for Deepwoods"}
+        </span>
+      </div>
+      <div className="p-4 space-y-3 bg-card">
+        {thread.msgs.map((m, i) => {
+          const isDW = m.from === "deepwoods";
+          return (
+            <div key={i} className={`flex gap-2.5 ${isDW ? "flex-row-reverse" : ""}`}>
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${isDW ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                {isDW ? "DW" : m.author.charAt(0).toUpperCase()}
+              </div>
+              <div className={`flex-1 flex flex-col ${isDW ? "items-end" : "items-start"}`}>
+                <p className="text-[10px] text-muted-foreground mb-1">{m.author} · {m.time}</p>
+                <div className={`px-3 py-2 rounded-xl text-sm max-w-xs text-left ${isDW ? "bg-primary text-primary-foreground rounded-tr-none" : "bg-muted text-foreground rounded-tl-none"}`}>
+                  {m.text}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {!answered && (
+          <div className="flex gap-2 mt-2">
+            <input value={replyText} onChange={e => setReplyText(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleReply()}
+              placeholder="Reply to Deepwoods…"
+              className="flex-1 border border-border rounded-lg px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+            <button onClick={handleReply} disabled={!replyText.trim() || posting}
+              className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity shrink-0">
+              {posting ? "…" : "Send"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function QASection({ title, threads, onPostThread, onReplyThread }: {
+  title: string; threads: QThread[];
+  onPostThread: (msg: string) => Promise<void>;
+  onReplyThread: (threadId: number, msg: string) => Promise<void>;
+}) {
+  const [askInput, setAskInput] = useState("");
+  const [posting, setPosting] = useState(false);
+
+  async function handleAsk() {
+    if (!askInput.trim()) return;
+    setPosting(true);
+    try {
+      await onPostThread(askInput.trim());
+      setAskInput("");
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  return (
+    <div className="bg-card border rounded-xl overflow-hidden">
+      <div className="px-5 py-4 border-b">
+        <p className="font-medium text-sm">{title}</p>
+      </div>
+      <div className="px-5 py-4 space-y-4">
+        <div className="flex gap-2">
+          <input value={askInput} onChange={e => setAskInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleAsk()}
+            placeholder="Type your question here..."
+            className="flex-1 border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+          <button onClick={handleAsk} disabled={!askInput.trim() || posting}
+            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity shrink-0">
+            {posting ? "…" : "Ask"}
+          </button>
+        </div>
+        <p className="text-[10px] text-muted-foreground">Deepwoods typically replies within 1 business day.</p>
+        {threads.map(t => <ThreadCard key={t.id} thread={t} onReply={onReplyThread} />)}
+      </div>
+    </div>
+  );
+}
+
+// ── Source detail ─────────────────────────────────────────────────────────────
+
+function SourceDetailView({ src, periods, entity, fy, goBack, onSaveDraft, onSubmitSource, onPostThread, onReplyThread }: {
+  src: Source; periods: string[]; entity: string; fy: string;
+  goBack: () => void;
+  onSaveDraft: (assetId: string, period: string, value: number | null) => void;
+  onSubmitSource: (src: Source, vals: (number|null)[]) => Promise<void>;
+  onPostThread: (sourceType: "scope12"|"scope3", sourceId: string, msg: string) => Promise<void>;
+  onReplyThread: (threadId: number, msg: string) => Promise<void>;
+}) {
+  const [monthVals, setMonthVals] = useState<(number | null)[]>([...src.data]);
+  const [offset, setOffset] = useState(0);
+  const [wwOpen, setWwOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(src.status === "submitted" || src.status === "under_review" || src.status === "accepted");
+  const [threads, setThreads] = useState<QThread[]>([]);
+  const [threadsLoading, setThreadsLoading] = useState(true);
+  const debouncerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const VISIBLE = 9;
+
+  // Load threads for this source
+  useEffect(() => {
+    setThreadsLoading(true);
+    authFetch(`ndc-threads.php?source_type=scope12&source_id=${encodeURIComponent(src.id)}&fy=${fy}`)
+      .then((apiThreads: ApiThread[]) => setThreads(mapApiThreads(apiThreads)))
+      .catch(() => setThreads([]))
+      .finally(() => setThreadsLoading(false));
+  }, [src.id, fy]);
+
+  const totalFilled = monthVals.filter(v => v !== null).length;
+
+  function handleCellChange(absIdx: number, val: string) {
+    const next = [...monthVals];
+    next[absIdx] = val === "" ? null : parseFloat(val);
+    if (!isNaN(next[absIdx] as number) || val === "") {
+      setMonthVals(next);
+    }
+    const period = periods[absIdx];
+    if (!period) return;
+    if (debouncerRef.current[period]) clearTimeout(debouncerRef.current[period]);
+    debouncerRef.current[period] = setTimeout(() => {
+      onSaveDraft(src.id, period, val === "" ? null : parseFloat(val));
+      delete debouncerRef.current[period];
+    }, 800);
+  }
+
+  async function handleSubmit() {
+    setSubmitting(true);
+    try {
+      await onSubmitSource(src, monthVals);
+      setSubmitted(true);
+      setConfirmOpen(false);
+    } catch {
+      // toast is shown by parent
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handlePostThread(msg: string) {
+    await onPostThread("scope12", src.id, msg);
+    try {
+      const updated = await authFetch(`ndc-threads.php?source_type=scope12&source_id=${encodeURIComponent(src.id)}&fy=${fy}`);
+      setThreads(mapApiThreads(updated));
+    } catch { /* reload fails silently; threads refresh on next open */ }
+  }
+
+  async function handleReplyThread(threadId: number, msg: string) {
+    await onReplyThread(threadId, msg);
+    try {
+      const updated = await authFetch(`ndc-threads.php?source_type=scope12&source_id=${encodeURIComponent(src.id)}&fy=${fy}`);
+      setThreads(mapApiThreads(updated));
+    } catch { /* reload fails silently */ }
+  }
+
+  return (
+    <div className="space-y-5">
+      <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+        <button onClick={goBack} className="hover:text-foreground transition-colors flex items-center gap-1">
+          <ChevronLeft className="w-3.5 h-3.5" />Back to Scope 1 & 2
+        </button>
+      </p>
+
+      <div>
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <span className="text-xs border border-border rounded-full px-2.5 py-0.5 text-muted-foreground">{src.sub}</span>
+          <span className="text-xs border border-border rounded-full px-2.5 py-0.5 text-muted-foreground">{src.unit}</span>
+          {src.hasOpenThread && (
+            <span className="text-xs border border-amber-300 bg-amber-50 text-amber-700 rounded-full px-2.5 py-0.5 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />Query for you
+            </span>
+          )}
+        </div>
+        <h2 className="text-2xl font-bold text-foreground">{src.name}</h2>
+        <p className="text-sm text-muted-foreground mt-1">{src.facility} · {src.unit} · {fy}</p>
+      </div>
+
+      {/* What & why */}
+      <div className="bg-card border rounded-xl overflow-hidden">
+        <button onClick={() => setWwOpen(o => !o)}
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/20 transition-colors">
+          <span className="font-medium text-sm">What & why</span>
+          <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${wwOpen ? "rotate-180" : ""}`} />
+        </button>
+        {wwOpen && (
+          <div className="border-t px-5 py-4 space-y-3.5">
+            {[
+              { label: "What this is",     val: src.whatThisIs },
+              { label: "What to enter",    val: src.whatToEnter },
+              { label: "Where to find it", val: src.whereToFind },
+              { label: "Effort",           val: src.effort },
+            ].map(row => (
+              <div key={row.label} className="grid grid-cols-[140px_1fr] gap-3 text-sm">
+                <span className="text-muted-foreground font-medium">{row.label}</span>
+                <span className="text-foreground">{row.val}</span>
+              </div>
+            ))}
+            {src.tip && (
+              <div className="flex gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5 text-sm text-blue-700">
+                <Info className="w-4 h-4 mt-0.5 shrink-0" />{src.tip}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Monthly data */}
+      <div className="bg-card border rounded-xl p-5">
+        <h3 className="font-medium text-sm mb-1">Monthly data — {fy}</h3>
+        <p className="text-xs text-muted-foreground mb-4">Enter the figure for each month. Values auto-save as you type.</p>
+
+        <div className="flex items-center gap-2 mb-3">
+          <button onClick={() => setOffset(o => Math.max(0, o - 1))} disabled={offset === 0}
+            className="p-1 rounded hover:bg-muted disabled:opacity-30 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
+          <button onClick={() => setOffset(o => Math.min(12 - VISIBLE, o + 1))} disabled={offset + VISIBLE >= 12}
+            className="p-1 rounded hover:bg-muted disabled:opacity-30 transition-colors"><ChevronRight className="w-4 h-4" /></button>
+          <span className="text-xs text-muted-foreground">{MO[offset]}–{MO[Math.min(11, offset + VISIBLE - 1)]}</span>
+          <span className="ml-auto text-[10px] text-muted-foreground">{totalFilled} / 12 months entered · auto-saving</span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr>
+                <td className="text-xs text-muted-foreground font-medium py-1 pr-3 w-40 whitespace-nowrap">{src.unit}</td>
+                {MO.slice(offset, offset + VISIBLE).map(m => (
+                  <td key={m} className="text-center text-xs text-muted-foreground pb-1.5 px-1 min-w-[72px]">{m}</td>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td />
+                {monthVals.slice(offset, offset + VISIBLE).map((val, i) => {
+                  const abs = offset + i;
+                  return (
+                    <td key={i} className="px-1 pb-1">
+                      <input
+                        type="number"
+                        value={val ?? ""}
+                        placeholder="—"
+                        className={`w-full rounded-full text-center text-sm py-1.5 px-1 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-colors ${
+                          val !== null ? "border border-emerald-200 bg-emerald-50 text-emerald-800" :
+                          "border border-dashed border-muted-foreground/30 bg-transparent text-muted-foreground/50 placeholder:text-muted-foreground/30"
+                        }`}
+                        onChange={e => handleCellChange(abs, e.target.value)}
+                      />
+                    </td>
+                  );
+                })}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Submit & history */}
+      <div className="bg-card border rounded-xl p-5">
+        <h3 className="font-medium text-sm mb-4">Submit & history</h3>
+        <div className="flex items-center gap-5 text-sm text-muted-foreground mb-4">
+          <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-emerald-600" />{totalFilled} months entered</span>
+          <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-amber-500" />{12 - totalFilled > 0 ? `${12 - totalFilled} months remaining` : "All months entered"}</span>
+        </div>
+
+        {!confirmOpen && !submitted && (
+          <button onClick={() => setConfirmOpen(true)} disabled={totalFilled === 0}
+            className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity">
+            Submit all to Deepwoods
+          </button>
+        )}
+
+        {confirmOpen && !submitted && (
+          <div className="border rounded-xl p-4 bg-muted/20 space-y-3">
+            <p className="font-semibold text-sm">Confirm submission</p>
+            <div className="space-y-1 text-sm">
+              <p className="text-muted-foreground">Source: <span className="text-foreground font-medium">{src.name}</span></p>
+              <p className="text-muted-foreground">Entity: <span className="text-foreground font-medium">{entity}</span></p>
+              <p className="text-muted-foreground">Period: <span className="text-foreground font-medium">{fy}</span></p>
+              <p className="text-muted-foreground">Months with data: <span className="text-foreground font-medium">{totalFilled}</span></p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleSubmit} disabled={submitting}
+                className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity">
+                {submitting ? "Submitting…" : "Confirm & submit"}
+              </button>
+              <button onClick={() => setConfirmOpen(false)}
+                className="px-4 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:bg-muted transition-colors">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {submitted && (
+          <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800">
+            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+            <div>
+              <p className="font-semibold">Submitted successfully</p>
+              <p className="text-xs text-emerald-700">Deepwoods will review your data. You can still update values and resubmit if needed.</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <QASection
+        title={`Ask about ${src.name}`}
+        threads={threadsLoading ? [] : threads}
+        onPostThread={handlePostThread}
+        onReplyThread={handleReplyThread}
+      />
+    </div>
+  );
+}
+
+// ── Page (stub — wire up useDecarbAssets, authFetch, drafts, submissions) ──────
+
+function DataCollectionPage() {
+  const ctx = useClientContext();
+  const { entity } = useEntity();
+  const { fy } = useFiscalYear();
+  const { data: assets } = useDecarbAssets(entity, fy);
+
+  const periods = fyPeriods(fy);
+
+  const [drafts, setDrafts] = useState<DraftMap>({});
+  const [subs, setSubs] = useState<Submission[]>([]);
+  const [threadSummary, setThreadSummary] = useState<ThreadSummaryMap>({});
+  const [screen, setScreen] = useState<Screen>({ section: "scope12" });
+
+  useEffect(() => {
+    if (!entity || !fy || !ctx.client?.slug) return;
+    loadSubmissions(ctx.client.slug, entity, fy).then(setSubs).catch(() => {});
+    authFetch(`tracker-drafts.php?entity=${entity}&fy=${fy}`)
+      .then((d: DraftMap) => setDrafts(d))
+      .catch(() => {});
+    authFetch(`ndc-threads.php?summary=1&entity=${entity}&fy=${fy}`)
+      .then((d: ThreadSummaryMap) => setThreadSummary(d))
+      .catch(() => {});
+  }, [entity, fy, ctx.client?.slug]);
+
+  const sources = deriveSources(assets, drafts, subs, threadSummary, periods);
+  const activeSrc = screen.sub === "source" && screen.id
+    ? sources.find(s => s.id === screen.id) ?? null
+    : null;
+
+  function handleSaveDraft(assetId: string, period: string, value: number | null) {
+    setDrafts(prev => ({
+      ...prev,
+      [assetId]: { ...(prev[assetId] ?? {}), [period]: value === null ? "" : String(value) },
+    }));
+    authFetch(`tracker-drafts.php`, {
+      method: "POST",
+      body: JSON.stringify({ entity, fy, asset_id: assetId, period, value }),
+    }).catch(() => {});
+  }
+
+  async function handleSubmitSource(src: Source, vals: (number | null)[]) {
+    try {
+      await addSubmission(ctx.client!.slug, {
+        entity, fy,
+        datasetId: src.id,
+        datasetLabel: src.name,
+        values: Object.fromEntries(periods.map((p, i) => [p, vals[i]])),
+        status: "Pending",
+      });
+      setSubs(await loadSubmissions(ctx.client!.slug, entity, fy));
+      toast.success("Submitted successfully");
+    } catch {
+      toast.error("Submission failed — please try again");
+      throw new Error("submit failed");
+    }
+  }
+
+  async function handlePostThread(sourceType: "scope12" | "scope3", sourceId: string, msg: string) {
+    await authFetch(`ndc-threads.php`, {
+      method: "POST",
+      body: JSON.stringify({ source_type: sourceType, source_id: sourceId, fy, message: msg }),
+    });
+    const updated: ThreadSummaryMap = await authFetch(`ndc-threads.php?summary=1&entity=${entity}&fy=${fy}`);
+    setThreadSummary(updated);
+  }
+
+  async function handleReplyThread(threadId: number, msg: string) {
+    await authFetch(`ndc-threads.php`, {
+      method: "POST",
+      body: JSON.stringify({ thread_id: threadId, message: msg }),
+    });
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+      {screen.section === "scope12" && screen.sub !== "source" && (
+        <Scope12ListView setScreen={setScreen} sources={sources} />
+      )}
+
+      {screen.section === "scope12" && screen.sub === "source" && activeSrc && (
+        <SourceDetailView
+          src={activeSrc}
+          periods={periods}
+          entity={entity}
+          fy={fy}
+          goBack={() => setScreen({ section: "scope12" })}
+          onSaveDraft={handleSaveDraft}
+          onSubmitSource={handleSubmitSource}
+          onPostThread={handlePostThread}
+          onReplyThread={handleReplyThread}
+        />
+      )}
+    </div>
+  );
+}

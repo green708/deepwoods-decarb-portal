@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -386,6 +386,14 @@ function PeerStudyPage() {
     return Object.values(grouped);
   }, [peersRaw]);
 
+  useEffect(() => {
+    const has = (y: string) => peersData.some((p) => p.totals[y] != null);
+    if (peersData.length > 0 && !has(year)) {
+      const next = PEER_FISCAL_YEARS.find((y) => has(y));
+      if (next) setYear(next);
+    }
+  }, [peersData, year]);
+
   const chartData = useMemo(() => {
     return (peersData ?? [])
       .filter((p) => p.totals[year] != null)
@@ -503,7 +511,7 @@ function PeerStudyPage() {
           ) : (
             <div className="flex flex-col items-center gap-2 py-10 text-center">
               <NdfBadge />
-              <p className="text-sm text-[color:var(--ink-muted)]">No peers have reported data for {year}.</p>
+              <p className="text-sm text-[color:var(--ink-muted)]">No peers have reported data for {year}. Pick another year above.</p>
             </div>
           )}
         </div>

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { PageBody, PageHeader } from "@/components/portal";
 import { Download, Eye, Search, Upload, Folder, X, CheckCircle2 } from "lucide-react";
 import { useClientContext } from "@/lib/client-context";
-import { useEntity } from "@/lib/entity";
+import { useEntity, generateAllYears } from "@/lib/entity";
 import { useVaultDocuments } from "@/lib/api";
 
 export const Route = createFileRoute("/_app/vault")({ component: Vault });
@@ -18,14 +18,14 @@ const FOLDERS: FolderDef[] = [
   { id: "certs",    name: "Certificates & Instruments", updated: "Jun 2026" },
 ];
 
-const SUB_CLUSTERS: Record<FolderId, string[]> = {
+// "reports" sub-clusters and the year picker below are reporting-period years —
+// generated per client (FY or CY), independent of any server-side config, so
+// this works the same for a brand-new client with no data yet.
+const SUB_CLUSTERS: Record<Exclude<FolderId, "reports">, string[]> = {
   raw:      ["Scope 1 — Combustion", "Scope 1 — Fugitive", "Scope 2 — Electricity Bills", "Scope 2 — Solar Generation", "Scope 3 — Procurement", "Scope 3 — Freight / Deliveries", "Scope 3 — Commuting", "Other"],
   evidence: ["DEFRA Emission Factors", "Methodology", "Calculation Audit Trails", "Boundary Documentation", "Other"],
-  reports:  ["FY26", "FY25", "FY24", "FY23", "FY22"],
   certs:    ["Wind PPA / I-RECs", "Other"],
 };
-
-const YEARS_OPT = ["FY26", "FY25", "FY24", "FY23", "FY22", "N/A"];
 
 type RecentFile = {
   name: string; folder: FolderId; entity: string; year: string; size: string; uploaded: string;
@@ -43,16 +43,18 @@ const TYPE_BADGE: Record<string, React.ReactNode> = {
 
 // ── Upload Modal ─────────────────────────────────────────────────────────────
 function UploadModal({ onClose }: { onClose: () => void }) {
-  const { entities } = useClientContext();
+  const ctx = useClientContext();
+  const { entities } = ctx;
   const consolidatedEntity = entities.find(e => e.is_consolidated);
+  const reportingYearsDesc = [...generateAllYears(ctx.client.reporting_period)].reverse();
   const [entity, setEntity] = useState<string>("");
   const [cluster, setCluster] = useState<FolderId | "">("");
   const [subCluster, setSubCluster] = useState("");
-  const [year, setYear] = useState("FY26");
+  const [year, setYear] = useState(reportingYearsDesc[0] ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [done, setDone] = useState(false);
 
-  const subs = cluster ? SUB_CLUSTERS[cluster] : [];
+  const subs = cluster === "reports" ? reportingYearsDesc : cluster ? SUB_CLUSTERS[cluster] : [];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,7 +131,7 @@ function UploadModal({ onClose }: { onClose: () => void }) {
               <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-muted-foreground">Reporting year</label>
               <select value={year} onChange={e => setYear(e.target.value)}
                 className="w-full rounded-lg border bg-white px-3 py-2 text-sm font-medium cursor-pointer" style={{ color: "var(--navy)" }}>
-                {YEARS_OPT.map(y => <option key={y} value={y}>{y}</option>)}
+                {[...reportingYearsDesc, "N/A"].map(y => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
 

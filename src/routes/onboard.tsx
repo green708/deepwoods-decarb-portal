@@ -31,7 +31,7 @@ const CYCLE_STEPS = [
 const ROLES = [
   {
     icon: ShieldCheck,
-    name: "Sustainability Team",
+    name: "Admin",
     iconBg: "#E6F4EF",
     iconColor: "#1E4D2B",
     bg: "border-[#1E4D2B]/30 bg-[#F0FAF5]",
@@ -40,7 +40,7 @@ const ROLES = [
   },
   {
     icon: ClipboardList,
-    name: "Data Submission Team",
+    name: "Data Contributor",
     iconBg: "#DBEAFE",
     iconColor: "#1D4ED8",
     bg: "border-[#3B82F6]/30 bg-[#EFF6FF]",
@@ -49,7 +49,7 @@ const ROLES = [
   },
   {
     icon: Eye,
-    name: "Leadership",
+    name: "Viewer",
     iconBg: "#F3F4F6",
     iconColor: "#6B7280",
     bg: "border-slate-200 bg-slate-50",
@@ -169,7 +169,7 @@ function Slide3() {
       </div>
       <div className="mt-4 rounded-xl border border-amber-200 bg-[#FFFBEB] px-4 py-3">
         <p className="text-xs text-amber-800">
-          <span className="font-semibold">Tip:</span> The Sustainability Team role can invite and manage
+          <span className="font-semibold">Tip:</span> The Admin role can invite and manage
           team members from the workspace at any time — no need to do it right now.
         </p>
       </div>
@@ -198,6 +198,7 @@ function Onboard() {
 
   const finish = () => {
     localStorage.setItem("decarb_orientation_done", "1");
+    authFetch("mark-orientation.php", { method: "POST" }).catch(() => {});
     navigate({ to: "/home" });
   };
 

@@ -12,8 +12,29 @@
 //   Dolphin     → ["CORP","DPL"], ["FY24","FY25","FY26"]
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { useClientContext, useAnalysisYears } from "@/lib/client-context";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useClientContext } from "@/lib/client-context";
+
+// ── Generate all fiscal / calendar years from 2015 to present ────────────────
+
+export function generateAllYears(reportingPeriod: string): string[] {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1; // 1-indexed
+  const years: string[] = [];
+
+  if (reportingPeriod === "CY") {
+    for (let y = 2015; y <= year; y++) years.push(`CY${y}`);
+  } else {
+    // FY starts in April. FY26 = Apr 2026 – Mar 2027.
+    const currentFYStart = month >= 4 ? year : year - 1;
+    for (let y = 2015; y <= currentFYStart; y++) {
+      years.push(`FY${String(y).slice(2)}`);
+    }
+  }
+
+  return years;
+}
 
 // ── Entity context ───────────────────────────────────────────────────────────
 
@@ -118,20 +139,28 @@ type FYCtx = { fy: string; setFY: (y: string) => void };
 const FYContext = createContext<FYCtx>({ fy: "", setFY: () => {} });
 
 export function FiscalYearProvider({ children }: { children: ReactNode }) {
-  const analysisYears = useAnalysisYears();
-  const defaultFY = analysisYears[analysisYears.length - 1] ?? "";
+  const ctx = useClientContext();
+  const { client } = ctx;
+  // Prefer reporting_years from context (years with actual data) over the full
+  // generated range. Fall back to generated range only when reporting_years is empty.
+  const allYears = useMemo(() => generateAllYears(client.reporting_period), [client.reporting_period]);
+  const availableYears = useMemo(
+    () => (ctx.reporting_years?.length > 0 ? ctx.reporting_years : allYears),
+    [ctx.reporting_years, allYears],
+  );
+  const defaultFY = availableYears[availableYears.length - 1] ?? "";
 
   const [fy, setFYState] = useState<string>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem(FY_STORAGE_KEY);
-      if (saved && analysisYears.includes(saved)) return saved;
+      if (saved && availableYears.includes(saved)) return saved;
     }
     return defaultFY;
   });
 
   useEffect(() => {
-    if (fy && !analysisYears.includes(fy)) setFYState(defaultFY);
-  }, [analysisYears, fy, defaultFY]);
+    if (fy && !availableYears.includes(fy)) setFYState(defaultFY);
+  }, [availableYears, fy, defaultFY]);
 
   const setFY = useCallback((y: string) => {
     setFYState(y);
@@ -145,30 +174,27 @@ export function useFiscalYear(): FYCtx {
   return useContext(FYContext);
 }
 
-// ── Fiscal year switcher UI ──────────────────────────────────────────────────
+// ── Fiscal year switcher UI ───────────────────────────────────────────────────
 
 export function FiscalYearSwitcher() {
   const { fy, setFY } = useFiscalYear();
-  const analysisYears = useAnalysisYears();
+  const ctx = useClientContext();
+  const allYears = useMemo(() => generateAllYears(ctx.client.reporting_period), [ctx.client.reporting_period]);
+  const availableYears = ctx.reporting_years?.length > 0 ? ctx.reporting_years : allYears;
+
+  const displayYears = [...availableYears].reverse();
+  const effectiveFY = fy && displayYears.includes(fy) ? fy : displayYears[0] ?? "";
 
   return (
-    <div className="inline-flex items-center rounded-lg border border-[var(--border)] bg-[var(--muted)] p-0.5">
-      {analysisYears.map((y) => {
-        const active = fy === y;
-        return (
-          <button
-            key={y}
-            onClick={() => setFY(y)}
-            className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
-              active
-                ? "bg-[var(--navy)] text-white shadow-sm"
-                : "text-[var(--muted-foreground)] hover:bg-white hover:text-[var(--navy)]"
-            }`}
-          >
-            {y}
-          </button>
-        );
-      })}
-    </div>
+    <select
+      value={effectiveFY}
+      onChange={e => setFY(e.target.value)}
+      className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs font-semibold outline-none focus:border-[var(--primary)] cursor-pointer"
+      style={{ color: 'var(--navy, #1E293B)', minWidth: '4rem' }}
+    >
+      {displayYears.map(y => (
+        <option key={y} value={y}>{y}</option>
+      ))}
+    </select>
   );
 }
