@@ -54,21 +54,30 @@ async function main() {
     await writeFile(path.join(outDir, "index.html"), html, "utf8");
     await writeFile(path.join(outDir, ".htaccess"), HTACCESS, "utf8");
 
-    // Copy backend/ into dist-static/backend/ so the whole dist-static folder
-    // is the complete Hostinger deployment (frontend + PHP API in one place).
+    // Copy backend/ → dist-static/backend/ so it lands at public_html/backend/ on Hostinger,
+    // matching the existing folder structure there.
+    // Exclude drive-token.json — it is a live server credential saved by oauth-callback.php
+    // and must never be overwritten by a deploy (it doesn't exist locally anyway).
     const backendSrc = path.join(root, "backend");
-    await cp(backendSrc, path.join(outDir, "backend"), { recursive: true });
-    console.log("  ✓ backend/ copied into dist-static/");
+    // config.local.php points at the local test database and blanks SMTP; diag.php prints server
+    // details; config.php.example is a template. None of them may ever be deployed.
+    const BACKEND_EXCLUDE = ["drive-token.json", "oauth-error.log", "config.local.php", "config.php.example", "diag.php"];
+    await cp(backendSrc, path.join(outDir, "backend"), {
+      recursive: true,
+      filter: (src) => !BACKEND_EXCLUDE.some((f) => src.endsWith(f)),
+    });
+    console.log("  ✓ backend/ → dist-static/backend/ (secrets and local-only files excluded)");
 
-    // Copy ghg-proxy.php to dist-static root so it lands at public_html/ghg-proxy.php
+    // Copy ghg-proxy.php to dist-static root → public_html/ghg-proxy.php
     const proxySrc = path.join(root, "ghg-proxy.php");
     if (existsSync(proxySrc)) {
       await cp(proxySrc, path.join(outDir, "ghg-proxy.php"));
-      console.log("  ✓ ghg-proxy.php copied into dist-static/");
+      console.log("  ✓ ghg-proxy.php → dist-static/");
     }
 
-    console.log(`\nAll done — dist-static/ contains everything for Hostinger.`);
+    console.log(`\nAll done.`);
     console.log("Upload the entire contents of dist-static/ to public_html/.");
+    console.log("Everything is there — frontend, PHP backend, and ghg-proxy.php.");
   } finally {
     child.kill();
   }
@@ -88,7 +97,13 @@ async function waitForServer(url, timeoutMs) {
   throw new Error("Server did not start in time");
 }
 
-const HTACCESS = `# SPA fallback forclient-side routing (TanStack Router).
+const HTACCESS = `# Block direct web access to server-side credential files.
+<FilesMatch "^drive-token\\.json$">
+  Order allow,deny
+  Deny from all
+</FilesMatch>
+
+# SPA fallback for client-side routing (TanStack Router).
 # Serve real files/assets directly; everything else falls back to index.html.
 <IfModule mod_rewrite.c>
   RewriteEngine On

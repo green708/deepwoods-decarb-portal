@@ -1,3 +1,8 @@
+-- !!! WARNING — NOT SAFE TO RE-RUN, and not for v2 databases (see ../MIGRATION_TO_V2.md) !!!
+--   * Section 4 sets is_active = 1 for EVERY inactive client (undoes deliberate deactivations).
+--   * Section 8 hardcodes slug 'featherlite' and clears is_consolidated on every other client's
+--     roll-up entity, which breaks clients that have child entities rolling up into a parent.
+-- ═══════════════════════════════════════════════════════════════════════════
 -- ═══════════════════════════════════════════════════════════════════════════
 -- MASTER MIGRATION — Decarb Portal
 -- Run this single file in phpMyAdmin: SQL tab → paste → Go
