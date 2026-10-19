@@ -4,6 +4,41 @@ Key milestones and changes. Newest first.
 
 ---
 
+## 2026-10-19 — Database v2 (new DB, all data copied) + read-only role enforcement
+
+* The live database is `u833634340_decarb_portal` (what `backend/config.php` points at). `u833634340_decarb` is an older, different database (13 clients, no payments recorded) and is not the source.
+* `database/schema_v2.sql` is now the canonical schema (46 tables). Move an existing database with: `scripts/make-import-from-dump.mjs` -> import -> `database/quarantine_orphans.sql` -> `database/verify_copy.sql`. Runbook: `database/MIGRATION_TO_V2.md`.
+* Tested on the live export: 3,671 rows in 42 tables copied; 3,062 kept + 609 archived (rows of deleted clients, moved to `archive_*` tables so the DB can be restored from a backup); content hashes match; 0 foreign-key orphans. Backend passes 59/60 reads (the 60th is a POST-only 405) and all write/role tests on it. Payments (4 clients `paid`) preserved.
+* `master_migration.sql` is NOT safe to re-run (reactivates deactivated clients, hardcodes slug 'featherlite', clears roll-up entities) - warning header added; do not use on v2.
+* Read-only role (`client_leadership`) is refused on every client write endpoint (`dolphin_block_read_only_writes` in `db.php`). `login.php` now returns `entity_scope`.
+
+---
+
+## 2026-10-06 — Home redesign, Deepwoods Admin Console rebuild, live-test fixes
+
+### Client Home (`src/routes/_app.home.tsx`)
+Rebuilt as an 8-chapter journey (Collect, Calculate, Diagnose, Target, Plan, Act, Track, Net zero) in the portal's own design language. Reads `home-summary.php` (due date, calculation status, explicit targets only, action lifecycle, consultant contact, server alerts) plus the same completeness maths as the Data Tracker (`src/lib/tracker-progress.ts`). No longer depends on `inventory_complete`.
+
+### Deepwoods Admin Console (`src/routes/_app.admin.tsx` + `src/components/admin/*`)
+Replaces the 3,700-line, 17-tab admin page (archived read-only at `_archive/admin-legacy/`). Views: Portfolio (server-paginated, search/filter/sort, attention queue), Requests, Inbox, Platform. Per-client workspace (`/admin?client=ID&tab=...`): Overview, Setup, Data, Calculation, Targets & plan, Queries, Activity. Hooks: `src/lib/api-admin.ts`. Removed: fake Submissions Queue and Audit Log tabs, Featherlite-hardcoded `admin.tracker.tsx`, fake Engagements statuses, `debug.php`. Coordinators can now open the console (write rights still enforced server-side).
+
+### New data model (migration `010_admin_data_model.sql`, also in `schema_combined.sql`)
+`calc_status` (draft/calculated/verified/locked per entity+year), `reporting_cycles` (due dates, submitted/locked), `admin_activity`, `users.display_name`, `clients.account_owner`, and action lifecycle columns on `decarb_actions` (status vocabulary: Idea, Planned, Committed, In Progress, Completed, Delayed, Cancelled). Targets, net-zero year and consultant contact are `client_config` keys edited by staff (`admin/client-settings.php`); the API still shows platform defaults to old pages but Home only trusts explicit values.
+
+### Endpoints added
+`admin/portfolio|client-settings|calc-status|cycles|actions|client-users|inbox|activity.php`, `home-summary.php`, `cycle-submit.php`, `mark-orientation.php`; shared helpers in `lib_admin.php`, `lib_portal.php`. "Current" reporting year = last completed year (`dolphin_current_fy`).
+
+### Submit is real
+Submit now confirms, records a `reporting_cycles` submission and tells staff; locked periods are refused server-side (`data-tracker/draft.php` returns 409).
+
+### Fixes
+Asset ID overflow (migration 008), boundary save retries, `is_msme`/`is_hq` string-"0" bugs, orientation tour per user (migration 009), cross-tenant hole in `vault-admin.php`, `verification-status.php` role check and explicit-client handling, `data-health.php` missing GROUP BY, actions sorted High-first, BOM stripped from `config.php`, token prefix no longer logged, `authFetch` errors now carry `.fields`.
+
+### Deploy checklist
+Run migrations 008, 009, 010 in phpMyAdmin (in order) BEFORE uploading PHP; make `client_entities.org_type` VARCHAR(100) if it is still an ENUM; strip any BOM from production `config.php`; `npm run build:fresh`. NOT yet done: Groq key rotation (keys are still hardcoded in `backend/api/ai.php`).
+
+---
+
 ## 2026-08-10 — CLIENT SETUP → DATA COLLECTION journey complete
 
 ### Fix A — New clients auto-redirect to /setup after orientation

@@ -6,7 +6,99 @@
 ---
 
 ## Last Updated
-2026-08-10 — CLIENT SETUP → DATA COLLECTION journey complete
+2026-10-06 — Home redesign + Admin Console rebuild + live-test fixes (see CHANGELOG 2026-10-06)
+
+### Start here next session
+* Local stack for live tests: XAMPP MariaDB `decarb_local`, `php -S localhost:8787` (repo root), `npm run dev` (5173). `backend/config.local.php` blanks SMTP so no real mail is sent.
+* Known follow-ups: (1) rotate/move Groq keys out of `backend/api/ai.php`; (2) `activate-client.php` GET and `data-health.php` return every client (fine now, add filters at scale); (3) renaming an entity code in Admin > Setup cascades only to `ghg_facilities`, not to assets/drafts/inventory; (4) hotspot facility and Scope 3 category splits depend on the calculation pipeline populating `s1_by_facility`, `s2_by_facility`, `scope3_summary`; (5) intensity denominators (revenue/output) have no admin entry screen; (6) `payment_complete` config key may be legacy, gating uses `clients.payment_status`.
+
+---
+
+## Previous: 2026-09-09 — Data gap resolution: SQL patch + 7 application bug fixes
+
+---
+
+## Completed This Session (2026-09-09 — Data gap resolution)
+
+Input: Excel tracker "Data gaps and resolution tracker (2).xlsx" (3 sheets, 5–8 Sep reports)
+       + SQL dump u833634340_decarb_portal (18).sql (current DB state)
+
+### SQL patch — database/fix_data_gaps_2026-09-09.sql (apply to production)
+1. Delete DG-Sourced Electricity entries for NLS & NDS Bengaluru (incorrectly registered)
+   — removes from tracker_drafts, decarb_assets, inv_scope2_sources
+2. Add NDS Bengaluru BESCOM Grid inv_scope2_sources for CY2021, CY2022, CY2023
+   (facility_id=90; was completely missing so MB showed nothing for those years)
+3. Add NDS Green Tariff inv_scope2_sources for CY2021, CY2022, CY2023
+   + backdate decarb_assets active_from_fy to CY2021 for NDS Green Tariff
+4. Pin reporting_years = ["FY21"…"FY25"] in client_config for clients 17 (FP) and 18 (FOS)
+   so the FY25 year appears in their dropdown before data rows exist
+5. Backdate NLS Green Tariff decarb_assets active_from_fy to CY2021 (was CY2025)
+6. NOTE: NCR Gaithersburg CY25 Scope 1 removal requires manual review — see comment in SQL
+
+### Application fixes (all committed to working tree — need build + deploy)
+- **inventory-boundary.php**: Critical multi-entity fix — POST DELETE was wiping ALL entities'
+  scope1/scope2 for the client; now entity-scoped via new `entity` field in POST body.
+  Added `inv_delete_s1()` / `inv_delete_s2()` helpers with facility-to-entity join.
+- **InventoryContext.tsx**: Added `entity: entityRef.current` to both POST bodies so the
+  backend knows which entity is being saved.
+- **_app.data-tracker.tsx**: Unit column now uses `resolveAssetUnit(asset)` instead of
+  raw `asset.unit ?? "—"`. Added `resolveAssetUnit` import.
+- **_app.data-tracker.tsx**: Scope 3 tab empty state now links to `/submissions` instead
+  of `/inventory-boundary`.
+- **Scope3Cards.tsx**: Fixed Cat 9 stream — was `"up"` (upstream), now `"down"` (downstream).
+- **scope3Schemas.ts**: Cat 6 Business Travel — removed supplier-specific method; changed
+  recommended to `"distance"` (Distance-based).
+- **scope3-screening.php** (NEW): Backend endpoint for admin relevance screening.
+  GET: load existing screening for a client. POST: save screening array (15 elements) →
+  writes `s3_boundary` and `s3_screening_raw` to client_config.
+- **_app.admin.tsx**: `markScreeningDone` now POSTs to scope3-screening.php before updating
+  local state. Added `useEffect` to pre-load saved screening when admin opens a client panel.
+
+### Still open from gap tracker
+- Cat 7 (Employee Commuting) "looks survey not template" — the Cat7Commute survey component is
+  by design; no change made. Revisit if client expects a CSV-upload template instead.
+- NCR Gaithersburg CY25 Scope 1 inventory — see SQL file note, needs consultant sign-off.
+- NLS Bengaluru CY25,23,21,22: NDS entry visible in NLS Inventory Boundary READ path —
+  GET filter in inventory-boundary.php IS entity-scoped (`?entity=NLS` is sent); if the
+  issue persists, check whether `activeEntityCode` in InventoryContext is null on first load
+  (inspect `InventoryContext.tsx` useEffect on entity change).
+
+---
+
+## Completed Previous Session (2026-08-26 — FP/FOS Carbon Ledger rebuild)
+
+**Context:** 9 undocumented ad-hoc SQL files sitting in the repo root
+(`full_ledger_import.sql`, `carbon_ledger_import.sql`, `inventory_boundary_tracker_FY21_FY24.sql`,
+`fos_missing_assets_FY21_FY24.sql`, `fos_missing_assets_FY21_FY26.sql`,
+`fix_tracker_assetids_FP.sql`, `fix_fy25_duplicates.sql`, `fix_year_ranges.sql`) turned out
+to be from at least 4 separate, uncoordinated past attempts to import the FP/FOS Carbon
+Ledger Excel workbooks into `decarb_assets`/`inv_scope1_assets`/`inv_scope2_sources`/
+`tracker_drafts` — never reconciled, never written up here. Live production DB (client_id
+17=FP, 18=FOS) had real bugs as a result, notably: FOS's "Kumbalagodu" facility was
+misspelled "Kumbalgudu" in `ghg_facilities`, causing a past import's facility lookup to
+silently fail and leave 5 `inv_scope2_sources` rows with blank `facility_id`/`category`.
+
+**Also discovered and not yet fixed in this session:** `database/tracker_drafts.sql` and
+`database/inventory_boundary.sql` define tables (`tracker_drafts`, `inv_scope1_assets`,
+`inv_scope2_sources`, `inv_op_control`) that the live app depends on but that are **not**
+merged into `database/schema_combined.sql` and not mentioned in `database/README.md`. Worth
+folding in or documenting explicitly next time someone touches the DB schema.
+
+**This session:** parsed all 10 ledger workbooks (`FL Carbon Ledgers - Clients/*.xlsx`,
+FY21–FY25) directly with a Python/openpyxl script, cross-validating every extracted monthly
+value against each sheet's own "Total" row (265/265 matched). Generated
+`ledger_rebuild_fp_fos_FY21-25.sql` (repo root, not committed — one-off data migration like
+its predecessors) — a single transaction that: renames the two misspelled facilities,
+removes ~37 precisely-identified stale/duplicate `decarb_assets` rows, does a clean
+DELETE+rebuild of `inv_scope1_assets`/`inv_scope2_sources`/`tracker_drafts` for FY21–FY25
+only, and additively carries the asset registry (not values) forward into FY26 via
+`INSERT ... WHERE NOT EXISTS` so it never touches what a live user is entering today. Full
+rationale and a coverage table are in `ledger_rebuild_fp_fos_REPORT.md` (repo root).
+
+**Not yet done:** the SQL has not been run against production. Next step is for the user to
+back up the DB, run it via phpMyAdmin, and then verify `/data-tracker`, `/inventory-boundary`,
+and `/submissions` for FP/FOS show the ledger-accurate values. Scope 3 category data (Cat
+1–12 tabs, present in the ledgers from FY24 onward) was explicitly out of scope for this pass.
 
 ---
 
